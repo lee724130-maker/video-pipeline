@@ -1,0 +1,21 @@
+# —— 依赖与缓存（不入库）——
+node_modules/
+.py312/
+cache/
+__pycache__/
+
+# —— 成品与素材（一任务一文件夹，全部本地留存）——
+output/
+
+# —— 本机私有配置（API key / 代理 / 本地 ffmpeg 路径）——
+# 真实密钥写在 pipeline/config.local.json，模板见 config.local.example.json
+config.local.json
+
+# —— 临时文件与日志 ——
+*.log
+*.tmp
+*.ln.tmp
+*.tmp.mp4
+~$*
+Thumbs.db
+.DS_Store

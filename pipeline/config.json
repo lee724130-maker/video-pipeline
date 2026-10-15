@@ -1,0 +1,79 @@
+{
+  "proxy": "",
+  "ffmpeg": "",
+  "voice": {
+    "provider": "auto",
+    "tempo": 1.25,
+    "dashscope": {
+      "model": "qwen-audio-3.1-tts-flash",
+      "voice": "loongstella_v3.1",
+      "tempo": 1.0,
+      "nativeRate": 0,
+      "targetCharsPerSec": 7.6,
+      "key": ""
+    },
+    "edge": {
+      "name": "zh-CN-YunxiNeural",
+      "rate": "+8%"
+    },
+    "gtts": {
+      "lang": "zh-CN"
+    }
+  },
+  "render": {
+    "fps": 30,
+    "bufferSec": 0.7
+  },
+  "compose": {
+    "tailPadSec": 0.45,
+    "karaoke": true,
+    "karaokeDimColour": "&H00606060",
+    "transitionSec": 0.4,
+    "transitionType": "fade",
+    "keywordSize": 130,
+    "keywordHoldSec": 2.2,
+    "keywordColour": "&H0000D7FF",
+    "captionMaxChars": 13,
+    "captionFont": "Microsoft YaHei",
+    "captionSize": 56,
+    "captionMarginV": 320,
+    "fadeOutSec": 0.8,
+    "bgm": {
+      "volume": 0.16,
+      "fadeInSec": 0.8,
+      "fadeOutSec": 1.5,
+      "duckThreshold": 0.02,
+      "duckRatio": 8,
+      "beatSnap": true,
+      "snapWindowSec": 0.3
+    },
+    "loudness": {
+      "enabled": true,
+      "i": -14,
+      "tp": -1.5,
+      "lra": 11
+    }
+  },
+  "cover": {
+    "enabled": true,
+    "kicker": "AI VIDEO",
+    "title": "",
+    "subtitle": "",
+    "foot": "AI 剪辑流水线"
+  },
+  "outro": {
+    "enabled": true,
+    "durSec": 2.6,
+    "kicker": "FOLLOW",
+    "title": "点关注 不迷路",
+    "subtitle": ""
+  },
+  "ktv": {
+    "python": ".py312/python.exe",
+    "model": "small"
+  },
+  "silence": {
+    "noiseDb": -32,
+    "minDurSec": 0.28
+  }
+}

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>cover</title>
+<style>/*__CSS__*/</style>
+<style>
+  /* 封面：静态版式（无 data-at，runtime 只负责 stage.on），标题加大、底部标签 */
+  .stage { justify-content: center; gap: 44px; }
+  .stage h1.big { font-size: 124px; }
+  .cover-foot {
+    position: absolute; left: 88px; right: 88px; bottom: var(--safe-bottom);
+    display: flex; align-items: center; gap: 22px;
+    font-size: 38px; font-weight: 600; letter-spacing: 4px; color: var(--fg-dim);
+  }
+  .cover-foot::before {
+    content: ""; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); flex: none;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="bg"></div>
+    <div class="kicker">{{KICKER}}</div>
+    <h1 class="big">{{TITLE}}</h1>
+    <div class="bar"></div>
+    <p class="sub">{{SUBTITLE}}</p>
+    <div class="cover-foot">{{FOOT}}</div>
+  </div>
+<!--__RUNTIME__-->
+</body>
+</html>

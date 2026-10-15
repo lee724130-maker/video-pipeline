@@ -1,0 +1,9 @@
+{
+  "name": "jianji-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "零成本视频生产流水线：一句话需求 → 口播成片（本地免费链路）",
+  "hypit": {
+    "project": true
+  }
+}

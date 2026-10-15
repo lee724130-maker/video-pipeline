@@ -1,0 +1,160 @@
+// 公共工具：子进程、ffmpeg/ffprobe、日志
+const { spawnSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const FFMPEG = detectTool('ffmpeg');
+const FFPROBE = detectTool('ffprobe');
+const ROOT = path.resolve(__dirname, '..', '..');
+
+// —— 配置加载：config.json（进仓库）+ config.local.json（gitignore，本机私有：API key/代理/路径）
+// 两层深合并，local 覆盖 base
+const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
+function deepMerge(a, b) {
+  const out = { ...a };
+  for (const k of Object.keys(b)) out[k] = isObj(b[k]) && isObj(a[k]) ? deepMerge(a[k], b[k]) : b[k];
+  return out;
+}
+function loadConfig() {
+  const base = readJson(path.join(ROOT, 'pipeline', 'config.json')) || {};
+  const local = readJson(path.join(ROOT, 'pipeline', 'config.local.json')) || {};
+  return deepMerge(base, local);
+}
+
+// —— ffmpeg 探测：config.ffmpeg（目录或 exe 路径）→ PATH → 常见手动安装位（D:/ffmpeg 等）
+function detectTool(tool) {
+  const exe = process.platform === 'win32' ? `${tool}.exe` : tool;
+  const cands = [];
+  try {
+    const c = JSON.parse(fs.readFileSync(path.join(ROOT, 'pipeline', 'config.json'), 'utf8'));
+    if (c.ffmpeg) cands.push(path.join(c.ffmpeg, exe), c.ffmpeg.endsWith(exe) ? c.ffmpeg : null);
+  } catch { /* config 不存在/损坏时走后续候选 */ }
+  cands.push(exe, `D:/ffmpeg/bin/${exe}`, `C:/ffmpeg/bin/${exe}`);
+  for (const p of cands.filter(Boolean)) {
+    try {
+      const r = spawnSync(p, ['-version'], { encoding: 'utf8', timeout: 10000 });
+      if (r.status === 0) return p;
+    } catch { /* 继续试下一个 */ }
+  }
+  return exe; // 全部失败 → 交回 PATH 名，调用时报错（00-checkenv 会报告）
+}
+
+function log(tag, msg) {
+  const t = new Date().toTimeString().slice(0, 8);
+  console.log(`[${t}] [${tag}] ${msg}`);
+}
+
+function warn(tag, msg) {
+  const t = new Date().toTimeString().slice(0, 8);
+  console.log(`[${t}] [${tag}] ⚠ ${msg}`);
+}
+
+function run(cmd, args, opts = {}) {
+  // Windows 下 spawnSync 不能直接执行 .cmd/.bat，须走 cmd /c
+  let finalCmd = cmd, finalArgs = args;
+  if (/\.(cmd|bat)$/i.test(cmd) && !opts.shell) {
+    finalCmd = process.env.ComSpec || 'cmd.exe';
+    finalArgs = ['/d', '/s', '/c', cmd, ...args];
+  }
+  const r = spawnSync(finalCmd, finalArgs, {
+    cwd: opts.cwd || ROOT,
+    encoding: 'utf8',
+    maxBuffer: 1024 * 1024 * 64,
+    shell: false,
+    ...opts,
+  });
+  return {
+    code: r.status,
+    ok: r.status === 0,
+    out: (r.stdout || '') + (r.stderr || ''),
+    error: r.error ? String(r.error.message) : '',
+  };
+}
+
+function ffprobe(file) {
+  const r = run(FFPROBE, [
+    '-v', 'error',
+    '-show_entries', 'format=duration,size:stream=index,codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels',
+    '-of', 'json', file,
+  ]);
+  if (!r.ok) throw new Error(`ffprobe 失败: ${file}\n${r.out}`);
+  return JSON.parse(r.out);
+}
+
+function durationOf(file) {
+  const p = ffprobe(file);
+  return parseFloat(p.format.duration);
+}
+
+// 解码法实测时长：DashScope 返回的 mp3 文件头（Xing/Duration 字段）是错的
+// （实测头报 61.6s、解码 66.0s），凡是拿时长做计算的地方必须用这个。
+function durationDecoded(file) {
+  const r = run(FFMPEG, ['-i', file, '-f', 'null', '-']);
+  const ms = [...r.out.matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)];
+  if (!r.ok || !ms.length) return durationOf(file); // 兜底退回头信息
+  const [, h, m, s] = ms[ms.length - 1];
+  return +h * 3600 + +m * 60 + +s;
+}
+
+function ensureDir(p) {
+  fs.mkdirSync(p, { recursive: true });
+  return p;
+}
+
+function readJson(p, fallback = null) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return fallback; }
+}
+
+function writeJson(p, obj) {
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(obj, null, 1), 'utf8');
+}
+
+function fail(msg) {
+  console.error(`\n✗ ${msg}`);
+  process.exit(1);
+}
+
+// —— 响度标准化：两遍 loudnorm（①测量 → ②带 measured_* 线性应用到目标）
+// 视频流 copy、只重编音频，任何合成分支通用。返回 {from,to} LUFS；静音/失败返回 null。
+function loudnormFile(file, opts = {}) {
+  const I = Number(opts.i ?? -14), TP = Number(opts.tp ?? -1.5), LRA = Number(opts.lra ?? 11);
+  const base = `I=${I}:TP=${TP}:LRA=${LRA}`;
+  const m = run(FFMPEG, ['-i', file, '-map', '0:a:0', '-af', `loudnorm=${base}:print_format=json`, '-f', 'null', '-']);
+  const jm = m.out.match(/\{\s*"input_i"[\s\S]*?\}/);
+  if (!jm) return null;
+  let j; try { j = JSON.parse(jm[0]); } catch { return null; }
+  if (String(j.input_i).includes('inf') || !j.input_thresh) return null; // 静音轨跳过
+  // 保持原采样率（loudnorm 内部升到 192k，必须显式指定输出）
+  const sr = run(FFPROBE, ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=sample_rate', '-of', 'csv=p=0', file]).out.trim();
+  const rate = /^\d+$/.test(sr) ? sr : '44100';
+  const af = `loudnorm=${base}:measured_I=${j.input_i}:measured_TP=${j.input_tp}:measured_LRA=${j.input_lra}:measured_thresh=${j.input_thresh}:offset=${j.target_offset}:linear=true:print_format=summary`;
+  const tmp = `${file}.tmp.mp4`; // 必须带 .mp4 扩展名，否则 ffmpeg 推不出封装格式
+  fs.existsSync(tmp) && fs.unlinkSync(tmp);
+  const r = run(FFMPEG, [
+    '-y', '-i', file, '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
+    '-af', af, '-c:a', 'aac', '-b:a', '192k', '-ar', rate,
+    '-movflags', '+faststart', tmp,
+  ]);
+  if (!r.ok || !fs.existsSync(tmp) || fs.statSync(tmp).size < 1024) {
+    fs.existsSync(tmp) && fs.unlinkSync(tmp);
+    return null;
+  }
+  fs.unlinkSync(file);
+  fs.renameSync(tmp, file);
+  return { from: Number(j.input_i), to: I };
+}
+
+// BGM 查找：任务根目录 bgm.* 优先，其次 assets/bgm.*（用户提供的文件才启用 BGM 功能）
+const BGM_EXTS = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'mp4'];
+function findBgm(task) {
+  for (const dir of [task, path.join(task, 'assets')]) {
+    for (const ext of BGM_EXTS) {
+      const p = path.join(dir, `bgm.${ext}`);
+      if (fs.existsSync(p)) return p;
+    }
+  }
+  return null;
+}
+
+module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, loadConfig, loudnormFile, fail };

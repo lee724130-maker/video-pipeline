@@ -1,0 +1,115 @@
+/* ============ 剪辑应用 · 场景设计令牌 ============ */
+/* 所有场景共用。改这里 = 改全片风格（见 skills/visuals.md） */
+
+:root {
+  --bg: #0B0E14;
+  --fg: #F5F7FA;
+  --fg-dim: #9AA3B2;
+  --accent: #08B6DD;          /* 青：默认强调色 */
+  --accent-2: #7C3AED;        /* 紫：数字/科技类内容 */
+  --safe-top: 180px;
+  --safe-bottom: 180px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100vw; height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.stage {
+  position: relative;
+  width: 100vw; height: 100vh;
+  padding: var(--safe-top) 88px var(--safe-bottom);
+  display: flex; flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 40px;
+  opacity: 0;
+}
+.stage.on { animation: scene-in .15s ease-out forwards; }
+.stage.off { animation: scene-out .15s ease-in forwards; }
+
+@keyframes scene-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes scene-out { from { opacity: 1 } to { opacity: 0 } }
+
+/* 背景：径向光晕 + 细网格 */
+.bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.bg::before {
+  content: ""; position: absolute; inset: -20%;
+  background:
+    radial-gradient(48% 34% at 22% 18%, rgba(8,182,221,.22), transparent 70%),
+    radial-gradient(44% 30% at 82% 84%, rgba(124,58,237,.18), transparent 70%);
+}
+.bg::after {
+  content: ""; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(70% 60% at 50% 45%, #000, transparent 85%);
+}
+
+.kicker {
+  font-size: 40px; font-weight: 700; letter-spacing: 10px;
+  color: var(--accent); text-transform: uppercase;
+}
+.bar { width: 96px; height: 8px; border-radius: 4px; background: var(--accent); }
+
+/* 标题类 */
+h1.big {
+  font-size: 108px; font-weight: 800; line-height: 1.22;
+  letter-spacing: 2px;
+}
+h1.big .hi { color: var(--accent); }
+.heading .hi, .chapter .hi, .note .hi, .sub .hi, .keyword .hi { color: var(--accent); -webkit-text-fill-color: var(--accent); }
+.sub { font-size: 46px; font-weight: 500; color: var(--fg-dim); line-height: 1.5; }
+
+/* 要点类 */
+.heading { font-size: 68px; font-weight: 800; line-height: 1.3; }
+.heading em { font-style: normal; color: var(--accent); }
+ul.items { list-style: none; display: flex; flex-direction: column; gap: 34px; }
+ul.items li {
+  display: flex; align-items: flex-start; gap: 28px;
+  font-size: 54px; font-weight: 700; line-height: 1.35;
+  opacity: 0; transform: translateY(28px);
+}
+ul.items li.show { animation: item-in .32s cubic-bezier(.2,.8,.3,1) forwards; }
+@keyframes item-in { to { opacity: 1; transform: translateY(0) } }
+ul.items li::before {
+  content: ""; flex: none; margin-top: 26px;
+  width: 26px; height: 26px; border-radius: 8px;
+  background: var(--accent);
+  box-shadow: 0 0 24px rgba(8,182,221,.55);
+}
+
+/* 关键词类 */
+.keyword {
+  font-size: 168px; font-weight: 800; line-height: 1.1;
+  background: linear-gradient(100deg, var(--fg) 20%, var(--accent) 90%);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  transform: scale(.86); opacity: 0;
+}
+.keyword.show { animation: kw-in .45s cubic-bezier(.2,.9,.3,1.1) forwards; }
+@keyframes kw-in { to { transform: scale(1); opacity: 1 } }
+.note { font-size: 44px; color: var(--fg-dim); line-height: 1.5; }
+
+/* 过渡类 */
+.idx {
+  font-size: 260px; font-weight: 800; line-height: 1;
+  color: transparent; -webkit-text-stroke: 5px var(--accent);
+  opacity: .9;
+}
+.chapter { font-size: 88px; font-weight: 800; }
+
+/* 序号/进度装饰 */
+.corner {
+  position: absolute; top: var(--safe-top); right: 88px;
+  font-size: 34px; font-weight: 700; color: var(--fg-dim);
+  letter-spacing: 3px;
+}
