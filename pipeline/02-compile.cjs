@@ -5,6 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { FFMPEG, run, durationOf, durationDecoded, readJson, writeJson, log, warn, fail, findBgm, loadConfig } = require('./lib/common.cjs');
+const { T2S } = require('./lib/t2s.js');
 
 const cfg = loadConfig();
 
@@ -95,34 +96,52 @@ function findNextStart(starts, i) {
 }
 
 // —— 逐词时间戳 → 逐字时间（edge-tts 直出 或 whisper 对齐，见 tools/align.py）
-// 数字归一：阿拉伯 ↔ 中文数字（whisper 常把「3」识别成「三」）；拉丁字母统小写
+// 归一三件套（2026-10-16 P1-2）：
+//  ① 数字归一：阿拉伯 ↔ 中文数字（whisper 常把「3」写成「三」，反之亦然）
+//  ② 繁简归一：whisper 会随机输出繁体（樂/長/個…），经 OpenCC t2s 归一再比对
+//  ③ 有界重同步：单字失配（同音错写如剧→句、多位数字结构差异如「二十三」vs「23」）
+//     不再放弃整段逐词法——向前 LOOK=4 字窗口重咬，咬不住就丢弃该 whisper 字，
+//     末了按咬合率决定去留（<60% 才退回静音兜底）。错 1 个字不再全盘作废。
 const CN_NUM = { '零': '0', '〇': '0', '一': '1', '二': '2', '两': '2', '三': '3', '四': '4', '五': '5', '六': '6', '七': '7', '八': '8', '九': '9' };
-const normChar = (c) => CN_NUM[c] || c.toLowerCase();
+const normChar = (c) => { const s = T2S[c] || c; return CN_NUM[s] || s.toLowerCase(); };
+const LOOK = 4;
 
 function charTimesByWords(narration, wordsData) {
   const chars = [...narration];
   const words = wordsData.words || [];
   if (!words.length) return null;
+  const isW = (c) => HAN.test(c) || DIGITS.test(c) || LATIN.test(c); // 标点/空格不参与比对
   const starts = new Array(chars.length);
   const ends = new Array(chars.length);
-  let ci = 0;
+  let ci = 0, matched = 0, drop = 0;
   for (const w of words) {
-    const wt = [...String(w.text)];
-    // 跳过 narration 中的空隙（标点/空格）
-    while (ci < chars.length && !HAN.test(chars[ci]) && !DIGITS.test(chars[ci]) && !LATIN.test(chars[ci])) ci++;
-    for (let k = 0; k < wt.length; k++) {
-      if (ci >= chars.length) break;
-      if (normChar(chars[ci]) !== normChar(wt[k])) {
-        // 对不齐（模型做了归一化）→ 放弃逐词法，交给静音兜底
-        return null;
+    const wt = [...String(w.text)].filter(isW);       // edge-tts 词内可能带标点
+    if (!wt.length) continue;
+    const hits = [];
+    for (const wc of wt) {
+      while (ci < chars.length && !isW(chars[ci])) ci++;   // 跳过 narration 标点
+      let hit = -1;
+      for (let k = 0; k <= LOOK && ci + k < chars.length; k++) {
+        if (normChar(chars[ci + k]) === normChar(wc)) { hit = ci + k; break; }
       }
-      const d = (w.end - w.start) / wt.length;
-      starts[ci] = w.start + k * d;
-      ends[ci] = starts[ci] + d;
-      ci++;
+      if (hit < 0) { drop++; continue; }               // 窗口内咬不住 → 丢弃该字
+      ci = hit + 1;
+      hits.push(hit);
+      matched++;
+    }
+    if (!hits.length) continue;
+    // 时间摊分：本词咬住的首尾字之间均分词时长（中间被跳过的字一并摊到，保持时间连续）
+    const a = hits[0], b = hits[hits.length - 1];
+    const d = (w.end - w.start) / (b - a + 1);
+    for (let x = a; x <= b; x++) {
+      starts[x] = w.start + (x - a) * d;
+      ends[x] = starts[x] + d;
     }
   }
-  for (let i = 0; i < chars.length; i++) {
+  const total = chars.filter(isW).length;
+  if (!total || matched < total * 0.6) return null;    // 咬合率过低 → 整体退回静音兜底
+  if (drop) log('02', `逐词重同步：丢弃 ${drop} 个失配字（同音错写/识别偏差），不影响其余对齐`);
+  for (let i = 0; i < chars.length; i++) {             // 未被任何词覆盖的字（含标点）：邻接插值
     if (starts[i] === undefined) {
       const prev = i > 0 && ends[i - 1] !== undefined ? ends[i - 1] : 0;
       const next = findNextStart(starts, i);
@@ -228,7 +247,7 @@ function main() {
   }
   if (wordsData) timing = charTimesByWords(narration, wordsData);
   if (timing) log('02', `时间轴来源：逐词时间戳（${wordsData.engine || 'edge-tts'}）`);
-  else if (wordsData) warn('02', 'words.json 与文案逐字不匹配，退回字数比例（可删 audio/words.json 重对齐）');
+  else if (wordsData) warn('02', 'words.json 与文案咬合率 <60%，退回字数比例（可删 audio/words.json 重对齐）');
   if (!timing) {
     timing = charTimesByText(narration, silences, audioDur);
     log('02', '时间轴来源：静音断句 + 字数比例（gTTS 路径）');

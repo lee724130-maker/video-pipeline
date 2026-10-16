@@ -151,3 +151,9 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - 00-checkenv 新增可选项 `SAPI 离线语音`（-List 查得到 zh-* 才 ✓）
 - [x] **loudnormFile 升级迭代式（三分支回归全过）**：**坑——线性增益撞 TP 上限被截断**：SAPI 音频瞬态峰值高（原始 I=-24.5 / TP≈-8.4），linear 模式 +10.5dB 会把 TP 推爆 → ffmpeg 截增益，输出 TP 顶死 -1.5 但 I 只到 -17.6（QC ±3 外）。修法：测量时预测 `input_tp + (target - input_i) > TP - 0.3` → 自动改 `linear=false`（dynamic 压动态）→ **复测验证贴 ±1.5 才收工，最多 3 轮处理**；返回 `to` 从 target 改为**最终实测**。回归：主路 -17.0→-14.6（linear 一步）/ SAPI -24.5→-15.5（dynamic 撞 TP 极限）/ KTV -11.5→-14.1
 - [x] **坑——02 重跑会抹掉 03 的 timeline.outro/cover**：06 对账依赖这两字段，02 重算主体重写 timeline 时若不保留 → 片尾/封面两项消失 + 时长项缺 outro（16 项≠18 项），且 05 在无 outro 字段时 fallback 拼了 outro 素材全长（3.28s ≠ 设计 2.6s）→ 时长对账挂。**已修**：02 写 timeline 前读旧文件保留 `outro`/`cover`。症状识别：06 项数 18→16 + 时长差 ≈outro 素材冗余量
+- [x] **P1-2 读音/对齐归一增强（完成）**：
+  - **读音实测结论（重要，别再怀疑 qwen）**：10 组经典易错句（3个坑/重庆重新/行长/快乐音乐/长处/得地的/日期/百分比/排名第1/归还）→ DashScope 合成 + whisper 当耳朵回听，**qwen TTS 语境读音全对**，无需任何读音改写词典；兜底 gTTS/SAPI 未测（兜底不求质量）
+  - **whisper 转写偏好（勿当错音）**：会把「二零二六」写成「2026」、随机输出繁体（樂/長/個）、同音错写（成→呈）——是转写行为不是 TTS 读错
+  - **02 归一三件套**：① 数字归一（原）② 繁简归一 `lib/t2s.js`（OpenCC TSCharacters 生成 3029 字，单字首候选，`gen-t2s.js` 一次性脚本在 TEMP）③ **有界重同步**：失配字在 LOOK=4 窗口重咬、咬不住丢弃该 whisper 字、咬合率 <60% 才整体退回静音兜底
+  - **实测提升**：sapi-test（Huihui 吞字 3 字）从「退回字数比例」→「丢弃 3 失配字，逐词对齐成功」；繁体合成 words（15 繁化字）零失配；dashscope 干净路径行为零变化（timeline 逐字节对比一致）
+  - **坑**：生成 t2s.js 时对象字面量值忘加引号（`㑯:㑔` 被当标识符）→ 必须 `'k':'v'` 形式
