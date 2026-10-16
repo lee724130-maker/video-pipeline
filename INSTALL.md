@@ -54,7 +54,7 @@ Node 装好后一条命令。04 步用它把场景 HTML 录成视频片段。
   py -m pip install gTTS
   ```
 - **SAPI（Windows 自带，零安装零联网）**：Windows 出厂带中文语音（Huihui 等），断网/无额度时
-  01 会自动顶上，语速已校准 7.6 字/秒。00 自检显示 `SAPI 离线语音 ✓` 即可用；若显示
+  01 会自动顶上，语速目标 7.2 字/秒（与主路同标准）。00 自检显示 `SAPI 离线语音 ✓` 即可用；若显示
   「无中文语音」，去 Windows 设置 → 时间和语言 → 语音 添加中文语音包。
   强制使用：`node pipeline/01-tts.cjs <任务目录> --provider sapi`
 

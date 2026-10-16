@@ -9,7 +9,7 @@
       "voice": "loongstella_v3.1",
       "tempo": 1.0,
       "nativeRate": 0,
-      "targetCharsPerSec": 7.6,
+      "targetCharsPerSec": 7.2,
       "key": ""
     },
     "edge": {
@@ -23,7 +23,7 @@
       "voice": "",
       "rate": 6,
       "tempo": 1.15,
-      "targetCharsPerSec": 7.6
+      "targetCharsPerSec": 7.2
     }
   },
   "render": {

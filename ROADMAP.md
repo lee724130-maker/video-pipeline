@@ -35,6 +35,6 @@
 ## 维护备忘
 
 - 依赖环境固化：`.py312/`（whisper）+ `D:/ffmpeg` + Chrome + hypit，换机器按 00-checkenv 提示装（安装全清单见 `INSTALL.md`）
-- 已知口径：语速 tempo1.0 ≈7.6 字/秒；默认音色 loongstella 飒爽新闻女；BGM 只认用户自带文件
+- 已知口径：语速目标 7.2 字/秒（2026-10-16 用户调，原 7.6 微降）；默认音色 loongstella 飒爽新闻女；BGM 只认用户自带文件
 - 配音四级兜底：dashscope → edge → gtts → sapi（SAPI 为离线最后防线，Windows 必带中文语音 Huihui）
 - 坑位留档：见 `CHECKPOINT-2026-10-13.md`（whisper 四坑、loudnorm 两坑、DashScope mp3 头时长等，均已固化进脚本注释）

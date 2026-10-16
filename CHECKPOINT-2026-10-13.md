@@ -157,6 +157,9 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - **02 归一三件套**：① 数字归一（原）② 繁简归一 `lib/t2s.js`（OpenCC TSCharacters 生成 3029 字，单字首候选，`gen-t2s.js` 一次性脚本在 TEMP）③ **有界重同步**：失配字在 LOOK=4 窗口重咬、咬不住丢弃该 whisper 字、咬合率 <60% 才整体退回静音兜底
   - **实测提升**：sapi-test（Huihui 吞字 3 字）从「退回字数比例」→「丢弃 3 失配字，逐词对齐成功」；繁体合成 words（15 繁化字）零失配；dashscope 干净路径行为零变化（timeline 逐字节对比一致）
   - **坑**：生成 t2s.js 时对象字面量值忘加引号（`㑯:㑔` 被当标识符）→ 必须 `'k':'v'` 形式
+- [x] **用户验收调整（2026-10-16）**：
+  - **音色**：dashscope-e2e 旧 meta 显示用的 Cherry（男声）——是早期旧 config（next 模型+默认音色）时代的产物；现 config 已是 `loongstella_v3.1`，重跑 01 即回到飒爽新闻女，无需改代码
+  - **语速**：用户反馈 7.6 微快 → `targetCharsPerSec` 7.6→**7.2**（dashscope/sapi 同步）；sapi-test 重出实测 7.22 字/秒（残差校正 ×0.945 落位），双基准重跑 19/19
 - [x] **P1-4 whisper medium 档位一键切（完成）**：
   - 三个改动点：`align.py` 加第 3 参模型名（缺省 small）+ engine 记录 `whisper-zh/<模型>`（**缓存来源可见**）；02 读 `cfg.ktv.alignModel` 传参并打进日志（超时 15→30 分钟）；`config.json` 加 `ktv.alignModel`（KTV 侧原本就有 `ktv.model` + `--model`）
   - **坑**：换档**不会自动重对齐**——words.json/lyrics.json 有缓存，改 config 后要删对应缓存文件才走新模型
