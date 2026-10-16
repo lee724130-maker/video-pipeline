@@ -5,10 +5,19 @@ const { FFMPEG, run, ffprobe, durationOf, ensureDir, readJson, log, warn, fail, 
 
 const cfg = loadConfig();
 let pass = 0, failN = 0;
+const report = []; // 落盘 qc-report.txt（网页端/归档直接看文件，不用翻日志）
 
 function check(name, ok, detail = '') {
   ok ? pass++ : failN++;
-  console.log(`  ${ok ? '✓' : '✗'} ${name}${detail ? ' — ' + detail : ''}`);
+  const line = `  ${ok ? '✓' : '✗'} ${name}${detail ? ' — ' + detail : ''}`;
+  console.log(line);
+  report.push(line);
+}
+
+function writeReport(task) {
+  const head = `QC 报告 · ${path.basename(task)} · ${new Date().toLocaleString('zh-CN', { hour12: false })}`;
+  const tail = `  ——— ${pass}/${pass + failN} 机械项通过（语义项看 qc/*.png 抽帧）`;
+  try { fs.writeFileSync(path.join(task, 'qc-report.txt'), [head, '', ...report, tail].join('\n'), 'utf8'); } catch {}
 }
 
 function luminance(file) {
@@ -25,7 +34,7 @@ function main() {
   console.log('[06] 质检');
 
   check('成片存在', fs.existsSync(final), fs.existsSync(final) ? `${(fs.statSync(final).size / 1024 / 1024).toFixed(1)} MB` : '缺 成片.mp4');
-  if (!fs.existsSync(final)) { console.log(`  ——— 0/${pass + failN}`); process.exit(1); }
+  if (!fs.existsSync(final)) { writeReport(task); console.log(`  ——— 0/${pass + failN}`); process.exit(1); }
 
   const p = ffprobe(final);
   const v = p.streams.find((s) => s.codec_type === 'video') || {};
@@ -125,6 +134,7 @@ function main() {
 
   console.log(`  ——— ${pass}/${pass + failN} 机械项通过`);
   log('06', `语义项请看 qc/f_first.png · f_mid.png · f_last.png · f_caption.png（f_caption 应能看到字幕）`);
+  writeReport(task);
   if (failN) fail(`质检 ${failN} 项不通过`);
 }
 

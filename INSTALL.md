@@ -86,7 +86,13 @@ $env:CHECKENV_NET="1"; node pipeline/00-checkenv.cjs
 node pipeline/run.cjs output/demo
 ```
 前提是 `output/demo/shots.json` 存在（分镜表，由 AI 按 `skills/script.md` 生成）+ `output/demo/narration.txt`（口播文案）。
-产物：`output/demo/成片.mp4` + `封面.png` + `qc/` 抽帧。
+产物：`output/demo/成片.mp4` + `封面.png` + `qc/` 抽帧 + `qc-report.txt`。
+
+也可以用网页界面（零命令行）：
+```
+node web/server.cjs
+```
+浏览器开 `http://127.0.0.1:8787`，填文案 → 点「一键出片」即可（分镜自动按句拆分）。
 
 KTV 歌词视频：`node pipeline/07-ktv.cjs output/<任务> --song 歌曲文件名`
 

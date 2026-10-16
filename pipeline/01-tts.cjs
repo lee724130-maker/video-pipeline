@@ -134,15 +134,19 @@ function main() {
   if (used === 'dashscope' && dashNativeRate) {
     // 模型已按原生 rate 出稿（语速由模型自己读稿，音质优于时间拉伸）
     log('01', `语速 ×${dashRate}（模型原生 rate，无时间拉伸）`);
-    const target = Number((voiceCfg.dashscope || {}).targetCharsPerSec || 0);
+    const target = Number(shots.targetCharsPerSec || (voiceCfg.dashscope || {}).targetCharsPerSec || 0);
     if (target > 0) residualCorrect(target);
   } else if (tempo > 0 && Math.abs(tempo - 1) > 0.01) {
     applyAtempo(tempo, 'atempo');
     // SAPI 兜底同样按目标字/秒做残差微调（与主路同参数同安全带）
     if (used === 'sapi') {
-      const target = Number((voiceCfg.sapi || {}).targetCharsPerSec || 0);
+      const target = Number(shots.targetCharsPerSec || (voiceCfg.sapi || {}).targetCharsPerSec || 0);
       if (target > 0) residualCorrect(target);
     }
+  } else if (used === 'dashscope') {
+    // 原速出稿（无 atempo）也可按任务级 targetCharsPerSec 校正（网页端按条调速）
+    const target = Number(shots.targetCharsPerSec || 0);
+    if (target > 0) residualCorrect(target);
   }
 
   const dur = durationDecoded(mp3);

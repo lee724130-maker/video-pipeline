@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>零成本视频流水线 · 本地控制台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0B0E14; --panel:#12161f; --line:#232a38; --fg:#F5F7FA; --dim:#9AA3B2; --accent:#08B6DD; --accent-2:#7C3AED; --ok:#22c55e; --err:#ef4444; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:"Microsoft YaHei","PingFang SC",sans-serif; min-height:100vh; }
+  .wrap { max-width:1080px; margin:0 auto; padding:32px 24px 80px; }
+  h1 { font-size:26px; margin-bottom:6px; }
+  h1 .tag { font-size:13px; color:var(--accent); font-weight:400; margin-left:10px; }
+  .sub { color:var(--dim); font-size:14px; margin-bottom:28px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:24px; align-items:start; }
+  @media (max-width:880px){ .grid{grid-template-columns:1fr;} }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .card h2 { font-size:16px; margin-bottom:16px; color:var(--fg); }
+  label { display:block; font-size:13px; color:var(--dim); margin:14px 0 6px; }
+  textarea, input[type=text], select {
+    width:100%; background:#0d111a; color:var(--fg); border:1px solid var(--line);
+    border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit; outline:none;
+  }
+  textarea:focus, input:focus, select:focus { border-color:var(--accent); }
+  textarea { min-height:130px; resize:vertical; line-height:1.7; }
+  .row { display:flex; gap:12px; } .row > * { flex:1; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .rate-val { color:var(--accent); font-weight:700; }
+  .files { border:1px dashed var(--line); border-radius:8px; padding:10px; font-size:13px; color:var(--dim); cursor:pointer; }
+  .files:hover { border-color:var(--accent); }
+  .thumbs { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .thumbs img { height:56px; border-radius:6px; border:1px solid var(--line); }
+  button.primary {
+    width:100%; margin-top:22px; padding:14px; border:none; border-radius:10px;
+    background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#fff;
+    font-size:16px; font-weight:700; cursor:pointer;
+  }
+  button.primary:disabled { opacity:.45; cursor:not-allowed; }
+  .steps { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+  .step { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--dim); }
+  .step .dot { width:10px; height:10px; border-radius:50%; background:var(--line); flex:none; }
+  .step.active { color:var(--fg); } .step.active .dot { background:var(--accent); animation:pulse 1s infinite; }
+  .step.done { color:var(--ok); } .step.done .dot { background:var(--ok); }
+  @keyframes pulse { 50% { opacity:.35 } }
+  pre.log { background:#0d111a; border:1px solid var(--line); border-radius:8px; padding:12px; font-size:12px; color:var(--dim); max-height:230px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  .result { margin-top:16px; }
+  .result video { width:100%; max-height:420px; border-radius:10px; background:#000; }
+  .result img.cover { width:130px; border-radius:8px; border:1px solid var(--line); }
+  .kv { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:13px; color:var(--dim); }
+  .kv a { color:var(--accent); text-decoration:none; }
+  .err { color:var(--err); font-size:13px; margin-top:10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td { padding:8px 6px; border-bottom:1px solid var(--line); color:var(--dim); }
+  td b { color:var(--fg); font-weight:600; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:#1b2433; color:var(--dim); }
+  .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>零成本视频流水线 <span class="tag">本地控制台 · 只监听 127.0.0.1</span></h1>
+  <div class="sub">填文案 → （可选）传背景图/BGM → 点「一键出片」。镜头自动按句拆分；复杂分镜建议按 skills/script.md 手写 shots.json 后跑命令行。</div>
+
+  <div class="grid">
+    <!-- 左：新建任务 -->
+    <div class="card">
+      <h2>① 新建视频</h2>
+      <label>口播文案（按句号/换行自动拆镜；首句=标题卡，中间含逗号的句子=要点卡，末句=收尾卡）</label>
+      <textarea id="text" placeholder="一句话，就能出一条成片。&#10;你只要把素材丢进来，剩下的交给流水线。&#10;字幕、配音、镜头，全自动对齐。"></textarea>
+
+      <div class="row">
+        <div>
+          <label>配音音色</label>
+          <select id="voice"></select>
+        </div>
+        <div>
+          <label>任务名（可空，自动按时间生成）</label>
+          <input type="text" id="name" placeholder="my-video">
+        </div>
+      </div>
+
+      <label>语速 <span class="rate-val" id="rateVal">--</span> 字/秒（默认取 config，慢一点更从容）</label>
+      <input type="range" id="rate" min="4.5" max="9" step="0.1">
+
+      <label>背景图（可选 0~9 张，jpg/png/webp；出片自动轮播 + 缓推动画，不传=内置渐变）</label>
+      <div class="files" onclick="document.getElementById('imgs').click()">＋ 点击选择图片</div>
+      <input type="file" id="imgs" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <div class="thumbs" id="thumbs"></div>
+
+      <label>BGM（可选，mp3；自动循环+说话闪避+卡点）</label>
+      <div class="files" id="bgmBox">＋ 点击选择音乐</div>
+      <input type="file" id="bgm" accept="audio/mpeg" hidden>
+
+      <button class="primary" id="go" onclick="create()">🎬 一键出片</button>
+      <div class="err" id="err"></div>
+    </div>
+
+    <!-- 右：进度 + 预览 -->
+    <div class="card">
+      <h2>② 进度与成片</h2>
+      <div class="steps" id="steps"></div>
+      <pre class="log" id="log">（还没开始——左侧填好文案点「一键出片」）</pre>
+      <div class="result" id="result"></div>
+
+      <h2 style="margin-top:26px">③ 历史任务</h2>
+      <table id="hist"><tr><td>加载中…</td></tr></table>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let meta = null, imgData = [], bgmData = null, lastTask = '', pollTimer = null;
+
+const STEP_NAMES = ['配音 TTS','时间轴编译','场景生成','场景渲染','合成','质检 QC'];
+
+async function j(url, opt) {
+  const r = await fetch(url, opt);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+
+function toBase64(file) {
+  return new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(file); });
+}
+
+async function init() {
+  meta = await j('/api/meta');
+  $('voice').innerHTML = meta.voices.map((v) =>
+    `<option value="${v.id}" ${v.id === meta.defaultVoice ? 'selected' : ''}>${v.name}</option>`).join('');
+  $('rate').value = meta.defaultRate;
+  $('rateVal').textContent = meta.defaultRate;
+  refreshHist();
+  if (meta.running) poll();
+}
+
+$('rate').addEventListener('input', () => $('rateVal').textContent = $('rate').value);
+
+$('imgs').addEventListener('change', async (e) => {
+  imgData = [];
+  for (const f of [...e.target.files].slice(0, 9)) imgData.push(await toBase64(f));
+  $('thumbs').innerHTML = imgData.map((d) => `<img src="${d}">`).join('');
+});
+
+$('bgm').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) { bgmData = null; $('bgmBox').textContent = '＋ 点击选择音乐'; return; }
+  bgmData = await toBase64(f);
+  $('bgmBox').textContent = '♪ ' + f.name;
+});
+
+async function create() {
+  $('err').textContent = '';
+  const text = $('text').value.trim();
+  if (!text) { $('err').textContent = '先把口播文案填上'; return; }
+  $('go').disabled = true;
+  try {
+    const d = await j('/api/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), assets: imgData, bgm: bgmData }),
+    });
+    lastTask = d.name;
+    $('result').innerHTML = '';
+    poll();
+  } catch (e) {
+    $('err').textContent = e.message;
+    $('go').disabled = false;
+  }
+}
+
+function renderSteps(s) {
+  $('steps').innerHTML = STEP_NAMES.map((n, i) => {
+    const idx = i + 1;
+    let cls = '';
+    if (s.running && s.step === idx) cls = 'active';
+    else if (s.running && s.step > idx) cls = 'done';
+    else if (!s.running && s.ok === true) cls = 'done';
+    return `<div class="step ${cls}"><span class="dot"></span>${idx}. ${n}</div>`;
+  }).join('');
+}
+
+async function poll() {
+  clearTimeout(pollTimer);
+  try {
+    const s = await j('/api/status');
+    renderSteps(s);
+    $('log').textContent = s.lines.length ? s.lines.join('\n') : '（启动中…）';
+    $('log').scrollTop = $('log').scrollHeight;
+    if (!s.running) {
+      $('go').disabled = false;
+      if (s.ok === true && s.task) { showResult(s.task); refreshHist(); return; }
+      if (s.ok === false) { $('err').textContent = '出片失败，看日志定位'; refreshHist(); return; }
+    }
+  } catch (e) { $('go').disabled = false; }
+  pollTimer = setTimeout(poll, 1500);
+}
+
+async function showResult(task) {
+  lastTask = task;
+  const t = (await j('/api/tasks')).find((x) => x.name === task) || {};
+  $('result').innerHTML = `
+    <video controls src="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}?t=${Date.now()}"></video>
+    <div class="kv">
+      <span>配音：<b>${t.provider || '?'}</b> · ${t.voice || '?'}</span>
+      <span>时长：${t.dur ? t.dur.toFixed(1) + 's' : '?'}</span>
+      <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('封面.png')}" target="_blank">封面.png</a>
+      <a href="/file/${encodeURIComponent(task)}/qc-report.txt" target="_blank">QC 报告</a>
+      <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}" download>下载成片</a>
+    </div>`;
+}
+
+async function refreshHist() {
+  const tasks = (await j('/api/tasks')).slice(0, 12);
+  if (!tasks.length) { $('hist').innerHTML = '<tr><td>还没有任务</td></tr>'; return; }
+  $('hist').innerHTML = tasks.map((t) => `<tr>
+    <td><b>${t.name}</b></td>
+    <td>${t.hasVideo ? `<span class="badge ok">${t.dur ? t.dur.toFixed(0) + 's' : '成片'}</span>` : '<span class="badge">未完成</span>'}</td>
+    <td>${t.voice || ''}</td>
+    <td>${t.hasVideo ? `<a href="#" style="color:var(--accent)" onclick="showResult('${t.name}');return false">预览</a>` : ''}</td>
+  </tr>`).join('');
+}
+
+init();
+</script>
+</body>
+</html>

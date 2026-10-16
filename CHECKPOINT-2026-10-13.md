@@ -179,3 +179,13 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - **修法（三层防护）**：① 02 接受 `scene` 为历史别名（`list`→`bullet`），但**缺失/非法直接 fail** 不再兜底 ② 03 加内容必填校验（bullet 无 items / keyword 无 keyword / end 无 title → fail）③ 06 新增第 19 项「分镜 type 白名单」机械检查 + 全片同类型告警
   - **数据修复**：10 个任务 shots.json 批量改 `type` 并补 title/heading/items/金句字段；sapi-test、dashscope-e2e 重跑全链 19/19，抽帧确认三镜三景（标题卡→要点逐条→收尾 CTA）
   - **教训**：`x || 默认值` 兜底要问一句「这个默认值错了能看出来吗」——渲成统一标题卡恰好看得出但没人逐帧看，QC 只对账机械项。**关键字段宁 fail 勿兜底**
+
+- [x] **P2-1 本地网页界面（完工）：** `web/server.cjs`（Node 内置 http，零新增依赖，只监听 127.0.0.1）+ `web/splitter.cjs`（文案→机械分镜）+ `web/public/index.html`（单文件 UI）
+  - **机械分镜规则**：按句号/问号/叹号/换行拆句；首句 title、含逗号/顿号句 bullet（首个分句 heading、其余拆 items ≤5 条）、末句 end、单句稿只出 title 镜（**不补空 narration 的 end 镜**——narration 为空会让 02 切出 0 秒镜头，片尾 CTA 由 outro 关注卡兜）；type 全在白名单内，02/03 的 fail-fast 校验天然通过
+  - **任务级语速**：01 新增 `shots.targetCharsPerSec` 覆盖（网页滑条按条调速，不动全局 config；残差校正安全带 0.75~1.3 不变，超出照旧跳过不硬拉）——实测 6.5 目标落位 6.51
+  - **坑：`new URL(req.url).pathname` 保留百分号编码**——`/file/任务/封面.png` 里中文被编码成 %XX，先跑白名单正则再 decode 会把正常中文文件名全拦成 400；**先 decodeURIComponent 再校验**（decode 包 try/catch 防恶意编码崩服务）
+  - **视频预览要写 Range**：`<video>` 拖进度条依赖 206 + Content-Range，serveFile 手写（start/end + HEAD 短路）；实测 bytes=0-1023 → 206 ✓
+  - **06 现在真写 `qc-report.txt`**（此前 README 承诺但实际只打印 stdout）——check() 同步入 report 数组成文落盘，网页端 QC 报告链接指它
+  - **并发策略**：同一时刻只跑一条管线（/api/create 返回 409），状态在内存（重启丢状态不丢产物，产物都在任务目录）；日志缓冲 200 行防爆
+  - **安全**：任务名 `^[\w一-鿿-]{1,40}$` 白名单、文件路由 decode 后正则校验 + `fp.startsWith(任务目录)` 双保险（实测 ..%2F 穿越被拦）；文件 body 上限 60MB（背景图 base64 直传，不做 multipart 解析——零依赖省一个解析器）
+  - **实测**：web-smoke 任务 API 全链（建任务→6 步 spawn→ok:true），loongstella 6.51 字/秒、成片 457KB、18/18、封面/抽帧/QC 报告路由全 200
