@@ -318,12 +318,22 @@ function main() {
   }
 
   const totalDur = audioDur + tailPad;
+  // 镜头类型白名单（skills/script.md）：历史 shots.json 有写 scene 字段的，作为别名接受；
+  // 缺失/非法直接报错——旧版静默兜底 title 会把全片渲染成同一张标题卡（大坑）
+  const TYPES = ['title', 'bullet', 'keyword', 'transition', 'end'];
+  const SCENE_ALIAS = { list: 'bullet' }; // 历史叫法 → 规范类型
   const shotList = shots.shots.map((s, i) => {
     const start = bounds[i];
     const end = i === shots.shots.length - 1 ? totalDur : bounds[i + 1];
+    let type = s.type || s.scene || '';
+    if (SCENE_ALIAS[type]) type = SCENE_ALIAS[type];
+    if (!TYPES.includes(type)) {
+      fail(`镜头 ${s.id || i + 1} 缺 type 或类型非法：「${s.type || s.scene || '(空)'}」\n` +
+        `  白名单: ${TYPES.join(' / ')}（skills/script.md 二·schema）`);
+    }
     const rec = {
       id: s.id || `s${String(i + 1).padStart(2, '0')}`,
-      type: s.type || 'title',
+      type,
       index: i,
       start: Number(start.toFixed(3)),
       end: Number(end.toFixed(3)),

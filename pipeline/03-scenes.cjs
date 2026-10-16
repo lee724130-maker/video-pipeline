@@ -125,6 +125,12 @@ function main() {
     const tplPath = path.join(ROOT, 'templates/scenes', `${shot.type}.html`);
     if (!fs.existsSync(tplPath)) fail(`缺模板 templates/scenes/${shot.type}.html`);
     const src = shots.shots[shot.index] || {};
+    // 内容校验：类型与必填字段对不上就 fail——空模板渲出来是「怪片」，宁可早报错
+    const miss = (
+      (shot.type === 'bullet' && !(src.items || []).length) ? 'items（要点列表）' :
+      (shot.type === 'keyword' && !src.keyword) ? 'keyword（大字关键词）' :
+      (shot.type === 'end' && !src.title) ? 'title（收尾金句）' : null);
+    if (miss) fail(`镜头 ${shot.id} 类型 ${shot.type} 缺必填字段 ${miss}（skills/script.md 二·schema）`);
     const tpl = fs.readFileSync(tplPath, 'utf8');
     const tokens = tokensFor({ ...shot, narrationRaw: nChars.slice(shot.charStart, shot.charEnd).join('') }, timeline, timeline.shots, src);
 

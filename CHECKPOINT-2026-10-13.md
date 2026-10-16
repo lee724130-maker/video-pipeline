@@ -170,3 +170,9 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - **KTV 侧**（07）：图数均分全曲时长（slice=(dur+(N-1))/N 保总长），zoompan 每帧推拉（rate 按 slice×fps 均摊，2160×3840 超采再 zoom 减抖动），xfade 链 1s 交叉淡化（offset=k×(slice−1)）；无 bg 文件 → 原 `lavfi gradients` 分支原样保留
   - **实测**：口播 sapi-test（2 图轮播）全链 18/18，帧视觉验证（素材底+网格叠加+砸字+字幕全正常，YAVG 28→46/57）；KTV 6s 测试任务 3 帧抽查（0.8s bg-01 / 2.8s bg-01 推近中 / 5.2s bg-02）轮播与推拉正确；bgm-song-test 无背景回退回归通过
   - **坑**：07 的 `parseLrc` 要求 ≥4 行才认 lrc（防误解析），测试任务歌词要写够行数
+- [x] **坑（大坑，用户看成片发现「效果很奇怪」）——shots.json 写 `scene` 字段 → 全片渲染成同一张标题卡**：
+  - **症状**：标题/列表/收尾三个镜头全渲成 title 模板（AI VIDEO + 任务名大字），列表/收尾信息全丢；QC 18 项全绿查不出（机械项不看内容）
+  - **根因**：shots.json 用了 `scene` 字段（规范是 `type`，见 skills/script.md），02 读 `s.type || 'title'` **静默兜底** → 10 个历史任务全中招（sapi-test/dashscope-e2e/vc 系列/bgm 系列）
+  - **修法（三层防护）**：① 02 接受 `scene` 为历史别名（`list`→`bullet`），但**缺失/非法直接 fail** 不再兜底 ② 03 加内容必填校验（bullet 无 items / keyword 无 keyword / end 无 title → fail）③ 06 新增第 19 项「分镜 type 白名单」机械检查 + 全片同类型告警
+  - **数据修复**：10 个任务 shots.json 批量改 `type` 并补 title/heading/items/金句字段；sapi-test、dashscope-e2e 重跑全链 19/19，抽帧确认三镜三景（标题卡→要点逐条→收尾 CTA）
+  - **教训**：`x || 默认值` 兜底要问一句「这个默认值错了能看出来吗」——渲成统一标题卡恰好看得出但没人逐帧看，QC 只对账机械项。**关键字段宁 fail 勿兜底**

@@ -23,7 +23,7 @@
 | 场景生成 | `pipeline/03-scenes.cjs` | `scenes/s01.html …`（要点随配音逐条出现）+ 片尾卡/封面版式 |
 | 场景渲染 | hypit `capture run`（本地浏览器录屏） | `segments/s01.mp4 …` + 片尾卡片段 + `封面.png` |
 | 合成 | ffmpeg | 拼接（转场/BGM 卡点）+ 字幕（卡拉OK/砸字）+ BGM 闪避混音 + **响度标准化 -14 LUFS** + 片尾关注卡 → `成片.mp4` |
-| 质检 | `pipeline/06-qc.cjs` | `qc-report.txt`（时长/黑屏/响度 -14±3/音画对齐/片尾卡/封面，18 项机械检查） |
+| 质检 | `pipeline/06-qc.cjs` | `qc-report.txt`（时长/黑屏/响度 -14±3/音画对齐/片尾卡/封面/分镜结构，19 项机械检查） |
 
 ## 手动跑一条任务
 
