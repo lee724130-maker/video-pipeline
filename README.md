@@ -48,7 +48,7 @@ node pipeline/run.cjs output/<任务名>
 
 ## 发布件（P0 三件套，已支持）
 
-- **逐词字幕**：02 自动用 whisper（本地免费模型）对配音逐词对齐 → 卡拉OK高亮逐字跟语音（`audio/words.json` 缓存复用，重跑 05 秒级）。
+- **逐词字幕**：02 自动用 whisper（本地免费模型）对配音逐词对齐 → 卡拉OK高亮逐字跟语音（`audio/words.json` 缓存复用，重跑 05 秒级）。精度要求高可 `config.ktv.alignModel` 一键切 medium（更准、约 2~3 倍耗时）。
 - **响度标准化**：05 出片时两遍 loudnorm 归一到 **-14 LUFS**（抖音/视频号发布标准，真峰值 ≤ -1.5 dBTP），口播/BGM/KTV 三类成片统一处理；`config.compose.loudness` 可关。
 - **封面图**：自动生成 `封面.png`（1080×1920 竖图，标题默认取任务标题、副标题取文案首句，`config.cover` 可覆盖文案）。
 - **片尾关注卡**：成片末尾自动拼 2.6s「点关注 不迷路」卡片，`config.outro` 可改文案/时长/关闭。

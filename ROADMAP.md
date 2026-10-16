@@ -13,11 +13,11 @@
 | P1-1 ✅ | **SAPI 离线 TTS 兜底**：断网/无额度时 Windows 自带语音顶上（rate 6 + atempo 1.15 精准 7.6 字/秒），01 供应商链 `dashscope→edge→gtts→sapi` 四级，`--provider sapi` 可强制；全链 18/18 验证 |
 | P1-2 ✅ | **读音/对齐归一增强**：实测 10 组经典易错句（多音字/数字/日期/百分比），qwen TTS 读音全对、**无需读音改写**；真痛点在对齐侧——02 归一升级三件套：数字归一 + 繁简归一（OpenCC 3029 字表）+ **有界重同步**（单字失配不再全盘作废，LOOK=4 重咬、咬合率 <60% 才兜底）。Huihui 吞字、繁体输出、同音错写场景全部从「退回字数比例」升级为逐词对齐 |
 | 响度增强 | `loudnormFile` 升级迭代式：线性增益预测撞 TP 上限（瞬态高的素材如 SAPI 配音）自动改走 dynamic 压动态，复测贴住 ±1.5 才收工（最多 3 轮）；返回 `to` 改为最终实测值 |
+| P1-4 ✅ | **whisper medium 档位一键切**：`config.ktv.alignModel`（口播对齐，02 传给 align.py）+ `config.ktv.model`（KTV 识别，07 或 `--model` 覆盖），默认 small；medium 已实测全链 18/18（6s 音频对齐 50s、约 2.5 倍耗时），words.json 的 engine 记录 `whisper-zh/<模型>` 可见缓存来源（换档后删 `audio/words.json` 重对齐） |
 
 ## ⬜ P1 · 近期（把成片打磨到"直接发布"零手工）
 
 3. **KTV/口播通用素材背景**——渐变背景换成用户图片/视频轮播（复用素材模式）
-4. **whisper medium 档位**——对齐/识别精度再提一档，config 一键切
 
 ## ⬜ P2 · 体验（从"你指挥我干"变成"你自己能用"）
 

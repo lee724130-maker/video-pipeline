@@ -157,3 +157,8 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - **02 归一三件套**：① 数字归一（原）② 繁简归一 `lib/t2s.js`（OpenCC TSCharacters 生成 3029 字，单字首候选，`gen-t2s.js` 一次性脚本在 TEMP）③ **有界重同步**：失配字在 LOOK=4 窗口重咬、咬不住丢弃该 whisper 字、咬合率 <60% 才整体退回静音兜底
   - **实测提升**：sapi-test（Huihui 吞字 3 字）从「退回字数比例」→「丢弃 3 失配字，逐词对齐成功」；繁体合成 words（15 繁化字）零失配；dashscope 干净路径行为零变化（timeline 逐字节对比一致）
   - **坑**：生成 t2s.js 时对象字面量值忘加引号（`㑯:㑔` 被当标识符）→ 必须 `'k':'v'` 形式
+- [x] **P1-4 whisper medium 档位一键切（完成）**：
+  - 三个改动点：`align.py` 加第 3 参模型名（缺省 small）+ engine 记录 `whisper-zh/<模型>`（**缓存来源可见**）；02 读 `cfg.ktv.alignModel` 传参并打进日志（超时 15→30 分钟）；`config.json` 加 `ktv.alignModel`（KTV 侧原本就有 `ktv.model` + `--model`）
+  - **坑**：换档**不会自动重对齐**——words.json/lyrics.json 有缓存，改 config 后要删对应缓存文件才走新模型
+  - 实测：medium 从 hf-mirror 4 文件下齐（约 1.5GB）；sapi-test 对齐 38/38 词 p=1.00、6s 音频 50s（small 约 20s）；**全链 02→04→05→06 = 18/18**（`output/sapi-test-medium` 留档）；small 默认路径回归 18/18 不变
+  - **坑**：PowerShell `Select-String` 中文模式匹配 node 的 UTF-8 输出会因控制台编码失配搜不到（表现为「跑完没输出」）→ 用 `*> file` 落盘 + `Get-Content -Encoding utf8`，或直接查产物字段

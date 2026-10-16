@@ -76,7 +76,8 @@
   },
   "ktv": {
     "python": ".py312/python.exe",
-    "model": "small"
+    "model": "small",
+    "alignModel": "small"
   },
   "silence": {
     "noiseDb": -32,

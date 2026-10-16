@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 - 自动下载 Python 3.12.9 装进项目内 `.py312\`（与系统 Python 隔离）
 - 依赖版本锁死（ctranslate2 4.5.0 等，原因见 `requirements-whisper.txt` 注释，勿手动升级）
-- 模型文件首次使用时自动从 hf-mirror 下载到 `cache/whisper/`（small 约 464MB）
+- 模型文件首次使用时自动从 hf-mirror 下载到 `cache/whisper/`（small 约 464MB；对齐精度要求高可切 medium 约 1.5GB：`config.json` 改 `ktv.alignModel`/`ktv.model` 为 `"medium"`，并删对应任务的 `audio/words.json`（或 `lyrics.json`）触发重新识别，耗时约为 small 的 2~3 倍）
 - **不装的后果**：字幕时间轴退回「字数比例估算」（会有轻微漂移）；KTV 仍可用 lyrics.lrc/lyrics.txt 输入，仅识别兜底不可用
 
 ### ⑧ 代理（仅国内访问 gTTS/edge 兜底时需要）

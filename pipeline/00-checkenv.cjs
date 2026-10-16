@@ -52,6 +52,19 @@ function main() {
   optional('whisper 环境 .py312（逐词对齐/KTV，推荐）', wv.ok,
     wv.ok ? wv.out.trim() : '缺：跑 setup.ps1 一键安装（不装也能出片，字幕走字数比例）');
 
+  // 已缓存的 whisper 模型（config.ktv.alignModel / ktv.model 切档前先看这里）
+  const mdir = path.join(ROOT, 'cache', 'whisper');
+  const cached = fs.existsSync(mdir)
+    ? fs.readdirSync(mdir).filter((d) => fs.existsSync(path.join(mdir, d, 'model.bin'))) : [];
+  const want = [...new Set([
+    (cfg.ktv && cfg.ktv.alignModel) || 'small',
+    (cfg.ktv && cfg.ktv.model) || 'small',
+  ])];
+  const miss = want.filter((m) => !cached.includes(m));
+  optional('whisper 模型缓存（config.ktv.alignModel/model 切档）', miss.length === 0,
+    `已缓存: ${cached.join(', ') || '无'}；当前配置: ${want.join(' / ')}` +
+    (miss.length ? `；缺 ${miss.join('/')}（首次用到自动下载，medium 约 1.5GB，换档需删缓存 words.json/lyrics.json 重算）` : ''));
+
   // hypit
   const hypit = path.join(process.env.APPDATA, 'npm', 'hypit.cmd');
   const hv = fs.existsSync(hypit) ? run(hypit, ['version']) : { ok: false, out: 'not found' };

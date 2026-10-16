@@ -236,10 +236,11 @@ function main() {
   if (!wordsData) {
     // DashScope TTS 无逐词时间戳 → whisper 对齐（一次性生成，缓存复用）
     const outW = path.join(task, 'audio', 'words.json');
-    log('02', '无 words.json → whisper 逐词对齐中（结果缓存到 audio/words.json）…');
+    const alignModel = (cfg.ktv && cfg.ktv.alignModel) || 'small';
+    log('02', `无 words.json → whisper 逐词对齐中（模型 ${alignModel}，结果缓存到 audio/words.json）…`);
     const ra = run((cfg.ktv && cfg.ktv.python) || 'py', [
-      path.join(__dirname, 'tools', 'align.py'), mp3, outW,
-    ], { timeout: 15 * 60 * 1000 });
+      path.join(__dirname, 'tools', 'align.py'), mp3, outW, alignModel,
+    ], { timeout: 30 * 60 * 1000 });
     wordsData = readJson(outW);
     if (!ra.ok || !wordsData) {
       warn('02', `逐词对齐失败，退回静音断句+字数比例\n${ra.out.split('\n').slice(-5).join('\n')}`);

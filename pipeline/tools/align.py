@@ -10,11 +10,13 @@ from lyrics import ensure_model, decode_wav16  # noqa: E402  （import 时已打
 
 def main():
     if len(sys.argv) < 3:
-        raise SystemExit('用法: py align.py <voice.mp3> <words.json>')
+        raise SystemExit('用法: py align.py <voice.mp3> <words.json> [whisper模型名]')
     mp3, out = sys.argv[1], sys.argv[2]
+    mname = (sys.argv[3] if len(sys.argv) > 3 else '').strip() or 'small'
 
     from faster_whisper import WhisperModel
-    model = WhisperModel(ensure_model('small'), device='cpu', compute_type='int8')
+    print(f'[align] 模型 {mname}', file=sys.stderr)
+    model = WhisperModel(ensure_model(mname), device='cpu', compute_type='int8')
     wav = decode_wav16(mp3, tag='_align')
 
     # 注意：勿喂 initial_prompt——实测会让模型跳过首句（把文案当已说过的上下文）；
@@ -34,7 +36,7 @@ def main():
                 words.append({'text': t, 'start': round(w.start, 3), 'end': round(w.end, 3)})
     if not words:
         raise SystemExit('对齐结果为空')
-    json.dump({'engine': f'whisper-{info.language}', 'words': words},
+    json.dump({'engine': f'whisper-{info.language}/{mname}', 'words': words},
               open(out, 'w', encoding='utf8'), ensure_ascii=False, indent=1)
     print(f'WORDS_OK:{len(words)} 语言={info.language} p={info.language_probability:.2f}')
 
