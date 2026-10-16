@@ -352,6 +352,9 @@ function main() {
     if (keywords.length) log('02', `关键词砸字 ${keywords.length} 个：${keywords.map((k) => k.text).join('、')}`);
   }
 
+  // outro/cover 是 03 的产物（06 对账用）：02 只重算主体，旧值保留不抹
+  const tlPrev = fs.existsSync(path.join(task, 'timeline.json'))
+    ? (readJson(path.join(task, 'timeline.json')) || {}) : {};
   const timeline = {
     title: shots.title || path.basename(task),
     width: shots.width || 1080,
@@ -367,6 +370,8 @@ function main() {
     bgm: bgmMeta,
     charStart: starts.map((v) => Number(v.toFixed(3))),
     charEnd: ends.map((v) => Number(v.toFixed(3))),
+    ...(tlPrev.outro ? { outro: tlPrev.outro } : {}),
+    ...(tlPrev.cover ? { cover: tlPrev.cover } : {}),
   };
   writeJson(path.join(task, 'timeline.json'), timeline);
 

@@ -139,3 +139,15 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   3. **封面 + 片尾关注卡**：`templates/cover.html` 静态版式（runtime duration=999 防淡出）→ 04 录 1.8s 抽 1.2s 帧出 `封面.png`；end 模板生成 outro.html → 04 录 2.6s → 05 归一化硬拼尾部（total 贯通 fade/apad/-t）；03 持久化 timeline.outro/cover 供 06 对账
   - 新 config：`cover{enabled,kicker,title,subtitle,foot}` / `outro{enabled,durSec,kicker,title,subtitle}` / `compose.loudness{i,tp,lra,enabled}`
 - [ ] P1/P2/P3 后续计划全表：**`ROADMAP.md`**（SAPI 备选 TTS、读音修正、素材背景、网页界面、批量变体、横屏、封面多风格……）
+
+---
+
+# 2026-10-16 增补（P1-1 SAPI 兜底 + 响度迭代增强）
+
+- [x] **P1-1 SAPI 离线 TTS 兜底（完成，sapi-test 18/18）**：
+  - `tools/tts_sapi.ps1`：PowerShell `System.Speech` → wav → ffmpeg 转 mp3；音色优先级 指定 voice > zh-CN > 任意；`-List` 模式给 00 自检枚举
+  - 01 四级兜底 `dashscope→edge→gtts→sapi`，新增 `--provider <名字>` 强制参数；**语速实测校准：rate 6 + atempo 1.15 = 7.6 字/秒**（rate 表：2→4.3 / 4→5.3 / 6→6.6 / 8→8.2 字/秒），sapi 同样走 targetCharsPerSec 残差校正（安全带复用）
+  - **坑**：whisper 对 Huihui 老式合成音会吞字（「字幕」识别不出）→ 02 逐字不匹配判定正确降级「静音断句+字数比例」，链路不受阻——兜底语义符合预期，勿试图用 prompt 修
+  - 00-checkenv 新增可选项 `SAPI 离线语音`（-List 查得到 zh-* 才 ✓）
+- [x] **loudnormFile 升级迭代式（三分支回归全过）**：**坑——线性增益撞 TP 上限被截断**：SAPI 音频瞬态峰值高（原始 I=-24.5 / TP≈-8.4），linear 模式 +10.5dB 会把 TP 推爆 → ffmpeg 截增益，输出 TP 顶死 -1.5 但 I 只到 -17.6（QC ±3 外）。修法：测量时预测 `input_tp + (target - input_i) > TP - 0.3` → 自动改 `linear=false`（dynamic 压动态）→ **复测验证贴 ±1.5 才收工，最多 3 轮处理**；返回 `to` 从 target 改为**最终实测**。回归：主路 -17.0→-14.6（linear 一步）/ SAPI -24.5→-15.5（dynamic 撞 TP 极限）/ KTV -11.5→-14.1
+- [x] **坑——02 重跑会抹掉 03 的 timeline.outro/cover**：06 对账依赖这两字段，02 重算主体重写 timeline 时若不保留 → 片尾/封面两项消失 + 时长项缺 outro（16 项≠18 项），且 05 在无 outro 字段时 fallback 拼了 outro 素材全长（3.28s ≠ 设计 2.6s）→ 时长对账挂。**已修**：02 写 timeline 前读旧文件保留 `outro`/`cover`。症状识别：06 项数 18→16 + 时长差 ≈outro 素材冗余量

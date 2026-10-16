@@ -115,34 +115,49 @@ function fail(msg) {
   process.exit(1);
 }
 
-// —— 响度标准化：两遍 loudnorm（①测量 → ②带 measured_* 线性应用到目标）
-// 视频流 copy、只重编音频，任何合成分支通用。返回 {from,to} LUFS；静音/失败返回 null。
+// —— 响度标准化：测量 → 应用 → 复测迭代（常规一步、异常素材多轮）
+// 常规素材（口播/KTV）线性增益一步到位；瞬态峰值高的素材（SAPI 兜底配音等）线性增益会撞
+// TP 上限被截断（I 贴不到目标还浪费增益），预测到撞限时自动改走 dynamic（增益跟踪+内部限幅
+// 压动态贴目标），并按复测残差迭代，直到实测贴住目标 ±1.5 或耗尽 3 轮处理。
+// 视频流 copy、只重编音频，任何合成分支通用。返回 {from,to} LUFS（to=最终实测）；静音/失败返回 null。
 function loudnormFile(file, opts = {}) {
   const I = Number(opts.i ?? -14), TP = Number(opts.tp ?? -1.5), LRA = Number(opts.lra ?? 11);
   const base = `I=${I}:TP=${TP}:LRA=${LRA}`;
-  const m = run(FFMPEG, ['-i', file, '-map', '0:a:0', '-af', `loudnorm=${base}:print_format=json`, '-f', 'null', '-']);
-  const jm = m.out.match(/\{\s*"input_i"[\s\S]*?\}/);
-  if (!jm) return null;
-  let j; try { j = JSON.parse(jm[0]); } catch { return null; }
-  if (String(j.input_i).includes('inf') || !j.input_thresh) return null; // 静音轨跳过
   // 保持原采样率（loudnorm 内部升到 192k，必须显式指定输出）
   const sr = run(FFPROBE, ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=sample_rate', '-of', 'csv=p=0', file]).out.trim();
   const rate = /^\d+$/.test(sr) ? sr : '44100';
-  const af = `loudnorm=${base}:measured_I=${j.input_i}:measured_TP=${j.input_tp}:measured_LRA=${j.input_lra}:measured_thresh=${j.input_thresh}:offset=${j.target_offset}:linear=true:print_format=summary`;
-  const tmp = `${file}.tmp.mp4`; // 必须带 .mp4 扩展名，否则 ffmpeg 推不出封装格式
-  fs.existsSync(tmp) && fs.unlinkSync(tmp);
-  const r = run(FFMPEG, [
-    '-y', '-i', file, '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
-    '-af', af, '-c:a', 'aac', '-b:a', '192k', '-ar', rate,
-    '-movflags', '+faststart', tmp,
-  ]);
-  if (!r.ok || !fs.existsSync(tmp) || fs.statSync(tmp).size < 1024) {
+  let from = null, last = null;
+  for (let iter = 0; iter < 4; iter++) {
+    const m = run(FFMPEG, ['-i', file, '-map', '0:a:0', '-af', `loudnorm=${base}:print_format=json`, '-f', 'null', '-']);
+    const jm = m.out.match(/\{\s*"input_i"[\s\S]*?\}/);
+    if (!jm) break;
+    let j; try { j = JSON.parse(jm[0]); } catch { break; }
+    if (String(j.input_i).includes('inf') || !j.input_thresh) break; // 静音轨跳过
+    const cur = Number(j.input_i);
+    if (from === null) from = cur;
+    last = cur;
+    if (Math.abs(cur - I) <= 1.5) break;            // 实测已贴住目标 ±1.5，收工
+    if (iter >= 3) break;                            // 处理轮数耗尽（最后只剩复测）
+    // 线性增益能到目标且不撞 TP → 线性（无损分布一步到位）；否则 dynamic 压动态
+    const g = I - cur;
+    const clip = Number(j.input_tp) + g > TP - 0.3; // 预测真峰值越过上限（留 0.3 余量）
+    const af = `loudnorm=${base}:measured_I=${j.input_i}:measured_TP=${j.input_tp}:measured_LRA=${j.input_lra}:measured_thresh=${j.input_thresh}:offset=${j.target_offset}:${clip ? 'linear=false' : 'linear=true'}:print_format=summary`;
+    const tmp = `${file}.tmp.mp4`; // 必须带 .mp4 扩展名，否则 ffmpeg 推不出封装格式
     fs.existsSync(tmp) && fs.unlinkSync(tmp);
-    return null;
+    const r = run(FFMPEG, [
+      '-y', '-i', file, '-map', '0:v:0', '-map', '0:a:0', '-c:v', 'copy',
+      '-af', af, '-c:a', 'aac', '-b:a', '192k', '-ar', rate,
+      '-movflags', '+faststart', tmp,
+    ]);
+    if (!r.ok || !fs.existsSync(tmp) || fs.statSync(tmp).size < 1024) {
+      fs.existsSync(tmp) && fs.unlinkSync(tmp);
+      break;
+    }
+    fs.unlinkSync(file);
+    fs.renameSync(tmp, file);
   }
-  fs.unlinkSync(file);
-  fs.renameSync(tmp, file);
-  return { from: Number(j.input_i), to: I };
+  if (from === null) return null;
+  return { from, to: Number((last ?? from).toFixed(1)) };
 }
 
 // BGM 查找：任务根目录 bgm.* 优先，其次 assets/bgm.*（用户提供的文件才启用 BGM 功能）

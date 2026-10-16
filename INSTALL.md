@@ -40,15 +40,23 @@ Node 装好后一条命令。04 步用它把场景 HTML 录成视频片段。
 3. 把 key 填进 `"voice" → "dashscope" → "key"`（或设环境变量 `DASHSCOPE_API_KEY`）
 
 > ⚠️ **key 永远只写在 `config.local.json`（已被 gitignore），不要写进 `config.json`。**
-> 没有 key 也能出片，但会退到 gTTS 兜底（机器音明显、无逐词时间戳），不推荐。
+> 没有 key 也能出片：配音四级兜底 dashscope → edge-tts → gTTS → **SAPI（Windows 自带语音，纯离线）**。
+> 但兜底音色是机器音、无逐词时间戳（字幕时间轴走字数比例），正式片建议配 key。
 
 ## 3. 可选件（不装也能出片，装了更好）
 
-### ⑥ 系统 Python + gTTS（断网/无 key 兜底）
-Windows 自带 Microsoft Store 的 `py` 启动器即可，然后：
-```
-py -m pip install gTTS
-```
+### ⑥ 系统 Python + gTTS（联网兜底）与 SAPI（纯离线兜底）
+
+配音兜底链：DashScope（无 key 跳过）→ edge-tts → gTTS → **SAPI**，前三级都需要联网。
+
+- **gTTS / edge-tts**：需要系统 Python（Microsoft Store 的 `py` 启动器即可）：
+  ```
+  py -m pip install gTTS
+  ```
+- **SAPI（Windows 自带，零安装零联网）**：Windows 出厂带中文语音（Huihui 等），断网/无额度时
+  01 会自动顶上，语速已校准 7.6 字/秒。00 自检显示 `SAPI 离线语音 ✓` 即可用；若显示
+  「无中文语音」，去 Windows 设置 → 时间和语言 → 语音 添加中文语音包。
+  强制使用：`node pipeline/01-tts.cjs <任务目录> --provider sapi`
 
 ### ⑦ whisper 环境（逐词字幕对齐 + KTV 识别兜底，推荐装）
 ```

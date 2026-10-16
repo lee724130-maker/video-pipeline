@@ -39,6 +39,13 @@ function main() {
     optional('edge-tts（兜底，逐词时间戳）', edge.ok, edge.ok ? '已装' : '未装（可选）');
   }
 
+  // SAPI 离线语音（断网/无额度的最后兜底）：Windows 自带 TTS，列得到中文语音才算可用
+  const sapiList = run('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'tools/tts_sapi.ps1'), '-List']);
+  const sapiVoices = sapiList.ok ? sapiList.out.split('\n').map((l) => l.trim()).filter((l) => /\|/.test(l)) : [];
+  const sapiZh = sapiVoices.find((l) => /^zh-/i.test(l.split('|')[1] || ''));
+  optional('SAPI 离线语音（断网兜底）', !!sapiZh,
+    sapiZh ? `可用（${sapiZh.split('|')[0]}）` : sapiVoices.length ? '无中文语音（Windows 设置→语言→语音添加），兜底会用非中文声' : '无 SAPI 语音');
+
   // whisper 环境（可选）：逐词对齐 + KTV 识别兜底；缺失时 02 自动退回字数比例时间轴
   const wpy = path.join(ROOT, (cfg.ktv && cfg.ktv.python) || '.py312/python.exe');
   const wv = fs.existsSync(wpy) ? run(wpy, ['--version']) : { ok: false, out: '' };

@@ -18,6 +18,12 @@
     },
     "gtts": {
       "lang": "zh-CN"
+    },
+    "sapi": {
+      "voice": "",
+      "rate": 6,
+      "tempo": 1.15,
+      "targetCharsPerSec": 7.6
     }
   },
   "render": {

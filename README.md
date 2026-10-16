@@ -17,7 +17,7 @@
 | 环节 | 工具 | 产物 |
 |---|---|---|
 | 环境自检 | `pipeline/00-checkenv.cjs` | 工具链就绪报告 |
-| 配音 | DashScope qwen TTS（免费额度，多种音色）+ gTTS 兜底 | `audio/voice.mp3` + meta |
+| 配音 | DashScope qwen TTS（免费额度，多种音色）；四级兜底 edge→gTTS→SAPI 离线（断网也出片） | `audio/voice.mp3` + meta |
 | 编排 | 我按 `skills/script.md` 写分镜表 | `shots.json`（含镜头时长，由真实配音时间反推）；whisper 逐词对齐出 `audio/words.json`（字幕逐字精确，缓存复用） |
 | 画面方案 | 我按 `skills/visuals.md` 定每镜画面 | 场景 HTML |
 | 场景生成 | `pipeline/03-scenes.cjs` | `scenes/s01.html …`（要点随配音逐条出现）+ 片尾卡/封面版式 |
