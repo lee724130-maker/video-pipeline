@@ -79,6 +79,11 @@
     "model": "small",
     "alignModel": "small"
   },
+  "background": {
+    "scrim": 0.5,
+    "kenBurns": true,
+    "zoom": 1.06
+  },
   "silence": {
     "noiseDb": -32,
     "minDurSec": 0.28

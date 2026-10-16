@@ -162,3 +162,11 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - **坑**：换档**不会自动重对齐**——words.json/lyrics.json 有缓存，改 config 后要删对应缓存文件才走新模型
   - 实测：medium 从 hf-mirror 4 文件下齐（约 1.5GB）；sapi-test 对齐 38/38 词 p=1.00、6s 音频 50s（small 约 20s）；**全链 02→04→05→06 = 18/18**（`output/sapi-test-medium` 留档）；small 默认路径回归 18/18 不变
   - **坑**：PowerShell `Select-String` 中文模式匹配 node 的 UTF-8 输出会因控制台编码失配搜不到（表现为「跑完没输出」）→ 用 `*> file` 落盘 + `Get-Content -Encoding utf8`，或直接查产物字段
+- [x] **P1-3 素材背景 A+C（完成）**：
+  - **方案 A 约定**：`assets/bg-NN.(jpg|jpeg|png|webp)`，NN 任意数字按序排序；`bgImages()` 在 `lib/common.cjs`（03/07 共用）。**约定即配置**：不放文件 = 旧行为，零迁移成本
+  - **口播侧**（03 注入，04/05/06 零改动）：`.bg-user` 层插在 `.stage` 后、原 `.bg`（光晕+网格）之下（z-index -2/-1）→ 素材做底、设计语言叠加；`bgLayer()` 注入 `kb-in/kb-out`（镜头序号奇偶交替推近/拉远）+ `--kb-dur`（镜头实长）；封面取第一张静态（duration=null 不带动画）；**outro 片尾卡刻意不加**（CTA 保持纯净暗色）
+  - **Ken Burns 原理**：`inset:-6%` 给 6% 过扫余量 → `scale 1→1.06` 不露边；上限锁 1.06（config.background.zoom）
+  - **scrim 压暗**：`.bg-user::after` 铺 `#0B0E14` 纯色 + `opacity:var(--scrim-a)`（默认 .5，config.background.scrim）——亮图也能保住白字可读性
+  - **KTV 侧**（07）：图数均分全曲时长（slice=(dur+(N-1))/N 保总长），zoompan 每帧推拉（rate 按 slice×fps 均摊，2160×3840 超采再 zoom 减抖动），xfade 链 1s 交叉淡化（offset=k×(slice−1)）；无 bg 文件 → 原 `lavfi gradients` 分支原样保留
+  - **实测**：口播 sapi-test（2 图轮播）全链 18/18，帧视觉验证（素材底+网格叠加+砸字+字幕全正常，YAVG 28→46/57）；KTV 6s 测试任务 3 帧抽查（0.8s bg-01 / 2.8s bg-01 推近中 / 5.2s bg-02）轮播与推拉正确；bgm-song-test 无背景回退回归通过
+  - **坑**：07 的 `parseLrc` 要求 ≥4 行才认 lrc（防误解析），测试任务歌词要写够行数

@@ -1,7 +1,7 @@
 // 03 · 场景生成：shots.json + timeline.json → scenes/*.html（要点随配音逐条出现）
 const fs = require('fs');
 const path = require('path');
-const { ROOT, readJson, writeJson, ensureDir, log, warn, fail, loadConfig } = require('./lib/common.cjs');
+const { ROOT, readJson, writeJson, ensureDir, log, warn, fail, loadConfig, bgImages } = require('./lib/common.cjs');
 
 const cfg = loadConfig();
 
@@ -22,6 +22,17 @@ function fill(html, tokens) {
   let out = html.replace('/*__CSS__*/', () => css);
   out = out.replace(/{{(\w+)}}/g, (m, k) => (tokens[k] !== undefined ? tokens[k] : m));
   return out;
+}
+
+// —— 用户素材背景（assets/bg-NN.jpg|png|webp，方案 A 轮播 + 方案 C Ken Burns）——
+// bgImages 见 lib/common.cjs；文件不存在 → 无背景层（纯代码渐变，行为同旧版）
+function bgLayer(bgs, index, durSec) {
+  if (!bgs.length) return '';
+  const bgCfg = cfg.background || {};
+  const file = bgs[index % bgs.length];
+  const kb = bgCfg.kenBurns === false || !durSec ? '' : ` kb-${index % 2 ? 'out' : 'in'}`;
+  const vars = `--scrim-a:${bgCfg.scrim ?? 0.5};--kb-zoom:${bgCfg.zoom ?? 1.06};--kb-dur:${Number(durSec).toFixed(2)}s`;
+  return `<div class="bg-user${kb}" style="${vars};background-image:url('../assets/${file}')"></div>`;
 }
 
 function itemTime(shot, timeline, itemText, i, n) {
@@ -105,6 +116,8 @@ function main() {
   timeline.narration = nChars.join('');
 
   const outDir = ensureDir(path.join(task, 'scenes'));
+  const bgs = bgImages(task);
+  if (bgs.length) log('03', `素材背景 ${bgs.length} 张（assets/bg-NN）：镜头序号轮播 + Ken Burns 缓推${(cfg.background || {}).kenBurns === false ? '（动画已关）' : ''}`);
   let made = 0, assetSkip = 0;
   timeline.shots.forEach((shot) => {
     if (shot.asset) { assetSkip++; return; } // 素材镜头：画面来自 assets/，不生成场景 HTML
@@ -116,6 +129,8 @@ function main() {
     const tokens = tokensFor({ ...shot, narrationRaw: nChars.slice(shot.charStart, shot.charEnd).join('') }, timeline, timeline.shots, src);
 
     let html = fill(tpl, tokens);
+    const layer = bgLayer(bgs, shot.index, shot.dur);
+    if (layer) html = html.replace('<div class="stage">', () => `<div class="stage">\n    ${layer}`);
     const sceneData = JSON.stringify({ duration: shot.dur, fps: timeline.fps, id: shot.id });
     const inject = `<script>window.__SCENE__ = ${sceneData};</script>\n  <script>${runtime}</script>`;
     if (!html.includes('<!--__RUNTIME__-->')) fail(`模板 ${shot.type}.html 缺 <!--__RUNTIME__--> 占位`);
@@ -157,6 +172,8 @@ function main() {
     };
     let html = fill(fs.readFileSync(path.join(ROOT, 'templates/cover.html'), 'utf8'), tokens);
     if (!tokens.SUBTITLE) html = html.replace(/\s*<p class="sub"><\/p>/, '');
+    const covLayer = bgLayer(bgs, 0, null); // 封面取第一张、静态（抽帧要稳定画面）
+    if (covLayer) html = html.replace('<div class="stage">', () => `<div class="stage">\n    ${covLayer}`);
     // duration 给超大值：runtime 到 duration-0.15 才淡出，封面录帧窗口内保持常亮
     const inject = `<script>window.__SCENE__ = ${JSON.stringify({ duration: 99999, fps: timeline.fps, id: 'cover' })};</script>\n  <script>${runtime}</script>`;
     html = html.replace('<!--__RUNTIME__-->', () => inject);

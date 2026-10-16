@@ -172,4 +172,13 @@ function findBgm(task) {
   return null;
 }
 
-module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, loadConfig, loudnormFile, fail };
+// 素材背景图：assets/bg-NN.(jpg|png|webp) 按序号排序（03 场景轮播底图 / 07 KTV 轮播底图共用）
+function bgImages(task) {
+  const dir = path.join(task, 'assets');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => /^bg-\d+\.(jpe?g|png|webp)$/i.test(f))
+    .sort((a, b) => Number(a.match(/bg-(\d+)/i)[1]) - Number(b.match(/bg-(\d+)/i)[1]));
+}
+
+module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, loudnormFile, fail };

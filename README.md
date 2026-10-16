@@ -56,6 +56,7 @@ node pipeline/run.cjs output/<任务名>
 ## 素材模式 + BGM（B 档，已支持）
 
 - **素材混排**：把图片/视频丢进任务的 `assets/`，`shots.json` 里给某镜头加 `"asset": "文件名"`，该镜就用素材画面（自动 cover 铺满竖屏、不够长循环、超出截断），与生成场景混排在同一条时间线。
+- **素材背景**：`assets/` 里放 `bg-01.jpg ~ bg-09.jpg`（png/webp 也行）即可全局换背景——口播按镜头序号轮播做底图 + Ken Burns 缓推动画（原网格光晕设计叠加其上，自动压暗保字幕可读），KTV 全曲轮播 + 1s 交叉淡化，封面用第一张。不放就用内置风格，`config.background`（scrim/kenBurns/zoom）可调。
 - **BGM 卡点**：任务根目录放 `bgm.mp3`（或 wav/m4a 等，也认 `assets/bgm.*`），合成时自动：循环铺满全片 + 说话时侧链闪避 + 淡入淡出 + 镜头边界吸附到检测出的节拍网格（无明显节奏的曲子自动跳过卡点，只混音）。
 
 ## KTV 歌词视频（07 步，独立模式）
@@ -66,7 +67,7 @@ node pipeline/run.cjs output/<任务名>
 node pipeline/07-ktv.cjs output/<任务名>
 ```
 
-faster-whisper（本地免费模型）自动对齐歌词 → 卡拉OK逐词点亮字幕 + 动态渐变背景 + 原声 → `KTV成片.mp4`。
+faster-whisper（本地免费模型）自动对齐歌词 → 卡拉OK逐词点亮字幕 + 背景（`assets/bg-NN` 素材图轮播，无则动态渐变）+ 原声 → `KTV成片.mp4`。
 
 **歌词输入（按优先级，放任务目录）**：
 1. `lyrics.lrc` —— 带时间戳歌词（音乐 App 复制歌词选「含时间戳」），直接套用，最准

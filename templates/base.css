@@ -38,6 +38,24 @@ html, body {
 @keyframes scene-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes scene-out { from { opacity: 1 } to { opacity: 0 } }
 
+/* 用户素材背景层（assets/bg-NN.jpg，03 注入；无 bg-NN 文件时整个层不存在）
+   位于原 .bg 光晕网格之下：素材做底 + 原设计语言（光晕/网格）叠加，
+   scrim 压暗保证白字可读（config.background.scrim / kenBurns / zoom 可调） */
+.bg-user {
+  position: absolute; inset: -6%; z-index: -2;
+  background-size: cover; background-position: center;
+}
+.bg-user::after {
+  content: ""; position: absolute; inset: 0;
+  background: #0B0E14; opacity: var(--scrim-a, .5);
+}
+/* Ken Burns 缓推：inset -6% 提供 6% 过扫余量，scale 上限 1.06 不露边；
+   镜头序号奇偶交替推近/拉远，相邻镜头不重样 */
+.bg-user.kb-in  { animation: kb-in  var(--kb-dur, 6s) linear both; }
+.bg-user.kb-out { animation: kb-out var(--kb-dur, 6s) linear both; }
+@keyframes kb-in  { from { transform: scale(1) }     to { transform: scale(var(--kb-zoom, 1.06)) } }
+@keyframes kb-out { from { transform: scale(var(--kb-zoom, 1.06)) } to { transform: scale(1) } }
+
 /* 背景：径向光晕 + 细网格 */
 .bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
 .bg::before {

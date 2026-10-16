@@ -10,7 +10,7 @@
 // 产出: <任务目录>/KTV成片.mp4 + ktv.ass + qc/ktv_*.png（不动口播成片.mp4；歌词对齐结果缓存 lyrics.json）
 const fs = require('fs');
 const path = require('path');
-const { FFMPEG, run, durationDecoded, ensureDir, readJson, log, warn, fail, findBgm, loudnormFile, loadConfig } = require('./lib/common.cjs');
+const { FFMPEG, run, durationDecoded, ensureDir, readJson, log, warn, fail, findBgm, bgImages, loudnormFile, loadConfig } = require('./lib/common.cjs');
 
 const cfg = loadConfig();
 const KTVPY = (cfg.ktv && cfg.ktv.python) || 'py'; // 识别兜底用的 Python（whisper 需 3.12 venv，见 config.ktv.python）
@@ -185,14 +185,53 @@ function main() {
 
   const out = path.join(task, 'KTV成片.mp4');
   fs.existsSync(out) && fs.unlinkSync(out);
+
+  // 背景：assets/bg-NN 素材图 → Ken Burns 缓推 + 1s 交叉淡化轮播；无素材图 → 内置动态渐变（零配置旧观感）
+  const fps = cfg.output?.fps || 30;
+  const bgs = bgImages(task);
+  const bgCfg = cfg.background || {};
+  const XF = 1; // 轮播交叉淡化秒数
+  let vInputs, fcTail, songIdx;
+  if (!bgs.length) {
+    vInputs = ['-f', 'lavfi', '-i', `gradients=s=${W}x${H}:speed=0.018:nb_colors=3:seed=7`];
+    fcTail = '[0:v]ass=ktv.ass[vout]';
+    songIdx = 1;
+  } else {
+    const n = bgs.length;
+    const slice = (dur + XF * (n - 1)) / n; // 每张占位（含重叠），保证总长 ≥ 歌曲
+    const ken = bgCfg.kenBurns !== false;
+    const zmax = Number(bgCfg.zoom ?? 1.06);
+    const rate = ((zmax - 1) / (slice * fps)).toFixed(6);
+    const vf = (i) => (ken
+      ? `scale=2160:3840:force_original_aspect_ratio=increase,crop=2160:3840,` +
+        `zoompan=z='${i % 2 ? `max(${zmax}-${rate}*on,1)` : `min(1+${rate}*on,${zmax})`}':d=1:` +
+        `x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${fps}`
+      : `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},fps=${fps}`);
+    vInputs = [];
+    bgs.forEach((f) => vInputs.push('-loop', '1', '-t', (slice + 0.1).toFixed(2), '-i', path.join(task, 'assets', f)));
+    let chain = bgs.map((f, i) => `[${i}:v]${vf(i)}[b${i}]`).join(';');
+    if (n === 1) {
+      chain += ';[b0]ass=ktv.ass[vout]';
+    } else {
+      let prev = 'b0';
+      for (let k = 1; k < n; k++) {
+        chain += `;[${prev}][b${k}]xfade=transition=fade:duration=${XF}:offset=${(k * (slice - XF)).toFixed(2)}[x${k}]`;
+        prev = `x${k}`;
+      }
+      chain += `;[${prev}]ass=ktv.ass[vout]`;
+    }
+    fcTail = chain;
+    songIdx = n;
+    log('07', `素材背景 ${n} 张轮播（每张 ${slice.toFixed(1)}s · 1s 交叉淡化${ken ? ' · Ken Burns' : ''}）`);
+  }
+
   const r = run(FFMPEG, [
-    '-y', '-f', 'lavfi',
-    '-i', `gradients=s=${W}x${H}:speed=0.018:nb_colors=3:seed=7`,
+    '-y', ...vInputs,
     '-i', song,
-    '-filter_complex', '[0:v]ass=ktv.ass[vout]',
-    '-map', '[vout]', '-map', '1:a:0',
+    '-filter_complex', fcTail,
+    '-map', '[vout]', '-map', `${songIdx}:a:0`,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-    '-r', String(cfg.output?.fps || 30), '-pix_fmt', 'yuv420p',
+    '-r', String(fps), '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
     '-t', String(dur),
     '-movflags', '+faststart',
