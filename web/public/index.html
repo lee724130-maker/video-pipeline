@@ -79,8 +79,23 @@
         </div>
       </div>
 
-      <label>语速 <span class="rate-val" id="rateVal">--</span> 字/秒（默认取 config，慢一点更从容）</label>
-      <input type="range" id="rate" min="4.5" max="9" step="0.1">
+      <div class="row">
+        <div>
+          <label>画幅</label>
+          <select id="size">
+            <option value="1080x1920">竖屏 9:16（抖音/视频号）</option>
+            <option value="1920x1080">横屏 16:9（B站/YouTube）</option>
+            <option value="1080x1080">方形 1:1（小红书）</option>
+          </select>
+        </div>
+        <div>
+          <label>语速 <span class="rate-val" id="rateVal">--</span> 字/秒</label>
+          <input type="range" id="rate" min="4.5" max="9" step="0.1">
+        </div>
+      </div>
+
+      <label>批量变体（可选）——每行一个开头钩子，2~5 行出 2~5 条 A/B 测试版本（替换首镜口播+大字标题，素材/语速/音色共享）；留空=只出 1 条</label>
+      <textarea id="hooks" style="min-height:66px" placeholder="留空只出一条；填了每行一条变体：&#10;90%的新手都搞错了第一步&#10;别再花冤枉钱买课程了&#10;看了这条视频，你能少走三年弯路"></textarea>
 
       <label>背景图（可选 0~9 张，jpg/png/webp；出片自动轮播 + 缓推动画，不传=内置渐变）</label>
       <div class="files" onclick="document.getElementById('imgs').click()">＋ 点击选择图片</div>
@@ -110,7 +125,7 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
-let meta = null, imgData = [], bgmData = null, lastTask = '', pollTimer = null;
+let meta = null, imgData = [], bgmData = null, lastTask = '', pollTimer = null, batchNames = [];
 
 const STEP_NAMES = ['配音 TTS','时间轴编译','场景生成','场景渲染','合成','质检 QC'];
 
@@ -156,12 +171,16 @@ async function create() {
   if (!text) { $('err').textContent = '先把口播文案填上'; return; }
   $('go').disabled = true;
   try {
+    const [w, h] = $('size').value.split('x').map(Number);
+    const hooks = $('hooks').value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (hooks.length === 1) { $('err').textContent = '批量变体至少填 2 行钩子；只填 1 行请清空（= 出单条）'; $('go').disabled = false; return; }
     const d = await j('/api/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), assets: imgData, bgm: bgmData }),
+      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), assets: imgData, bgm: bgmData, hooks, width: w, height: h }),
     });
     lastTask = d.name;
+    batchNames = d.batch || [d.name];
     $('result').innerHTML = '';
     poll();
   } catch (e) {
@@ -190,17 +209,30 @@ async function poll() {
     $('log').scrollTop = $('log').scrollHeight;
     if (!s.running) {
       $('go').disabled = false;
-      if (s.ok === true && s.task) { showResult(s.task); refreshHist(); return; }
+      // 批量变体跑完：done 里有全部结果（含失败项）；单条任务 done 只有一项
+      if (s.done && s.done.length) {
+        const okNames = s.done.filter((d) => d.ok).map((d) => d.name);
+        const badNames = s.done.filter((d) => !d.ok).map((d) => d.name);
+        if (badNames.length) $('err').textContent = `失败 ${badNames.length} 条：${badNames.join('、')}（看日志定位）`;
+        if (okNames.length) await showResult(okNames);
+        refreshHist();
+        return;
+      }
       if (s.ok === false) { $('err').textContent = '出片失败，看日志定位'; refreshHist(); return; }
     }
   } catch (e) { $('go').disabled = false; }
   pollTimer = setTimeout(poll, 1500);
 }
 
-async function showResult(task) {
-  lastTask = task;
-  const t = (await j('/api/tasks')).find((x) => x.name === task) || {};
-  $('result').innerHTML = `
+// tasks：string 或 string[]——批量变体时并排展示各版本成片，方便 A/B 对比
+async function showResult(tasks) {
+  const list = Array.isArray(tasks) ? tasks : [tasks];
+  lastTask = list[0];
+  const all = await j('/api/tasks');
+  $('result').innerHTML = list.map((task) => {
+    const t = all.find((x) => x.name === task) || {};
+    const label = list.length > 1 ? `<div class="kv" style="margin:10px 0 6px"><b style="color:var(--fg)">${task}</b></div>` : '';
+    return `${label}
     <video controls src="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}?t=${Date.now()}"></video>
     <div class="kv">
       <span>配音：<b>${t.provider || '?'}</b> · ${t.voice || '?'}</span>
@@ -209,6 +241,7 @@ async function showResult(task) {
       <a href="/file/${encodeURIComponent(task)}/qc-report.txt" target="_blank">QC 报告</a>
       <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}" download>下载成片</a>
     </div>`;
+  }).join('<hr style="border:none;border-top:1px solid var(--line);margin:20px 0">');
 }
 
 async function refreshHist() {

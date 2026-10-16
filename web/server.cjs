@@ -29,7 +29,8 @@ const VOICES = [
 ];
 
 // —— 运行态（内存，重启丢失无妨——产物都在任务目录里）——
-const state = { running: false, task: '', step: 0, stepName: '', lines: [], ok: null, at: 0 };
+// queue：批量变体队列（P2-6）。一次提交 N 条 → 逐条全链跑，每条独立任务目录
+const state = { running: false, task: '', step: 0, stepName: '', lines: [], ok: null, at: 0, queue: [], done: [] };
 const NAME_RE = /^[\w一-鿿-]{1,40}$/;
 
 function push(line) {
@@ -76,6 +77,20 @@ async function runPipeline(taskDir) {
   } finally {
     state.running = false;
     state.step = 0;
+  }
+}
+
+// 批量队列泵：state.queue 里逐条取任务跑全链；单条失败不中断队列（失败也记入 done）
+async function pumpQueue() {
+  if (state.running || !state.queue.length) return;
+  while (state.queue.length) {
+    const item = state.queue.shift();
+    state.task = item.name;
+    if (state.queue.length || item.batchTotal > 1) {
+      push(`══ 变体 ${item.batchIndex}/${item.batchTotal}：${item.name} ══`);
+    }
+    await runPipeline(item.dir);
+    state.done.push({ name: item.name, ok: state.ok });
   }
 }
 
@@ -157,39 +172,61 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, tasks);
     }
     if (p === '/api/create' && req.method === 'POST') {
-      if (state.running) return json(res, 409, { error: '有任务正在跑，等它完成' });
+      if (state.running || state.queue.length) return json(res, 409, { error: '有任务正在跑/排队，等它完成' });
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       const name = String(body.name || '').trim() || `web-${new Date().toISOString().slice(5, 16).replace(/[-:T]/g, '')}`;
       if (!NAME_RE.test(name)) return json(res, 400, { error: '任务名只能用中英文/数字/横线，≤40 字' });
       const split = splitter(body.text);
       if (split.error) return json(res, 400, { error: split.error });
-      const dir = ensureDir(path.join(OUTPUT, name));
-      const shots = {
-        title: name,
-        width: 1080, height: 1920, fps: cfg.output?.fps || 30,
-        shots: split.shots,
-        voice: String(body.voice || cfg.voice?.dashscope?.voice || ''),
-      };
-      if (body.rate > 0) shots.targetCharsPerSec = Number(body.rate); // 任务级语速（01 残差校正）
-      writeJson(path.join(dir, 'shots.json'), shots);
-      // 素材：背景图（base64，按序命名 bg-NN）+ BGM
-      const assets = Array.isArray(body.assets) ? body.assets.slice(0, 9) : [];
-      if (assets.length || body.bgm) ensureDir(path.join(dir, 'assets'));
-      assets.forEach((a, i) => {
-        const m = /^data:image\/(jpe?g|png|webp);base64,(.+)$/.exec(String(a) || '');
-        if (!m) return;
-        const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
-        fs.writeFileSync(path.join(dir, 'assets', `bg-${String(i + 1).padStart(2, '0')}.${ext}`), Buffer.from(m[2], 'base64'));
-      });
-      if (body.bgm) {
-        const mb = /^data:audio\/(mpeg|mp3);base64,(.+)$/.exec(String(body.bgm) || '');
-        if (mb) fs.writeFileSync(path.join(dir, 'assets', 'bgm.mp3'), Buffer.from(mb[2], 'base64'));
+
+      // 批量变体（P2-6）：hooks 每行一个开头钩子 → 替换首镜口播+大字标题，出 N 条 A/B 测试版本
+      const hooks = (Array.isArray(body.hooks) ? body.hooks : [])
+        .map((h) => String(h || '').trim().replace(/\s+/g, ' ')).filter(Boolean).slice(0, 5);
+      const variants = hooks.length >= 2
+        ? hooks.map((hook, i) => ({
+            name: `${name}-v${i + 1}`,
+            shots: split.shots.map((s, k) => (k === 0
+              ? { ...s, narration: hook, title: hook } // 首镜整段换成钩子（title 镜；首镜必为 title，splitter 保证）
+              : s)),
+          }))
+        : [{ name, shots: split.shots }];
+
+      const written = [];
+      for (const v of variants) {
+        if (!NAME_RE.test(v.name)) return json(res, 400, { error: `变体任务名非法: ${v.name}` });
+        const dir = ensureDir(path.join(OUTPUT, v.name));
+        const shots = {
+          title: v.name,
+          width: Number(body.width) || 1080,
+          height: Number(body.height) || 1920,
+          fps: cfg.output?.fps || 30,
+          shots: v.shots,
+          voice: String(body.voice || cfg.voice?.dashscope?.voice || ''),
+        };
+        if (body.rate > 0) shots.targetCharsPerSec = Number(body.rate); // 任务级语速（01 残差校正）
+        writeJson(path.join(dir, 'shots.json'), shots);
+        // 素材：背景图（base64，按序命名 bg-NN）+ BGM——变体共享同一套素材
+        const assets = Array.isArray(body.assets) ? body.assets.slice(0, 9) : [];
+        if (assets.length || body.bgm) ensureDir(path.join(dir, 'assets'));
+        assets.forEach((a, i) => {
+          const m = /^data:image\/(jpe?g|png|webp);base64,(.+)$/.exec(String(a) || '');
+          if (!m) return;
+          const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+          fs.writeFileSync(path.join(dir, 'assets', `bg-${String(i + 1).padStart(2, '0')}.${ext}`), Buffer.from(m[2], 'base64'));
+        });
+        if (body.bgm) {
+          const mb = /^data:audio\/(mpeg|mp3);base64,(.+)$/.exec(String(body.bgm) || '');
+          if (mb) fs.writeFileSync(path.join(dir, 'assets', 'bgm.mp3'), Buffer.from(mb[2], 'base64'));
+        }
+        written.push({ name: v.name, dir });
       }
-      log('07-web', `新任务 ${name} · ${split.shots.length} 镜 · 音色 ${shots.voice}${shots.targetCharsPerSec ? ` · ${shots.targetCharsPerSec} 字/秒` : ''}`);
+      log('07-web', `${written.length > 1 ? `批量变体 ${written.length} 条` : '新任务'} ${written.map((w) => w.name).join('、')} · ${split.shots.length} 镜 · 音色 ${written.length && body.voice || cfg.voice?.dashscope?.voice || ''}${body.rate ? ` · ${body.rate} 字/秒` : ''}`);
       state.lines = [];
-      state.task = name;
-      runPipeline(dir); // 异步跑，进度走 /api/status 轮询
-      return json(res, 200, { ok: true, name });
+      state.done = [];
+      state.task = written[0].name;
+      written.forEach((w, i) => state.queue.push({ ...w, batchIndex: i + 1, batchTotal: written.length }));
+      pumpQueue(); // 异步跑，进度走 /api/status 轮询
+      return json(res, 200, { ok: true, name: written[0].name, batch: written.map((w) => w.name) });
     }
 
     // —— 任务产物预览（白名单文件名，防穿越）——
