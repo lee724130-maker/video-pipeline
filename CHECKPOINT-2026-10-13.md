@@ -213,3 +213,12 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
     ① `03 itemTime` fallback 把「相对镜头」的均匀分布值当【绝对时间轴】减 shot.start——非首镜要点全部被钳到 0.08s 一次弹出（splitter 的要点逐字出自口播走匹配分支，只有手写/改写 items 才触发）；修复：fallback 补 `shot.start +`
     ② hypit 录制两个竞态：screencast 附带 0~1.6s 启动延迟（迟到帧用「开录瞬间截图」回填 → 若那一刻还没起播，成片开头空一段，outro 实测空 1.75s）；Chrome 把静止页 rAF 压到 ~1.5s/次（data-at 揭示迟拍、开场淡入冻结在中间态）。修复：`capture.mjs` 改「先 __start → settle 250ms → record」（回填的初始状态已是全亮画面，附带延迟无害；文件时钟相对场景早 ~0.3s 有界）+ `runtime.js` 注入 1px opacity .02 保活微动画（合成器持续出帧，rAF 不再压频）
   - QC：17/17（字幕关闭时 f_caption 项跳过属预期，18 基线 −1）
+  - 成片验证：77.6s（387 字口播，60~90s 达标）；开场 0.3s 全亮无冻结 ✓、卡片按 0.50/6.67/12.83/19.01 逐张错峰（final@17.8s=2 卡与 norm 段逐帧一致）✓、outro 标题首帧即在、~2.1s 起平滑淡出 ✓、canary 已注入全部场景 ✓
+
+## ⏸ 中断点（2026-10-19 收工，P2-9 已提交推送 5c39ca3，管线空闲）
+
+明天继续（按优先级）：
+1. **classic 回归**：runtime.js/capture.mjs 改动影响全部主题——重跑既有 classic 任务验证（如 `AI短剧变现`：`node pipeline/run.cjs "output/<任务名>" --steps 3,4,5,6`，跳 TTS 省时；预期 18/18，重点看开场亮度与要点错峰是否同步改善）。
+2. **web 服务重启**：`node web/server.cjs`（sceneStyle 下拉/字幕复选是本次新增，旧进程若还开着需重启才生效）；可顺手在网页端建一条 deck 任务走 API 全链验证（server 白名单 400 分支只在代码层验过，未走真实 API）。
+3. **遗留验证项**：「AI短剧变现」网页预览 400 修复（a8996d4）待用户回报播放正常后收掉。
+4. 可选打磨：demo 侧 `output/deck-demo` 不入库（output/ 已忽略），如需长期留档可导出成片到仓库外备份。
