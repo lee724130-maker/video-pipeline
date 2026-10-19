@@ -24,6 +24,21 @@ function fill(html, tokens) {
   return out;
 }
 
+// —— 尺寸自适应（P2-7）——
+// --k = 短边/1080：标准三画幅（1080×1920 / 1920×1080 / 1080×1080）k=1，像素值=设计稿；
+// 720p 等小画幅按比例缩小。竖向安全区按 高/1920 缩放（竖屏 180/180 不变；横屏/方形 ≈101px，
+// 避免 180px 在 1080 高画幅里吃掉 1/3 版面）。
+function sizeVars(timeline) {
+  const w = Number(timeline.width) || 1080;
+  const h = Number(timeline.height) || 1920;
+  const k = Math.min(w, h) / 1080;
+  const safe = Math.round(180 * (h / 1920));
+  return `<style>:root{--k:${Number(k.toFixed(4))};--safe-top:${safe}px;--safe-bottom:${safe}px}</style>`;
+}
+function applySize(html, timeline) {
+  return html.replace('</head>', () => `${sizeVars(timeline)}\n</head>`);
+}
+
 // —— 用户素材背景（assets/bg-NN.jpg|png|webp，方案 A 轮播 + 方案 C Ken Burns）——
 // bgImages 见 lib/common.cjs；文件不存在 → 无背景层（纯代码渐变，行为同旧版）
 function bgLayer(bgs, index, durSec) {
@@ -135,6 +150,7 @@ function main() {
     const tokens = tokensFor({ ...shot, narrationRaw: nChars.slice(shot.charStart, shot.charEnd).join('') }, timeline, timeline.shots, src);
 
     let html = fill(tpl, tokens);
+    html = applySize(html, timeline);
     const layer = bgLayer(bgs, shot.index, shot.dur);
     if (layer) html = html.replace('<div class="stage">', () => `<div class="stage">\n    ${layer}`);
     const sceneData = JSON.stringify({ duration: shot.dur, fps: timeline.fps, id: shot.id });
@@ -158,7 +174,7 @@ function main() {
       SUBTITLE: esc(outroCfg.subtitle || ''),
       SUB_AT: (dur * 0.22).toFixed(2),
     };
-    let html = fill(fs.readFileSync(path.join(ROOT, 'templates/scenes/end.html'), 'utf8'), tokens);
+    let html = applySize(fill(fs.readFileSync(path.join(ROOT, 'templates/scenes/end.html'), 'utf8'), tokens), timeline);
     const inject = `<script>window.__SCENE__ = ${JSON.stringify({ duration: dur, fps: timeline.fps, id: 'outro' })};</script>\n  <script>${runtime}</script>`;
     html = html.replace('<!--__RUNTIME__-->', () => inject);
     fs.writeFileSync(path.join(outDir, 'outro.html'), html, 'utf8');
@@ -176,7 +192,7 @@ function main() {
       SUBTITLE: esc(coverCfg.subtitle || firstLine),
       FOOT: esc(coverCfg.foot || 'AI 剪辑流水线'),
     };
-    let html = fill(fs.readFileSync(path.join(ROOT, 'templates/cover.html'), 'utf8'), tokens);
+    let html = applySize(fill(fs.readFileSync(path.join(ROOT, 'templates/cover.html'), 'utf8'), tokens), timeline);
     if (!tokens.SUBTITLE) html = html.replace(/\s*<p class="sub"><\/p>/, '');
     const covLayer = bgLayer(bgs, 0, null); // 封面取第一张、静态（抽帧要稳定画面）
     if (covLayer) html = html.replace('<div class="stage">', () => `<div class="stage">\n    ${covLayer}`);

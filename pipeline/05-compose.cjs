@@ -19,9 +19,15 @@ function buildAss(timeline) {
   const karaoke = c.karaoke !== false; // 默认开：逐字高亮（实测 libass：Secondary=起始色，Primary=随进度填充色）
   const esc = (s) => s.replace(/\\/g, '\\\\').replace(/\{/g, '(').replace(/\}/g, ')');
   const subColour = karaoke ? (c.karaokeDimColour || '&H00606060') : '&H00FFFFFF';
+  // 尺寸自适应（P2-7）：字号按 短边/1080 缩放（三标准画幅 k=1 不变），竖向边距按 高/1920 缩放
+  // （竖屏 1080×1920：56/320/130 原值；横屏/方形 marginV 320→180，避免贴底或顶出画面）
+  const k = Math.min(timeline.width, timeline.height) / 1080;
+  const kv = (timeline.height || 1920) / 1920;
+  const capSize = Math.max(24, Math.round((c.captionSize || 56) * k));
+  const capMarginV = Math.max(40, Math.round((c.captionMarginV || 320) * kv));
   // 关键词砸字样式：粗体大号金字，居中偏上（避开底部字幕），仅在有 keyword 时挂上
   const kwStyle = (timeline.keywords && timeline.keywords.length)
-    ? `\nStyle: Kw,${c.captionFont},${Number(c.keywordSize || 130)},${c.keywordColour || '&H0000D7FF'},&H00FFFFFF,&H00141414,&H96000000,-1,0,0,0,100,100,1,0,1,6,0,5,90,90,0,1`
+    ? `\nStyle: Kw,${c.captionFont},${Math.max(48, Math.round(Number(c.keywordSize || 130) * k))},${c.keywordColour || '&H0000D7FF'},&H00FFFFFF,&H00141414,&H96000000,-1,0,0,0,100,100,1,0,1,6,0,5,90,90,0,1`
     : '';
   const header = `[Script Info]
 Title: ${timeline.title}
@@ -33,7 +39,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,${c.captionFont},${c.captionSize},&H00FFFFFF,${subColour},&H00141414,&H96000000,0,0,0,0,100,100,0.5,0,1,3,1,2,90,90,${c.captionMarginV},1${kwStyle}
+Style: Sub,${c.captionFont},${capSize},&H00FFFFFF,${subColour},&H00141414,&H96000000,0,0,0,0,100,100,0.5,0,1,3,1,2,90,90,${capMarginV},1${kwStyle}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

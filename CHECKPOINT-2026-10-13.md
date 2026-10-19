@@ -191,10 +191,10 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - **实测**：web-smoke 任务 API 全链（建任务→6 步 spawn→ok:true），loongstella 6.51 字/秒、成片 457KB、18/18、封面/抽帧/QC 报告路由全 200
 
 - [x] **P2-6 批量变体（完工）：** 网页端「批量变体」textarea 每行一个开头钩子（2~5 行）→ `/api/create` 建 `<名>-v1..vN` 独立任务（钩子替换首镜 narration+title；素材/语速/音色共享）→ `state.queue` 队列 + `pumpQueue()` 逐条跑全链（单条失败记入 `state.done` 不中断队列）→ 完成后 `showResult(names)` 并排展示各版本成片。实测 bv-test 2 变体 ok、各 18/18、loongstella
-- [ ] **P2-7 横屏/方形尺寸（进行中，下次从这里继续）：**
-  - **已完成**：全链参数化验证（02 `shots.width/height` → timeline → 04 `--viewport` → 05 ASS PlayResX/Y；实测 1920×1080 两条全链 18/18、成片 ffprobe 1920,1080）；网页端画幅下拉（9:16/16:9/1:1，已接 width/height）；**`templates/base.css` 已全量改写**——所有 px 改 `calc(Npx * var(--k))`，`--k` 缺省 1（完全向后兼容，改写后 sapi-test QC 回归 19/19）
-  - **剩余①**：`03-scenes.cjs` 注入尺寸系数——`const k = Math.min(timeline.width, timeline.height) / 1080`，安全区 `--safe-top/--safe-bottom` 按 `高/1920` 比例缩放（竖屏 180/180 不变；横屏 16:9 → 1080/1920 ≈ 0.5625 → ~101px；方形同理），写法：fill 后在 `</head>` 前插 `<style>:root{--k:${k};--safe-top:${t}px;--safe-bottom:${b}px}</style>`（场景 HTML + outro.html + cover.html 三处都要）
-  - **剩余②**：`05-compose.cjs` ASS 字号/边距缩放——`captionSize 56`、`captionMarginV 320`、`keywordSize 130` 是 1080×1920 设计值，按 `k` 缩放（或按 高/1920 缩 marginV、按 min(w,h)/1080 缩字号），在 buildAss 里乘系数
-  - **剩余③**：三画幅全链回归——竖屏 sapi-test 19/19 不回归 + 网页建一条 1:1 方形任务全链 + 抽帧肉眼验版式（字体/安全区/字幕位置）
-  - **坑位注意**：bv-test-v1/v2 是在 base.css 改写**前**渲的（旧 px 值），验收版式请重渲；KTV（07）仍固定竖屏 1080×1920，本次不改
+- [x] **P2-7 横屏/方形尺寸（完工）：**
+  - 03 pplySize()：fill 后 </head> 前注入 <style>:root{--k;--safe-top/bottom}</style>（k=min(w,h)/1080；safe=180×高/1920）——场景循环 + outro + cover 三处；cover.html 内联 px 全改 calc(×var(--k))
+  - 05 uildAss()：capSize=56×k（下限24）、capMarginV=320×高/1920（下限40）、kwSize=130×k（下限48）；砸字定位本就比例制（height×0.34）不动
+  - 回归：竖屏 sapi-test 19/19（注入 k=1/180px=设计稿原值）；横屏 bv-test-v1 18/18（k=1、safe 101px、字幕 56/180）；方形 sq-test 18/18（同横屏）；三方画幅 f_caption 分 8 段测 YAVG，字幕带均落在第 7 段（y≈810~945px=marginV 180 位置）
+  - 排查工具留档：fmpeg crop+signalstats 分段测 YAVG 可无浏览器验字幕烧录位置
+
 - [ ] **P2-8 封面多套风格（未开始）：** 现只有 templates/cover.html 暗色科技风一种；方案——03 读 `config.cover.style`（或 shots 覆盖）选模板/换配色变量，出 2~3 套（如 暗色科技 / 高对比大字 / 杂志留白），网页端加风格下拉

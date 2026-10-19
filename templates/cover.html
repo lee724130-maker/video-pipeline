@@ -5,16 +5,17 @@
 <title>cover</title>
 <style>/*__CSS__*/</style>
 <style>
-  /* 封面：静态版式（无 data-at，runtime 只负责 stage.on），标题加大、底部标签 */
-  .stage { justify-content: center; gap: 44px; }
-  .stage h1.big { font-size: 124px; }
+  /* 封面：静态版式（无 data-at，runtime 只负责 stage.on），标题加大、底部标签
+     px 均乘 --k（P2-7 尺寸自适应，03 注入） */
+  .stage { justify-content: center; gap: calc(44px * var(--k)); }
+  .stage h1.big { font-size: calc(124px * var(--k)); }
   .cover-foot {
-    position: absolute; left: 88px; right: 88px; bottom: var(--safe-bottom);
-    display: flex; align-items: center; gap: 22px;
-    font-size: 38px; font-weight: 600; letter-spacing: 4px; color: var(--fg-dim);
+    position: absolute; left: calc(88px * var(--k)); right: calc(88px * var(--k)); bottom: var(--safe-bottom);
+    display: flex; align-items: center; gap: calc(22px * var(--k));
+    font-size: calc(38px * var(--k)); font-weight: 600; letter-spacing: calc(4px * var(--k)); color: var(--fg-dim);
   }
   .cover-foot::before {
-    content: ""; width: 26px; height: 26px; border-radius: 50%;
+    content: ""; width: calc(26px * var(--k)); height: calc(26px * var(--k)); border-radius: 50%;
     background: var(--accent); flex: none;
   }
 </style>
