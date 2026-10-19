@@ -89,6 +89,14 @@
           </select>
         </div>
         <div>
+          <label>封面风格</label>
+          <select id="coverStyle">
+            <option value="tech">暗色科技（默认）</option>
+            <option value="bold">高对比大字（黑底暖黄）</option>
+            <option value="magazine">杂志留白（纸白衬线）</option>
+          </select>
+        </div>
+        <div>
           <label>语速 <span class="rate-val" id="rateVal">--</span> 字/秒</label>
           <input type="range" id="rate" min="4.5" max="9" step="0.1">
         </div>
@@ -177,7 +185,7 @@ async function create() {
     const d = await j('/api/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), assets: imgData, bgm: bgmData, hooks, width: w, height: h }),
+      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, assets: imgData, bgm: bgmData, hooks, width: w, height: h }),
     });
     lastTask = d.name;
     batchNames = d.batch || [d.name];

@@ -186,7 +186,13 @@ function main() {
   const coverCfg = cfg.cover || {};
   if (coverCfg.enabled !== false) {
     const firstLine = (narration.split(/[。！？!?\n]/).map((s) => s.trim()).filter(Boolean)[0] || '').slice(0, 26);
+    // 风格（P2-8）：任务级 shots.coverStyle 优先 > 全局 config.cover.style > 默认 tech；
+    // 白名单校验——非法风格 fail（错风格渲出来只是「不好看」，但静默兜底会掩盖拼写错误）
+    const COVER_STYLES = ['tech', 'bold', 'magazine'];
+    const style = String(shots.coverStyle || coverCfg.style || 'tech');
+    if (!COVER_STYLES.includes(style)) fail(`封面风格非法: ${style}（白名单: ${COVER_STYLES.join(' / ')}）`);
     const tokens = {
+      STYLE_CLASS: style === 'tech' ? '' : ` cover-${style}`, // tech 是模板缺省样式，不加 class
       KICKER: esc(coverCfg.kicker || 'AI VIDEO'),
       TITLE: hi(esc(coverCfg.title || timeline.title)),
       SUBTITLE: esc(coverCfg.subtitle || firstLine),
@@ -195,13 +201,14 @@ function main() {
     let html = applySize(fill(fs.readFileSync(path.join(ROOT, 'templates/cover.html'), 'utf8'), tokens), timeline);
     if (!tokens.SUBTITLE) html = html.replace(/\s*<p class="sub"><\/p>/, '');
     const covLayer = bgLayer(bgs, 0, null); // 封面取第一张、静态（抽帧要稳定画面）
-    if (covLayer) html = html.replace('<div class="stage">', () => `<div class="stage">\n    ${covLayer}`);
+    // 风格 class 会改 stage 的 class 值，按前缀匹配插入
+    if (covLayer) html = html.replace(/<div class="stage[^"]*">/, (m) => `${m}\n    ${covLayer}`);
     // duration 给超大值：runtime 到 duration-0.15 才淡出，封面录帧窗口内保持常亮
     const inject = `<script>window.__SCENE__ = ${JSON.stringify({ duration: 99999, fps: timeline.fps, id: 'cover' })};</script>\n  <script>${runtime}</script>`;
     html = html.replace('<!--__RUNTIME__-->', () => inject);
     fs.writeFileSync(path.join(outDir, 'cover.html'), html, 'utf8');
     timeline.cover = true;
-    log('03', `封面版式 cover.html（标题「${tokens.TITLE}」，config.cover 可覆盖）`);
+    log('03', `封面版式 cover.html（风格 ${style}，标题「${tokens.TITLE}」，shots.coverStyle / config.cover.style 可改）`);
   }
 
   // 持久化：04/05/06 按 timeline.outro/cover 对账产物

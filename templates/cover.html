@@ -6,7 +6,9 @@
 <style>/*__CSS__*/</style>
 <style>
   /* 封面：静态版式（无 data-at，runtime 只负责 stage.on），标题加大、底部标签
-     px 均乘 --k（P2-7 尺寸自适应，03 注入） */
+     px 均乘 --k（P2-7 尺寸自适应，03 注入）
+     风格（P2-8）：03 按 shots.coverStyle / config.cover.style 注入 .stage 的 cover-* class
+       （缺省 tech=暗色科技风，即本块默认样式，不加 class） */
   .stage { justify-content: center; gap: calc(44px * var(--k)); }
   .stage h1.big { font-size: calc(124px * var(--k)); }
   .cover-foot {
@@ -18,10 +20,33 @@
     content: ""; width: calc(26px * var(--k)); height: calc(26px * var(--k)); border-radius: 50%;
     background: var(--accent); flex: none;
   }
+
+  /* —— 风格 2 · bold 高对比大字：纯黑底 + 暖黄/朱红，标题超大、粗横条 —— */
+  .stage.cover-bold { --accent: #FFD400; --accent-2: #FF3D00; }
+  .stage.cover-bold .bg::after { display: none; }                     /* 去网格，留光晕 */
+  .stage.cover-bold .bg::before {
+    background:
+      radial-gradient(52% 36% at 24% 20%, rgba(255,212,0,.16), transparent 70%),
+      radial-gradient(46% 32% at 80% 86%, rgba(255,61,0,.14), transparent 70%);
+  }
+  .stage.cover-bold h1.big { font-size: calc(152px * var(--k)); letter-spacing: calc(-2px * var(--k)); }
+  .stage.cover-bold .kicker { color: var(--accent); }
+  .stage.cover-bold .bar {
+    width: calc(170px * var(--k)); height: calc(14px * var(--k)); border-radius: calc(7px * var(--k));
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  }
+
+  /* —— 风格 3 · magazine 杂志留白：纸白底 + 墨字 + 衬线标题 + 赭石点缀 —— */
+  .stage.cover-magazine { background: #F5F1E8; color: #1A1A1A; --fg-dim: #6B665C; --accent: #B3541E; }
+  .stage.cover-magazine .bg { display: none; }
+  .stage.cover-magazine h1.big { font-family: Georgia, "Songti SC", "SimSun", serif; }
+  .stage.cover-magazine .kicker { font-family: Georgia, "Times New Roman", serif; text-transform: none; }
+  .stage.cover-magazine .bar { width: calc(64px * var(--k)); background: var(--accent); }
+  .stage.cover-magazine .cover-foot { color: #6B665C; }
 </style>
 </head>
 <body>
-  <div class="stage">
+  <div class="stage{{STYLE_CLASS}}">
     <div class="bg"></div>
     <div class="kicker">{{KICKER}}</div>
     <h1 class="big">{{TITLE}}</h1>

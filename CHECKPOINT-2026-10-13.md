@@ -197,4 +197,10 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - 回归：竖屏 sapi-test 19/19（注入 k=1/180px=设计稿原值）；横屏 bv-test-v1 18/18（k=1、safe 101px、字幕 56/180）；方形 sq-test 18/18（同横屏）；三方画幅 f_caption 分 8 段测 YAVG，字幕带均落在第 7 段（y≈810~945px=marginV 180 位置）
   - 排查工具留档：fmpeg crop+signalstats 分段测 YAVG 可无浏览器验字幕烧录位置
 
-- [ ] **P2-8 封面多套风格（未开始）：** 现只有 templates/cover.html 暗色科技风一种；方案——03 读 `config.cover.style`（或 shots 覆盖）选模板/换配色变量，出 2~3 套（如 暗色科技 / 高对比大字 / 杂志留白），网页端加风格下拉
+- [x] **P2-8 封面多套风格（完工）：**
+  - 模板：`templates/cover.html` 按 `cover-{style}` class 挂风格 CSS（同模板三套：`tech` 暗色科技默认 / `bold` 高对比大字黑底暖黄朱红渐变条 152px / `magazine` 杂志留白纸白 #F5F1E8 墨字衬线赭石）
+  - 03：读 `shots.coverStyle`（任务级）> `config.cover.style`（全局）> 默认 tech；白名单 `['tech','bold','magazine']` 非法 fail-fast（宁 fail 勿兜底）；STYLE_CLASS token 空串（tech）或 ` cover-{style}`；stage class 前缀匹配插入 bg-user 层
+  - web：封面风格下拉（tech/bold/magazine），server 白名单 400；shots.json 写 `coverStyle`
+  - 核验：三风格 hypit 抽帧色相分布区分明显——tech 青 0.18%/黄 0%、bold 黄 0.30%/青 0%、magazine 96.5% 纸白亮底；帧间差分 tech-vs-magazine YAVG=188、bold-vs-magazine 185、tech-vs-bold 7.0（暗底上点缀色+标题字号差异）
+  - 非法风格：03 fail ✓（错误信息含白名单提示）+ API 400 ✓；web 建任务（coverStyle=bold）全链 18/18、封面黄像素确认 bold 风 ✓
+  - 测试脚本留档：`$TEMP/pron-probe/cover-styles.cjs`（三风格抽帧）、`cover-accent.cjs`（rawvideo 数色相像素——lutrgb 表达式引号会被 cmd 吞，走 rawvideo+JS 统计更稳）

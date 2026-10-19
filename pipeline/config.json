@@ -62,6 +62,7 @@
   },
   "cover": {
     "enabled": true,
+    "style": "tech",
     "kicker": "AI VIDEO",
     "title": "",
     "subtitle": "",
