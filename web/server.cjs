@@ -236,10 +236,15 @@ const server = http.createServer(async (req, res) => {
     // —— 任务产物预览（白名单文件名，防穿越）——
     const fm = /^\/file\/([^/]+)\/(.+)$/.exec(p);
     if (fm) {
-      const [, taskName, relEnc] = fm;
+      const [, taskEnc, relEnc] = fm;
+      // 先 decode 再白名单校验（P2-1 原则）：pathname 保留百分号编码，
+      // 中文任务名（AI短剧变现 → AI%E7%9F%AD...）不解码必过不了 NAME_RE
+      let taskName, rel;
+      try {
+        taskName = decodeURIComponent(taskEnc);
+        rel = decodeURIComponent(relEnc);
+      } catch { return json(res, 400, { error: 'bad encoding' }); }
       if (!NAME_RE.test(taskName)) return json(res, 400, { error: 'bad task' });
-      let rel;
-      try { rel = decodeURIComponent(relEnc); } catch { return json(res, 400, { error: 'bad encoding' }); }
       const allowed = /^[\w一-鿿.\- \/]+$/.test(rel) && !rel.includes('..');
       const fp = path.join(OUTPUT, taskName, rel);
       if (!allowed || !fp.startsWith(path.join(OUTPUT, taskName))) return json(res, 400, { error: 'bad path' });
