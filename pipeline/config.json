@@ -36,6 +36,7 @@
     "karaokeDimColour": "&H00606060",
     "transitionSec": 0.4,
     "transitionType": "fade",
+    "deckTransitionSec": 0,
     "keywordSize": 130,
     "keywordHoldSec": 2.2,
     "keywordColour": "&H0000D7FF",
@@ -60,6 +61,7 @@
       "lra": 11
     }
   },
+  "sceneStyle": "classic",
   "cover": {
     "enabled": true,
     "style": "tech",

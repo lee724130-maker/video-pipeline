@@ -31,6 +31,7 @@ function main() {
   const timeline = readJson(path.join(task, 'timeline.json'));
   const final = path.join(task, '成片.mp4');
   if (!timeline) fail('缺 timeline.json');
+  const capOff = timeline.captionsOff === true; // P2-9 复刻模式：字幕不烧录，相关核验项相应跳过/换判据
   console.log('[06] 质检');
 
   check('成片存在', fs.existsSync(final), fs.existsSync(final) ? `${(fs.statSync(final).size / 1024 / 1024).toFixed(1)} MB` : '缺 成片.mp4');
@@ -49,7 +50,8 @@ function main() {
   check('编码', v.codec_name === 'h264', v.codec_name);
   check('音轨', a.codec_name === 'aac', a.codec_name || '无音轨');
   check('faststart', fs.readFileSync(final).indexOf(Buffer.from('moov')) < fs.statSync(final).size, 'moov 前置');
-  check('字幕条数', timeline.captions.length > 0, `${timeline.captions.length} 条`);
+  check('字幕条数', capOff || timeline.captions.length > 0,
+    capOff ? `已关闭（captions:false，数据 ${timeline.captions.length} 条不烧录）` : `${timeline.captions.length} 条`);
   check('镜头数', timeline.shots.length > 0, `${timeline.shots.length} 镜`);
 
   // 分镜结构：shots.json 的 type 必须在白名单（历史坑——02 静默兜底 title 导致全片标题卡）
@@ -71,7 +73,10 @@ function main() {
 
   // 关键词砸字：shots.json 声明了 keyword 时，subs.ass 必须含对应砸字事件
   const kws = timeline.keywords || [];
-  if (kws.length) {
+  if (kws.length && capOff) {
+    // 字幕层整个不烧 = 砸字也进不了成片：这是配置冲突，宁报错不静默丢效果
+    check('关键词砸字', false, `captions:false 关掉了字幕层，但声明了 ${kws.length} 个 keyword（砸字进不了成片）`);
+  } else if (kws.length) {
     const assPath = path.join(task, 'subs.ass');
     const ass = fs.existsSync(assPath) ? fs.readFileSync(assPath, 'utf8') : '';
     const missing = kws.filter((k) => !ass.includes('\\pos(') || !ass.includes(k.text));
@@ -86,8 +91,10 @@ function main() {
     { name: 'f_mid', t: timeline.duration * 0.5 },
     { name: 'f_last', t: timeline.duration - 0.5 },
   ];
-  // 取一条字幕中点做「字幕是否烧上」的核验帧
-  if (timeline.captions.length) {
+  // 取一条字幕中点做「字幕是否烧上」的核验帧（字幕烧录关闭时跳过——帧里本就不该有字幕）
+  if (capOff) {
+    log('06', '字幕烧录已关闭（captions:false）：跳过 f_caption 核验帧');
+  } else if (timeline.captions.length) {
     const cap = timeline.captions[Math.floor(timeline.captions.length / 2)];
     samples.push({ name: 'f_caption', t: (cap.start + cap.end) / 2 });
   }
@@ -133,7 +140,7 @@ function main() {
   }
 
   console.log(`  ——— ${pass}/${pass + failN} 机械项通过`);
-  log('06', `语义项请看 qc/f_first.png · f_mid.png · f_last.png · f_caption.png（f_caption 应能看到字幕）`);
+  log('06', `语义项请看 qc/f_first.png · f_mid.png · f_last.png${capOff ? '' : ' · f_caption.png（f_caption 应能看到字幕）'}`);
   writeReport(task);
   if (failN) fail(`质检 ${failN} 项不通过`);
 }

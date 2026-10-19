@@ -27,5 +27,20 @@
     stage.classList.add('on');
     requestAnimationFrame(tick);
   };
+
+  // 渲染保活：Chrome 会把「画面静止」页面的 rAF 压到 ~1.5s 一次，data-at 揭示就会迟拍
+  // （开头淡入也会冻结在中间态）。1px 微动画让合成器持续出帧，时钟/揭示按真实节奏走。
+  // opacity .02 的白色 1px 在任何主题角上都不可见。
+  try {
+    var cs = document.createElement('style');
+    cs.textContent = '@keyframes __canary{from{transform:translateY(0)}to{transform:translateY(2px)}}'
+      + '.__canary{position:fixed;left:0;bottom:0;width:1px;height:1px;z-index:99;'
+      + 'background:#fff;opacity:.02;animation:__canary .15s linear infinite alternate}';
+    document.head.appendChild(cs);
+    var canary = document.createElement('div');
+    canary.className = '__canary';
+    document.body.appendChild(canary);
+  } catch (e) { /* 保活动画失败不致命 */ }
+
   window.__SCENE_READY = true;
 })();

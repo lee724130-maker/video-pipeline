@@ -102,6 +102,22 @@
         </div>
       </div>
 
+      <div class="row">
+        <div>
+          <label>场景风格（演示风建议配横屏 16:9，最接近参考样片）</label>
+          <select id="sceneStyle">
+            <option value="classic">经典（暗底网格 + 竖屏大字）</option>
+            <option value="deck">演示风（幻灯版式 + 底部章节导航条）</option>
+          </select>
+        </div>
+        <div>
+          <label>烧录字幕</label>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;color:#cfd6e0">
+            <input type="checkbox" id="captions" checked> 逐词高亮字幕（关 = 复刻样片：纯画面 + 旁白）
+          </label>
+        </div>
+      </div>
+
       <label>批量变体（可选）——每行一个开头钩子，2~5 行出 2~5 条 A/B 测试版本（替换首镜口播+大字标题，素材/语速/音色共享）；留空=只出 1 条</label>
       <textarea id="hooks" style="min-height:66px" placeholder="留空只出一条；填了每行一条变体：&#10;90%的新手都搞错了第一步&#10;别再花冤枉钱买课程了&#10;看了这条视频，你能少走三年弯路"></textarea>
 
@@ -185,7 +201,7 @@ async function create() {
     const d = await j('/api/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, assets: imgData, bgm: bgmData, hooks, width: w, height: h }),
+      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, sceneStyle: $('sceneStyle').value, captions: $('captions').checked, assets: imgData, bgm: bgmData, hooks, width: w, height: h }),
     });
     lastTask = d.name;
     batchNames = d.batch || [d.name];

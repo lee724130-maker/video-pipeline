@@ -135,3 +135,13 @@ ul.items li::before {
   font-size: calc(34px * var(--k)); font-weight: 700; color: var(--fg-dim);
   letter-spacing: calc(3px * var(--k));
 }
+
+/* —— deck 演示风新增元素（P2-9）：classic 缺省隐藏/中性样式，deck.css 注入后放开 —— */
+.tags { display: none; }                         /* 标签行/CTA 按钮：只在 deck 出现 */
+.quote { font-size: calc(42px * var(--k)); color: var(--fg-dim); line-height: 1.5; }
+.quote:empty { display: none; }                  /* 没写 quote 就不占版位（classic 零回归） */
+.it-b b { display: block; font-size: 1em; font-weight: 700; }
+.it-b i {                                        /* items 双行形态 {t,d}：描述行灰字 */
+  display: block; font-style: normal; font-size: .6em; font-weight: 500;
+  color: var(--fg-dim); margin-top: calc(6px * var(--k));
+}

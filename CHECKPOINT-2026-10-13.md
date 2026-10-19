@@ -204,3 +204,12 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
   - 核验：三风格 hypit 抽帧色相分布区分明显——tech 青 0.18%/黄 0%、bold 黄 0.30%/青 0%、magazine 96.5% 纸白亮底；帧间差分 tech-vs-magazine YAVG=188、bold-vs-magazine 185、tech-vs-bold 7.0（暗底上点缀色+标题字号差异）
   - 非法风格：03 fail ✓（错误信息含白名单提示）+ API 400 ✓；web 建任务（coverStyle=bold）全链 18/18、封面黄像素确认 bold 风 ✓
   - 测试脚本留档：`$TEMP/pron-probe/cover-styles.cjs`（三风格抽帧）、`cover-accent.cjs`（rawvideo 数色相像素——lutrgb 表达式引号会被 cmd 吞，走 rawvideo+JS 统计更稳）
+
+- [x] **P2-9 演示风 deck 主题完工**（2026-10-19，复刻抖音参考样片《给WorkBuddy装套技能，它就成了短剧工作台》）
+  - 参考样片分析：douyin-archive 归档 aweme_id 7697443428367437096（8分33秒 1280×720）；抽 103 帧——暗蓝底 #0c2032/#070c17、青点缀 #00edce、卡片 #192233、底部 12 格章节导航条 #151a25、硬切静态页、无烧录字幕；25.5s/40s 帧字节完全相同 = 纯静态无动效
+  - 实现：`templates/deck.css` 覆盖层（03 在 sceneStyle=deck 时注入 base.css 之后，classic 零影响）；模板加 `tags`/`quote`/`{t,d}` 双行卡片 token（classic 下 .tags 隐藏、.quote:empty 不占位）；stage 按类型挂 `s-{type}` class 分版式；`.chapnav` 每镜注入、`shots.nav` 标签、当前章高亮；05 deck 硬切（`cfg.compose.deckTransitionSec` 缺省 0）；`shots.captions:false` → 05 跳过 ass 烧录、06 字幕核验相应跳过（与 keyword 冲突显式 fail）；web 下拉 + server 白名单 400
+  - demo：`output/deck-demo/shots.json`（1920×1080、5 镜、无字幕、~361 字口播 ≈ 80s 成片）；抽帧与参考版式对齐（开场胶囊徽标+白青大标题+标签行、章节页白/青分色标题+青引用竖条+编号卡片、收尾 2×2 青/红 CTA、导航条当前章高亮）
+  - **两个系统性坑（classic 一并修复）**：
+    ① `03 itemTime` fallback 把「相对镜头」的均匀分布值当【绝对时间轴】减 shot.start——非首镜要点全部被钳到 0.08s 一次弹出（splitter 的要点逐字出自口播走匹配分支，只有手写/改写 items 才触发）；修复：fallback 补 `shot.start +`
+    ② hypit 录制两个竞态：screencast 附带 0~1.6s 启动延迟（迟到帧用「开录瞬间截图」回填 → 若那一刻还没起播，成片开头空一段，outro 实测空 1.75s）；Chrome 把静止页 rAF 压到 ~1.5s/次（data-at 揭示迟拍、开场淡入冻结在中间态）。修复：`capture.mjs` 改「先 __start → settle 250ms → record」（回填的初始状态已是全亮画面，附带延迟无害；文件时钟相对场景早 ~0.3s 有界）+ `runtime.js` 注入 1px opacity .02 保活微动画（合成器持续出帧，rAF 不再压频）
+  - QC：17/17（字幕关闭时 f_caption 项跳过属预期，18 基线 −1）

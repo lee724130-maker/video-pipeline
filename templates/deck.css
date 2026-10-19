@@ -1,0 +1,200 @@
+/* ============ deck · 演示风（P2-9 复刻样片：暗蓝底 + 青点缀 + 左对齐章节页 + 底部章节导航） ============
+   03 在 sceneStyle=deck 时把本文件整体注入 base.css 之后（同文档内后写覆盖先写，classic 主题零影响）。
+   设计基准 1920x1080 横屏（--k=1）；参考样片 1280x720 按 1.5x 折算 px。
+   元素来源：.s-title=title 开场页 / .s-bullet=章节页 / .s-end=收尾页（含 outro）；
+   .chapnav 由 03 按 shots.nav 注入到每个场景（active=当前镜）。 */
+
+:root {
+  --bg: #070c17;
+  --fg: #f6fbff;
+  --fg-dim: #8e99ab;
+  --accent: #00edce;             /* 青绿点缀（样片主色） */
+  --accent-2: #00edce;
+}
+
+/* 背景：暗蓝斜向渐变 + 左上青光晕 + 右下暖光晕，去掉经典细网格（样片无网格） */
+body { position: relative; background: linear-gradient(155deg, #0c2032 0%, #0a1424 42%, #070c17 100%); }
+.bg::before {
+  background:
+    radial-gradient(46% 38% at 14% 10%, rgba(0, 237, 206, .10), transparent 70%),
+    radial-gradient(42% 34% at 92% 94%, rgba(255, 150, 80, .07), transparent 70%);
+}
+.bg::after { display: none; }
+
+/* 版式总纲：内容左对齐、自上而下排；底部留给章节导航条 */
+.stage {
+  justify-content: flex-start;
+  gap: calc(30px * var(--k));
+  padding-top: calc(170px * var(--k));
+  padding-bottom: calc(150px * var(--k));
+}
+.corner, .bar { display: none; }   /* 右上序号角标 / 装饰横条：样片里不存在 */
+
+/* —— 开场页（s-title）：居中胶囊徽标 + 白青大标题 + 副标题 + 标签按钮行 —— */
+.s-title {
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+  padding-top: calc(150px * var(--k));
+  padding-bottom: calc(320px * var(--k));
+  gap: calc(30px * var(--k));
+}
+.s-title .kicker {
+  font-size: calc(26px * var(--k));
+  font-weight: 600;
+  letter-spacing: calc(5px * var(--k));
+  text-transform: none;
+  color: var(--accent);
+  border: calc(2px * var(--k)) solid rgba(0, 237, 206, .55);
+  padding: calc(11px * var(--k)) calc(30px * var(--k));
+  border-radius: 999px;
+}
+.s-title h1.big { font-size: calc(92px * var(--k)); }
+.s-title .sub { font-size: calc(32px * var(--k)); color: #c7d2df; max-width: calc(1440px * var(--k)); }
+
+/* —— 章节页（s-bullet 等）：左对齐标题（**高亮**段=青）+ 青引用行 + 卡片网格 —— */
+.heading { font-size: calc(60px * var(--k)); }
+.quote {
+  display: flex;
+  align-items: center;
+  gap: calc(14px * var(--k));
+  font-size: calc(27px * var(--k));
+  font-weight: 600;
+  color: var(--accent);
+  line-height: 1.4;
+}
+.quote::before {
+  content: "";
+  flex: none;
+  width: calc(5px * var(--k));
+  height: calc(28px * var(--k));
+  background: var(--accent);
+  border-radius: 3px;
+}
+.quote:empty { display: none; }
+
+ul.items {
+  counter-reset: deck;
+  display: grid;
+  width: 100%;
+  gap: calc(22px * var(--k));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+ul.items.items-1 { grid-template-columns: minmax(0, 1fr); max-width: calc(960px * var(--k)); }
+ul.items.items-5, ul.items.items-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+ul.items li {
+  align-items: center;
+  gap: calc(20px * var(--k));
+  padding: calc(24px * var(--k)) calc(26px * var(--k));
+  font-size: calc(27px * var(--k));
+  background: rgba(255, 255, 255, .045);
+  border: 1px solid rgba(255, 255, 255, .075);
+  border-radius: calc(15px * var(--k));
+}
+ul.items li::before {
+  counter-increment: deck;
+  content: counter(deck);
+  align-self: center;
+  margin-top: 0;
+  width: calc(42px * var(--k));
+  height: calc(42px * var(--k));
+  border-radius: 50%;
+  background: rgba(0, 237, 206, .12);
+  border: 1px solid rgba(0, 237, 206, .45);
+  color: var(--accent);
+  font-size: calc(22px * var(--k));
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: none;
+}
+/* 双行卡片（items 支持 {t,d}）：标题行 + 灰色描述行 */
+.it-b b { display: block; font-size: 1em; font-weight: 700; line-height: 1.35; }
+.it-b i {
+  display: block;
+  font-style: normal;
+  font-size: .74em;
+  font-weight: 500;
+  color: var(--fg-dim);
+  margin-top: calc(8px * var(--k));
+  line-height: 1.4;
+}
+
+/* —— 收尾页（s-end，含 outro）：标题 + 两行总结 + 2×2 CTA 按钮（青/暖红交替，样片同款） —— */
+.s-end { gap: calc(32px * var(--k)); }
+.s-end .kicker { display: none; }
+.s-end h1.big { font-size: calc(64px * var(--k)); }
+.s-end .sub {
+  font-size: calc(31px * var(--k));
+  color: #c7d2df;
+  line-height: 1.6;
+  max-width: calc(1500px * var(--k));
+  white-space: pre-line;
+}
+.s-end .tags {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(20px * var(--k));
+  width: 100%;
+  max-width: calc(1080px * var(--k));
+  margin-top: calc(10px * var(--k));
+}
+.s-end .tags span {
+  padding: calc(20px * var(--k)) calc(30px * var(--k));
+  font-size: calc(27px * var(--k));
+  font-weight: 700;
+  color: #eafffb;
+  background: linear-gradient(180deg, rgba(0, 237, 206, .14), rgba(0, 237, 206, .06));
+  border: 1px solid rgba(0, 237, 206, .4);
+  border-radius: calc(12px * var(--k));
+}
+.s-end .tags span:nth-child(2n) {
+  color: #ffe9e3;
+  background: linear-gradient(180deg, rgba(255, 96, 64, .13), rgba(255, 96, 64, .05));
+  border-color: rgba(255, 120, 80, .38);
+}
+
+/* —— 标签行通用（开场页小按钮）；classic 下 base.css 隐藏，这里放开 —— */
+.tags { display: flex; flex-wrap: wrap; gap: calc(18px * var(--k)); }
+.s-title .tags { justify-content: center; }
+.tags span {
+  font-size: calc(24px * var(--k));
+  font-weight: 600;
+  color: #e8eef6;
+  background: rgba(255, 255, 255, .055);
+  border: 1px solid rgba(255, 255, 255, .16);
+  padding: calc(13px * var(--k)) calc(28px * var(--k));
+  border-radius: calc(10px * var(--k));
+}
+
+/* —— 底部章节导航条：等宽格子 + 细分割线 + 当前章浅色 pill（样片同款） —— */
+.chapnav {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  background: #151a25;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+}
+.chapnav span {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  padding: calc(19px * var(--k)) calc(10px * var(--k));
+  font-size: calc(22px * var(--k));
+  font-weight: 500;
+  line-height: 1.3;
+  color: #7d8798;
+  border-right: 1px solid rgba(255, 255, 255, .07);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chapnav span:last-child { border-right: 0; }
+.chapnav span.on {
+  background: rgba(255, 255, 255, .13);
+  color: #fff;
+  font-weight: 700;
+}

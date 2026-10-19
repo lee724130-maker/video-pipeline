@@ -88,8 +88,11 @@ function main() {
   if (!timeline.shots.length) fail('timeline 无镜头');
 
   // 转场：xfade 交叉溶解。非末段归一化时各延长 T，交叉消耗掉 T，总时长与镜头边界不变。
+  // deck 演示风 = 样片的硬切（T=0，cfg.compose.deckTransitionSec 可覆盖）；classic 走 transitionSec。
   // 钳制：镜头数 <2 或时长 ≥ 最短镜头的 0.8 倍时退回硬切。
-  let T = Number(cfg.compose.transitionSec || 0);
+  let T = timeline.sceneStyle === 'deck'
+    ? Number(cfg.compose.deckTransitionSec ?? 0)
+    : Number(cfg.compose.transitionSec || 0);
   const xType = String(cfg.compose.transitionType || 'fade');
   if (!Number.isFinite(T) || T < 0) T = 0;
   if (timeline.shots.length < 2 && T > 0) T = 0;
@@ -222,10 +225,16 @@ function main() {
   const md = durationOf(merged);
   if (Math.abs(md - total) > 0.3) warn('05', '拼接时长与设计偏差 >0.3s，字幕可能轻微错位');
 
-  // ③ 字幕
+  // ③ 字幕（captionsOff=P2-9 复刻模式：不生成 subs.ass、不叠字幕层，成片=纯画面+旁白）
+  const capOff = timeline.captionsOff === true;
   const assPath = path.join(task, 'subs.ass');
-  fs.writeFileSync(assPath, buildAss(timeline), 'utf8');
-  log('05', `字幕 ${timeline.captions.length} 条 → subs.ass`);
+  if (capOff) {
+    fs.existsSync(assPath) && fs.unlinkSync(assPath);
+    log('05', '字幕烧录关闭（captions:false）：跳过 subs.ass');
+  } else {
+    fs.writeFileSync(assPath, buildAss(timeline), 'utf8');
+    log('05', `字幕 ${timeline.captions.length} 条 → subs.ass`);
+  }
 
   // ④ 混流：烧字幕 + 配音 + 尾部淡出 + 精确总时长；有 BGM 再叠循环 BGM + 侧链闪避
   const final = path.join(task, '成片.mp4');
@@ -244,7 +253,7 @@ function main() {
     const bgFadeOut = Math.max(0, total - fo);
     // 配音为侧链键：说话时 BGM 自动压低（闪避），停顿处回弹
     const fc = [
-      '[0:v]ass=subs.ass[vout]',
+      capOff ? '[0:v]copy[vout]' : '[0:v]ass=subs.ass[vout]',
       `[1:a]afade=t=out:st=${fadeStart.toFixed(3)}:d=${cfg.compose.fadeOutSec}[vo]`,
       '[vo]asplit=2[voa][vok]',
       `[2:a]volume=${vol},afade=t=in:d=${fi.toFixed(2)},afade=t=out:st=${bgFadeOut.toFixed(3)}:d=${fo.toFixed(2)}[bg0]`,
@@ -267,7 +276,7 @@ function main() {
   } else {
     rf = run(FFMPEG, [
       '-y', '-i', 'merged.mp4', '-i', audio,
-      '-vf', 'ass=subs.ass',
+      ...(capOff ? [] : ['-vf', 'ass=subs.ass']),
       '-map', '0:v:0', '-map', '1:a:0',
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '19',
       '-r', String(timeline.fps), '-pix_fmt', 'yuv420p',

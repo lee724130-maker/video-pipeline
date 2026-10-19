@@ -16,18 +16,22 @@
 {
   "title": "任务名（也是文件夹名）",
   "width": 1080, "height": 1920, "fps": 30,
+  "sceneStyle": "classic",        // 可选：classic（缺省）| deck（演示风：幻灯版式+底部章节导航条+硬切）
+  "captions": true,               // 可选：false = 不烧录字幕（复刻样片纯画面+旁白；此时勿配 keyword 砸字）
   "voice": { "name": "zh-CN-YunxiNeural", "rate": "+8%" },
   "shots": [
     { "id": "s01", "type": "title",      "narration": "这段镜头的口播原文",
-      "title": "主标题", "subtitle": "副标题" },
+      "title": "主标题", "subtitle": "副标题",
+      "kicker": "徽标小字", "tags": ["标签一", "标签二"], "nav": "开场" },
     { "id": "s02", "type": "bullet",     "narration": "...",
-      "heading": "小标题", "items": ["要点一", "要点二", "要点三"] },
+      "heading": "小标题", "items": ["要点一", "要点二", "要点三"],
+      "quote": "青色引用行（可选）", "nav": "章节导航条标签（可选）" },
     { "id": "s03", "type": "keyword",    "narration": "...",
       "keyword": "大字关键词", "note": "一行小字注解" },
     { "id": "s04", "type": "transition", "narration": "...",
       "index": "02", "heading": "章节名" },
     { "id": "s05", "type": "end",        "narration": "...",
-      "title": "收尾金句", "subtitle": "CTA" }
+      "title": "收尾金句", "subtitle": "CTA", "tags": ["CTA 按钮一", "按钮二"] }
   ]
 }
 ```
@@ -35,8 +39,12 @@
 - `narration` 按顺序拼起来 = 整条配音文本（**不写标点分镜符号**，正常断句即可）。
 - 镜头时长不填，由 `02-compile` 用逐词时间戳自动切分。
 - `items` 每条 ≤ 10 字；超过 10 字会被质检警告（竖屏一行放不下）。
+  也可以写成 `{ "t": "标题", "d": "一行描述" }` 双行卡片（演示风常用）；
+  对不上口播词的条目按「开场 0.5s 后均匀铺开」出现。
 - `type` 白名单：`title | bullet | keyword | transition | end`（新增类型必须同时在
   `templates/scenes/` 加同名模板，并在 `03-scenes.cjs` 的 `TYPES` 注册）。
+- deck 演示风可选字段：`nav`（底部章节导航条该格标签，缺省按类型推导：开场/收尾/heading）、
+  `quote`（章节页青色引用行）、`tags`（title/end 的标签行/CTA 按钮）；建议 deck 配 `width:1920 height:1080`。
 
 ## 三、镜头分配原则
 

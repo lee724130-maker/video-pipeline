@@ -195,6 +195,10 @@ const server = http.createServer(async (req, res) => {
       const COVER_STYLES = ['tech', 'bold', 'magazine'];
       const coverStyle = String(body.coverStyle || 'tech');
       if (!COVER_STYLES.includes(coverStyle)) return json(res, 400, { error: `封面风格非法: ${coverStyle}（可选: ${COVER_STYLES.join(' / ')}）` });
+      // 场景风格（P2-9）：classic / deck，白名单 400 与 03 同表
+      const SCENE_STYLES = ['classic', 'deck'];
+      const sceneStyle = String(body.sceneStyle || 'classic');
+      if (!SCENE_STYLES.includes(sceneStyle)) return json(res, 400, { error: `场景风格非法: ${sceneStyle}（可选: ${SCENE_STYLES.join(' / ')}）` });
       for (const v of variants) {
         if (!NAME_RE.test(v.name)) return json(res, 400, { error: `变体任务名非法: ${v.name}` });
         const dir = ensureDir(path.join(OUTPUT, v.name));
@@ -206,6 +210,8 @@ const server = http.createServer(async (req, res) => {
           shots: v.shots,
           voice: String(body.voice || cfg.voice?.dashscope?.voice || ''),
           coverStyle, // 封面风格（P2-8）：03 白名单校验后注入 cover-* class
+          sceneStyle, // 场景风格（P2-9）：classic / deck（deck=演示风+章节导航条+硬切）
+          captions: body.captions !== false, // 字幕烧录开关（P2-9）：false=复刻样片纯画面+旁白
         };
         if (body.rate > 0) shots.targetCharsPerSec = Number(body.rate); // 任务级语速（01 残差校正）
         writeJson(path.join(dir, 'shots.json'), shots);
