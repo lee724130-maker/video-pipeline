@@ -256,6 +256,39 @@ async function showResult(tasks) {
   $('result').innerHTML = list.map((task) => {
     const t = all.find((x) => x.name === task) || {};
     const label = list.length > 1 ? `<div class="kv" style="margin:10px 0 6px"><b style="color:var(--fg)">${task}</b></div>` : '';
+    // 局部重跑面板：只在单任务时出现（批量变体各自独立，不便共用面板）
+    const rr = list.length === 1 ? `
+    <details style="margin-top:12px;border-top:1px dashed var(--line);padding-top:10px">
+      <summary style="cursor:pointer;color:var(--accent);user-select:none">局部重跑 / 改风格（复用配音，只重跑所选步骤之后）</summary>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center;font-size:13px">
+        <label>从 <select id="rr-from">
+          <option value="3" selected>③ 场景生成</option>
+          <option value="1">① 配音（全重跑）</option>
+          <option value="2">② 时间轴</option>
+          <option value="4">④ 渲染</option>
+          <option value="5">⑤ 合成</option>
+          <option value="6">⑥ 质检</option>
+        </select> 起</label>
+        <label>场景 <select id="rr-style">
+          <option value="classic" ${t.style === 'classic' ? 'selected' : ''}>classic</option>
+          <option value="deck" ${t.style === 'deck' ? 'selected' : ''}>deck 演示风</option>
+        </select></label>
+        <label>封面 <select id="rr-cover">
+          <option value="tech" ${t.cover === 'tech' ? 'selected' : ''}>tech</option>
+          <option value="bold" ${t.cover === 'bold' ? 'selected' : ''}>bold</option>
+          <option value="magazine" ${t.cover === 'magazine' ? 'selected' : ''}>magazine</option>
+        </select></label>
+        <label>字幕 <select id="rr-caps">
+          <option value="1" ${t.caps !== false ? 'selected' : ''}>开</option>
+          <option value="0" ${t.caps === false ? 'selected' : ''}>关</option>
+        </select></label>
+        <label style="flex:1 1 100%">config 补丁（JSON，可留空）<textarea id="rr-config" rows="2" style="width:100%;box-sizing:border-box"
+          placeholder='例：{"compose":{"captionSize":64}}　字幕字号/转场/BGM 等全局参数，深合并进本任务（不影响别的任务）'></textarea></label>
+        <label><input type="checkbox" id="rr-reset"> 清空本任务 config 补丁</label>
+        <button id="rr-go" onclick="rerun()">重跑</button>
+      </div>
+      ${t.hasOv ? '<div style="color:var(--accent);font-size:12px;margin-top:6px">● 本任务有 config 补丁生效中</div>' : ''}
+    </details>` : '';
     return `${label}
     <video controls src="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}?t=${Date.now()}"></video>
     <div class="kv">
@@ -264,8 +297,33 @@ async function showResult(tasks) {
       <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('封面.png')}" target="_blank">封面.png</a>
       <a href="/file/${encodeURIComponent(task)}/qc-report.txt" target="_blank">QC 报告</a>
       <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}" download>下载成片</a>
-    </div>`;
+    </div>${rr}`;
   }).join('<hr style="border:none;border-top:1px solid var(--line);margin:20px 0">');
+}
+
+// 局部重跑：shots 补丁始终带上面板当前值（预填=任务现值，不改就是原样回写），config 按需
+async function rerun() {
+  const task = lastTask;
+  if (!task) return;
+  let config = null;
+  const txt = $('rr-config').value.trim();
+  if (txt) { try { config = JSON.parse(txt); } catch { alert('config 补丁不是合法 JSON'); return; } }
+  $('rr-go').disabled = true;
+  try {
+    await j('/api/rerun', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: task,
+        from: +$('rr-from').value,
+        shots: { sceneStyle: $('rr-style').value, coverStyle: $('rr-cover').value, captions: $('rr-caps').value === '1' },
+        config,
+        resetConfig: $('rr-reset').checked,
+      }),
+    });
+    $('result').innerHTML = '';
+    poll();
+  } catch (e) { alert(e.message); $('rr-go').disabled = false; }
 }
 
 async function refreshHist() {

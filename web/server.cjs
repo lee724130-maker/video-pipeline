@@ -6,7 +6,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { ROOT, loadConfig, readJson, writeJson, ensureDir, log, warn } = require('../pipeline/lib/common.cjs');
+const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn } = require('../pipeline/lib/common.cjs');
 const { splitter } = require('./splitter.cjs');
 
 const cfg = loadConfig();
@@ -43,7 +43,10 @@ function runStep(taskDir, step) {
     state.step = step.n;
     state.stepName = step.name;
     push(`—— 第 ${step.n}/6 步 ${step.name} ——`);
-    const p = spawn(process.execPath, [path.join(ROOT, 'pipeline', step.file), taskDir], { cwd: ROOT });
+    // 任务级 config 补丁（web 局部重跑写入）：存在则经环境变量交给 common.cjs loadConfig 深合并
+    const ovPath = path.join(taskDir, 'config.overrides.json');
+    const env = { ...process.env, ...(fs.existsSync(ovPath) ? { PIPELINE_CONFIG_OVERRIDES: ovPath } : {}) };
+    const p = spawn(process.execPath, [path.join(ROOT, 'pipeline', step.file), taskDir], { cwd: ROOT, env });
     let buf = '';
     p.stdout.on('data', (d) => {
       buf += d.toString();
@@ -56,12 +59,14 @@ function runStep(taskDir, step) {
   });
 }
 
-async function runPipeline(taskDir) {
+async function runPipeline(taskDir, from = 1) {
   state.running = true;
   state.ok = null;
   state.at = Date.now();
   try {
+    if (from > 1) push(`局部重跑：从第 ${from} 步起（复用此前产物）`);
     for (const step of STEPS) {
+      if (step.n < from) continue;
       const ok = await runStep(taskDir, step);
       if (!ok) {
         state.ok = false;
@@ -89,7 +94,7 @@ async function pumpQueue() {
     if (state.queue.length || item.batchTotal > 1) {
       push(`══ 变体 ${item.batchIndex}/${item.batchTotal}：${item.name} ══`);
     }
-    await runPipeline(item.dir);
+    await runPipeline(item.dir, item.from || 1);
     state.done.push({ name: item.name, ok: state.ok });
   }
 }
@@ -159,6 +164,7 @@ const server = http.createServer(async (req, res) => {
       const tasks = dirs.map((d) => {
         const dir = path.join(OUTPUT, d);
         const meta = readJson(path.join(dir, 'audio', 'meta.json')) || {};
+        const shots = readJson(path.join(dir, 'shots.json')) || {};
         return {
           name: d,
           hasVideo: fs.existsSync(path.join(dir, '成片.mp4')),
@@ -167,6 +173,10 @@ const server = http.createServer(async (req, res) => {
           voice: (meta.voice && (meta.voice.voice || meta.voice.name)) || '',
           dur: meta.duration || 0,
           mt: fs.statSync(dir).mtimeMs,
+          style: shots.sceneStyle || 'classic',      // 局部重跑面板预填
+          cover: shots.coverStyle || 'tech',
+          caps: shots.captions !== false,
+          hasOv: fs.existsSync(path.join(dir, 'config.overrides.json')), // 任务级 config 补丁生效中
         };
       }).sort((a, b) => b.mt - a.mt);
       return json(res, 200, tasks);
@@ -237,6 +247,48 @@ const server = http.createServer(async (req, res) => {
       written.forEach((w, i) => state.queue.push({ ...w, batchIndex: i + 1, batchTotal: written.length }));
       pumpQueue(); // 异步跑，进度走 /api/status 轮询
       return json(res, 200, { ok: true, name: written[0].name, batch: written.map((w) => w.name) });
+    }
+
+    // —— 局部重跑（P3-1）：复用上游产物从指定步骤重跑；可选 shots/config 补丁（白名单，宁 fail 勿兜底）——
+    if (p === '/api/rerun' && req.method === 'POST') {
+      if (state.running || state.queue.length) return json(res, 409, { error: '有任务正在跑/排队，等它完成' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const name = String(body.name || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, name);
+      const sj = path.join(dir, 'shots.json');
+      if (!fs.existsSync(sj)) return json(res, 404, { error: '任务不存在' });
+      const from = Number(body.from) || 3;
+      if (!Number.isInteger(from) || from < 1 || from > 6) return json(res, 400, { error: 'from 必须是 1~6' });
+      // shots 补丁白名单（与 03/server 同表）
+      const SHOTS_PATCH = {
+        sceneStyle: (v) => ['classic', 'deck'].includes(v),
+        coverStyle: (v) => ['tech', 'bold', 'magazine'].includes(v),
+        captions: (v) => typeof v === 'boolean',
+        width: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
+        height: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
+        voice: (v) => typeof v === 'string' && v.length > 0 && v.length < 60,
+        targetCharsPerSec: (v) => +v >= 2 && +v <= 20,
+      };
+      const shots = readJson(sj) || {};
+      const patch = body.shots && typeof body.shots === 'object' ? body.shots : {};
+      for (const k of Object.keys(patch)) {
+        if (!SHOTS_PATCH[k]) return json(res, 400, { error: `不支持的 shots 字段: ${k}（可改: ${Object.keys(SHOTS_PATCH).join(' / ')}）` });
+        if (!SHOTS_PATCH[k](patch[k])) return json(res, 400, { error: `字段值非法: ${k}=${JSON.stringify(patch[k])}` });
+        shots[k] = patch[k];
+      }
+      writeJson(sj, shots);
+      // config 补丁：深合并进任务级 config.overrides.json（经 PIPELINE_CONFIG_OVERRIDES 让全步骤生效）；resetConfig 清空
+      const ovPath = path.join(dir, 'config.overrides.json');
+      if (body.resetConfig && fs.existsSync(ovPath)) fs.unlinkSync(ovPath);
+      if (body.config && typeof body.config === 'object') writeJson(ovPath, deepMerge(readJson(ovPath) || {}, body.config));
+      log('07-web', `局部重跑 ${name}：从第 ${from} 步起${Object.keys(patch).length ? ' · shots ' + Object.keys(patch).join(',') : ''}${body.config ? ' · config 补丁已应用' : ''}${body.resetConfig ? ' · 已清空 config 补丁' : ''}`);
+      state.lines = [];
+      state.done = [];
+      state.task = name;
+      state.queue.push({ name, dir, from, batchTotal: 1 });
+      pumpQueue(); // 异步跑，进度走 /api/status 轮询
+      return json(res, 200, { ok: true, name, from });
     }
 
     // —— 任务产物预览（白名单文件名，防穿越）——

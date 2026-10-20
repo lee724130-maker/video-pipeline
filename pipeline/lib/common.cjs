@@ -8,7 +8,8 @@ const FFPROBE = detectTool('ffprobe');
 const ROOT = path.resolve(__dirname, '..', '..');
 
 // —— 配置加载：config.json（进仓库）+ config.local.json（gitignore，本机私有：API key/代理/路径）
-// 两层深合并，local 覆盖 base
+// 两层深合并，local 覆盖 base；若设置 PIPELINE_CONFIG_OVERRIDES（任务级补丁文件路径，由 web 局部重跑
+// 写入 <任务目录>/config.overrides.json），再深合并一层——CLI 不设该变量，行为不变
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
 function deepMerge(a, b) {
   const out = { ...a };
@@ -18,7 +19,10 @@ function deepMerge(a, b) {
 function loadConfig() {
   const base = readJson(path.join(ROOT, 'pipeline', 'config.json')) || {};
   const local = readJson(path.join(ROOT, 'pipeline', 'config.local.json')) || {};
-  return deepMerge(base, local);
+  let out = deepMerge(base, local);
+  const ov = process.env.PIPELINE_CONFIG_OVERRIDES;
+  if (ov && fs.existsSync(ov)) out = deepMerge(out, readJson(ov) || {});
+  return out;
 }
 
 // —— ffmpeg 探测：config.ffmpeg（目录或 exe 路径）→ PATH → 常见手动安装位（D:/ffmpeg 等）
@@ -181,4 +185,4 @@ function bgImages(task) {
     .sort((a, b) => Number(a.match(/bg-(\d+)/i)[1]) - Number(b.match(/bg-(\d+)/i)[1]));
 }
 
-module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, loudnormFile, fail };
+module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, deepMerge, loudnormFile, fail };
