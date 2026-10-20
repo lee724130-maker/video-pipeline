@@ -217,8 +217,8 @@ SDK 权威格式来源：dashscope 1.27.7 包内 `audio/http_tts/http_speech_syn
 
 ## ⏸ 中断点（2026-10-19 收工，P2-9 已提交推送 5c39ca3，管线空闲）
 
-明天继续（按优先级）：
-1. **classic 回归**：runtime.js/capture.mjs 改动影响全部主题——重跑既有 classic 任务验证（如 `AI短剧变现`：`node pipeline/run.cjs "output/<任务名>" --steps 3,4,5,6`，跳 TTS 省时；预期 18/18，重点看开场亮度与要点错峰是否同步改善）。
-2. **web 服务重启**：`node web/server.cjs`（sceneStyle 下拉/字幕复选是本次新增，旧进程若还开着需重启才生效）；可顺手在网页端建一条 deck 任务走 API 全链验证（server 白名单 400 分支只在代码层验过，未走真实 API）。
-3. **遗留验证项**：「AI短剧变现」网页预览 400 修复（a8996d4）待用户回报播放正常后收掉。
-4. 可选打磨：demo 侧 `output/deck-demo` 不入库（output/ 已忽略），如需长期留档可导出成片到仓库外备份。
+## ✅ 恢复日完成（2026-10-20，P2-9 验证项全部闭环）
+
+1. **classic 回归**：`AI短剧变现` steps 3-6 重跑（跳 TTS 复用配音）——**18/18**、开场首帧全亮、卡拉OK字幕逐词高亮正常、xfade 0.4s/响度 -14.4 全保持；runtime.js/capture.mjs 全局改动零回归 ✓
+2. **API 实测**：web 服务新进程起在 8787；`/api/create` 白名单 4 分支全 PASS（非法 sceneStyle/coverStyle/任务名/空文案 → 400 且报错含可选清单）；**API 建 deck 任务全链** `deck-api-test`（46 字·1920×1080·captions:false）→ create 200 → shots.json 落盘 sceneStyle/captions 正确 → QC **17/17**，抽帧确认网页路径 deck 版式/导航条（nav 标签按类型自动推导）✓
+3. **遗留验证项（唯一待用户）**：「AI短剧变现」网页预览 400 修复（a8996d4）——服务已新起、该任务今日已重跑，用户随时可在网页点预览确认后收掉本项。
