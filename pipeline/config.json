@@ -49,6 +49,8 @@
       "volume": 0.16,
       "fadeInSec": 0.8,
       "fadeOutSec": 1.5,
+      "outroPitchSemitones": 0,
+      "outroPitchSec": 2,
       "duckThreshold": 0.02,
       "duckRatio": 8,
       "beatSnap": true,

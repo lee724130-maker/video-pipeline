@@ -251,12 +251,37 @@ function main() {
     const th = Number(b.duckThreshold ?? 0.02);
     const ratio = Number(b.duckRatio ?? 8);
     const bgFadeOut = Math.max(0, total - fo);
+    // 收尾降调（技术库试点）：末尾 N 秒 BGM 降 K 个半音（K 为负，如 -2），情绪收束感。
+    // 纯内置滤镜实现：尾段 asetrate 降调 + atempo 还原时长（变调不变速），0.15s acrossfade 接回主体。
+    const pitchS = Number(b.outroPitchSemitones ?? 0);
+    const pitchP = Number(b.outroPitchSec ?? 2);
+    if (!Number.isFinite(pitchS) || pitchS < -12 || pitchS > 0) fail(`compose.bgm.outroPitchSemitones 须是 [-12,0] 的数（负数=降调，0=关）：${b.outroPitchSemitones}`);
+    if (pitchS !== 0 && (pitchP < 0.2 || pitchP > 8)) fail(`compose.bgm.outroPitchSec 须在 0.2~8s：${b.outroPitchSec}`);
+    let applyPitch = pitchS < 0;
+    if (applyPitch && pitchP >= total * 0.5) { warn('05', `收尾降调 ${pitchP}s ≥ 成片一半，已忽略`); applyPitch = false; }
+    // BGM 段滤镜链（可选降调段）→ [bg0]，之后闪避/混音照旧
+    let bgChain;
+    if (applyPitch) {
+      const rate = Math.round(44100 * Math.pow(2, pitchS / 12)); // 降 |S| 个半音后的采样率
+      const tempo = Math.pow(2, -pitchS / 12).toFixed(6);        // 还原时长的变速（>1，上限 2.0 对应 -12 半音）
+      const pStart = (total - pitchP).toFixed(3);
+      const mEnd = (total - pitchP + 0.15).toFixed(3);
+      bgChain = [
+        '[2:a]asplit=2[bgb][bgt]',
+        `[bgb]atrim=end=${mEnd},asetpts=PTS-STARTPTS[bgm0]`,
+        `[bgt]atrim=start=${pStart},asetpts=PTS-STARTPTS,aresample=44100,asetrate=${rate},aresample=44100,atempo=${tempo}[bgm1]`,
+        '[bgm0][bgm1]acrossfade=d=0.15[bgp]',
+        `[bgp]volume=${vol},afade=t=in:d=${fi.toFixed(2)},afade=t=out:st=${bgFadeOut.toFixed(3)}:d=${fo.toFixed(2)}[bg0]`,
+      ].join(';');
+    } else {
+      bgChain = `[2:a]volume=${vol},afade=t=in:d=${fi.toFixed(2)},afade=t=out:st=${bgFadeOut.toFixed(3)}:d=${fo.toFixed(2)}[bg0]`;
+    }
     // 配音为侧链键：说话时 BGM 自动压低（闪避），停顿处回弹
     const fc = [
       capOff ? '[0:v]copy[vout]' : '[0:v]ass=subs.ass[vout]',
       `[1:a]afade=t=out:st=${fadeStart.toFixed(3)}:d=${cfg.compose.fadeOutSec}[vo]`,
       '[vo]asplit=2[voa][vok]',
-      `[2:a]volume=${vol},afade=t=in:d=${fi.toFixed(2)},afade=t=out:st=${bgFadeOut.toFixed(3)}:d=${fo.toFixed(2)}[bg0]`,
+      bgChain,
       `[bg0][vok]sidechaincompress=threshold=${th}:ratio=${ratio}:attack=15:release=450[bg]`,
       '[voa][bg]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,apad[aout]',
     ].join(';');
@@ -272,7 +297,7 @@ function main() {
       final,
     ], cwd);
     if (!rf.ok || !fs.existsSync(final)) fail(`成片合成失败（BGM 混音）\n${rf.out.split('\n').slice(-12).join('\n')}`);
-    log('05', `BGM 混入 ${path.basename(bgmFile)}（音量 ×${vol} · 闪避 ×${ratio} · 淡入 ${fi}s / 淡出 ${fo}s）`);
+    log('05', `BGM 混入 ${path.basename(bgmFile)}（音量 ×${vol} · 闪避 ×${ratio} · 淡入 ${fi}s / 淡出 ${fo}s${applyPitch ? ` · 收尾降调 ${pitchS} 半音/${pitchP}s` : ''}）`);
   } else {
     rf = run(FFMPEG, [
       '-y', '-i', 'merged.mp4', '-i', audio,
