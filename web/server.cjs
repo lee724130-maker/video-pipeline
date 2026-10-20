@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn } = require('../pipeline/lib/common.cjs');
+const { parseNeed } = require('./chat-rules.cjs');
 const { splitter } = require('./splitter.cjs');
 
 const cfg = loadConfig();
@@ -97,6 +98,52 @@ async function pumpQueue() {
     await runPipeline(item.dir, item.from || 1);
     state.done.push({ name: item.name, ok: state.ok });
   }
+}
+
+// —— 共享重跑引擎（P3-4 抽取）：/api/rerun 与聊天框同用 ——
+// 校验（白名单，宁 fail 勿兜底）→ 落盘 shots/config 补丁 → 排队跑。返回 {error} 或 {ok:true, from}
+const SHOTS_PATCH = {
+  sceneStyle: (v) => ['classic', 'deck'].includes(v),
+  coverStyle: (v) => ['tech', 'bold', 'magazine'].includes(v),
+  captions: (v) => typeof v === 'boolean',
+  width: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
+  height: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
+  voice: (v) => typeof v === 'string' && v.length > 0 && v.length < 60,
+  targetCharsPerSec: (v) => +v >= 2 && +v <= 20,
+};
+function startRerun(name, dir, from, patch, config, resetConfig) {
+  const sj = path.join(dir, 'shots.json');
+  if (!fs.existsSync(sj)) return { error: '任务不存在' };
+  if (!Number.isInteger(from) || from < 1 || from > 6) return { error: 'from 必须是 1~6' };
+  patch = patch && typeof patch === 'object' ? patch : {};
+  const shots = readJson(sj) || {};
+  for (const k of Object.keys(patch)) {
+    if (!SHOTS_PATCH[k]) return { error: `不支持的 shots 字段: ${k}（可改: ${Object.keys(SHOTS_PATCH).join(' / ')}）` };
+    if (!SHOTS_PATCH[k](patch[k])) return { error: `字段值非法: ${k}=${JSON.stringify(patch[k])}` };
+    shots[k] = patch[k];
+  }
+  writeJson(sj, shots);
+  // config 补丁：深合并进任务级 config.overrides.json（经 PIPELINE_CONFIG_OVERRIDES 让全步骤生效）；resetConfig 清空
+  const ovPath = path.join(dir, 'config.overrides.json');
+  if (resetConfig && fs.existsSync(ovPath)) fs.unlinkSync(ovPath);
+  if (config && typeof config === 'object') writeJson(ovPath, deepMerge(readJson(ovPath) || {}, config));
+  log('07-web', `局部重跑 ${name}：从第 ${from} 步起${Object.keys(patch).length ? ' · shots ' + Object.keys(patch).join(',') : ''}${config ? ' · config 补丁已应用' : ''}${resetConfig ? ' · 已清空 config 补丁' : ''}`);
+  state.lines = [];
+  state.done = [];
+  state.task = name;
+  state.queue.push({ name, dir, from, batchTotal: 1 });
+  pumpQueue(); // 异步跑，进度走 /api/status 轮询
+  return { ok: true, from };
+}
+// 技术库读取（techniques/*.json，坏文件带 error 直示）
+function loadTechniques() {
+  const dir = path.join(ROOT, 'techniques');
+  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort() : [];
+  return files.map((f) => {
+    const t = readJson(path.join(dir, f));
+    if (!t || !t.id || !t.name || !t.insert) return { id: f.replace(/\.json$/, ''), name: f, error: '配方缺 id/name/insert 字段' };
+    return t;
+  });
 }
 
 // —— HTTP 工具 ——
@@ -255,40 +302,71 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       const name = String(body.name || '').trim();
       if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const r = startRerun(name, path.join(OUTPUT, name), Number(body.from) || 3, body.shots, body.config, body.resetConfig);
+      if (r.error) return json(res, r.error === '任务不存在' ? 404 : 400, { error: r.error });
+      return json(res, 200, { ok: true, name, from: r.from });
+    }
+
+    // —— 技术库货架（P3-3）：techniques/*.json 每技术一配方；坏文件不藏、以 error 态直示 ——
+    if (p === '/api/techniques' && req.method === 'GET') {
+      return json(res, 200, loadTechniques());
+    }
+
+    // —— 任务持久聊天框（P3-4）：chat.json 多线程；需求解析→补丁→共享重跑引擎；聊天历史=改动审计 ——
+    if (p === '/api/chat' && req.method === 'GET') {
+      const name = String(u.searchParams.get('name') || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const chat = readJson(path.join(OUTPUT, name, 'chat.json')) || { threads: [], activeThread: null };
+      const th = (chat.threads || []).find((x) => x.id === chat.activeThread) || null;
+      return json(res, 200, {
+        activeThread: chat.activeThread || null,
+        threadTitles: (chat.threads || []).map((x) => ({ id: x.id, title: x.title })),
+        messages: th ? th.messages : [],
+      });
+    }
+    if (p === '/api/chat' && req.method === 'POST') {
+      if (state.running || state.queue.length) return json(res, 409, { error: '有任务正在跑/排队，等它完成' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const name = String(body.name || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
       const dir = path.join(OUTPUT, name);
-      const sj = path.join(dir, 'shots.json');
-      if (!fs.existsSync(sj)) return json(res, 404, { error: '任务不存在' });
-      const from = Number(body.from) || 3;
-      if (!Number.isInteger(from) || from < 1 || from > 6) return json(res, 400, { error: 'from 必须是 1~6' });
-      // shots 补丁白名单（与 03/server 同表）
-      const SHOTS_PATCH = {
-        sceneStyle: (v) => ['classic', 'deck'].includes(v),
-        coverStyle: (v) => ['tech', 'bold', 'magazine'].includes(v),
-        captions: (v) => typeof v === 'boolean',
-        width: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
-        height: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
-        voice: (v) => typeof v === 'string' && v.length > 0 && v.length < 60,
-        targetCharsPerSec: (v) => +v >= 2 && +v <= 20,
-      };
-      const shots = readJson(sj) || {};
-      const patch = body.shots && typeof body.shots === 'object' ? body.shots : {};
-      for (const k of Object.keys(patch)) {
-        if (!SHOTS_PATCH[k]) return json(res, 400, { error: `不支持的 shots 字段: ${k}（可改: ${Object.keys(SHOTS_PATCH).join(' / ')}）` });
-        if (!SHOTS_PATCH[k](patch[k])) return json(res, 400, { error: `字段值非法: ${k}=${JSON.stringify(patch[k])}` });
-        shots[k] = patch[k];
+      if (!fs.existsSync(path.join(dir, 'shots.json'))) return json(res, 404, { error: '任务不存在' });
+      const text = String(body.text || '').trim();
+      if (!text || text.length > 500) return json(res, 400, { error: '需求文本为空或超过 500 字' });
+      // 线程：无活跃线程或显式 newThread 时开新线程
+      const chatPath = path.join(dir, 'chat.json');
+      const chat = readJson(chatPath) || { threads: [], activeThread: null };
+      if (!Array.isArray(chat.threads)) chat.threads = [];
+      if (body.newThread || !chat.activeThread || !chat.threads.find((x) => x.id === chat.activeThread)) {
+        const id = `t${chat.threads.length + 1}-${Date.now().toString(36)}`;
+        chat.threads.push({ id, title: text.slice(0, 20), createdAt: Date.now(), messages: [] });
+        chat.activeThread = id;
       }
-      writeJson(sj, shots);
-      // config 补丁：深合并进任务级 config.overrides.json（经 PIPELINE_CONFIG_OVERRIDES 让全步骤生效）；resetConfig 清空
-      const ovPath = path.join(dir, 'config.overrides.json');
-      if (body.resetConfig && fs.existsSync(ovPath)) fs.unlinkSync(ovPath);
-      if (body.config && typeof body.config === 'object') writeJson(ovPath, deepMerge(readJson(ovPath) || {}, body.config));
-      log('07-web', `局部重跑 ${name}：从第 ${from} 步起${Object.keys(patch).length ? ' · shots ' + Object.keys(patch).join(',') : ''}${body.config ? ' · config 补丁已应用' : ''}${body.resetConfig ? ' · 已清空 config 补丁' : ''}`);
-      state.lines = [];
-      state.done = [];
-      state.task = name;
-      state.queue.push({ name, dir, from, batchTotal: 1 });
-      pumpQueue(); // 异步跑，进度走 /api/status 轮询
-      return json(res, 200, { ok: true, name, from });
+      const th = chat.threads.find((x) => x.id === chat.activeThread);
+      th.messages.push({ role: 'user', text, at: Date.now() });
+      // 需求解析 → （命中才动）补丁 + 局部重跑
+      const need = parseNeed(text, loadTechniques());
+      let reply, started = false;
+      if (!need.desc.length) {
+        reply = '没听懂这句需求，任务没动。试试：换演示风 / 字幕大一点 / 收尾降调 3 个半音 / 关闭字幕 / BGM 小声一点 / 转场绵长 / 语速 8 字——或直接说技术库里的名字（如「BGM 收尾降调」）。';
+      } else {
+        // 语速相对调整：基于任务当前值（shots 优先，回退全局默认），钳进 4.5~9
+        let patch = need.shots || {};
+        if (need.rateSet) patch = { ...patch, targetCharsPerSec: need.rateSet };
+        else if (need.rateDelta) {
+          const cur = (readJson(path.join(dir, 'shots.json')) || {}).targetCharsPerSec || loadConfig().voice?.targetCharsPerSec || 7.2;
+          patch = { ...patch, targetCharsPerSec: Math.min(9, Math.max(4.5, +(cur + need.rateDelta).toFixed(1))) };
+        }
+        const r = startRerun(name, dir, need.from, patch, need.config, false);
+        if (r.error) reply = `需求已记录，但重跑失败：${r.error}`;
+        else {
+          started = true;
+          reply = `已理解 ${need.desc.length} 处改动，从第 ${need.from} 步重跑中：\n${need.desc.map((d, i) => `${i + 1}. ${d}`).join('\n')}\n——改动已累积写入本任务（补丁叠加不覆盖），聊天记录即审计日志，可继续追加需求。`;
+        }
+      }
+      th.messages.push({ role: 'assistant', text: reply, at: Date.now(), ops: need.desc.length ? { from: need.from, shots: need.shots, config: need.config, rateSet: need.rateSet, rateDelta: need.rateDelta } : undefined, started });
+      writeJson(chatPath, chat);
+      return json(res, 200, { reply, started, activeThread: chat.activeThread });
     }
 
     // —— 任务产物预览（白名单文件名，防穿越）——

@@ -1,0 +1,13 @@
+{
+  "id": "cover-bold",
+  "name": "高对比大字封面",
+  "category": "封面",
+  "tier": "implemented",
+  "desc": "封面切到 bold 风格（黑底暖黄高对比大字），信息流里更抓眼。会连带重渲场景（封面由场景步骤生成）。",
+  "insert": {
+    "from": 3,
+    "shots": { "coverStyle": "bold" },
+    "note": "三档可选：tech（暗色科技，默认）/ bold（高对比大字）/ magazine（杂志留白）"
+  },
+  "source": { "by": "P1 封面三风格" }
+}

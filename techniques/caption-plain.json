@@ -1,0 +1,13 @@
+{
+  "id": "caption-plain",
+  "name": "关闭逐词高亮",
+  "category": "字幕",
+  "tier": "implemented",
+  "desc": "关掉卡拉OK式逐词高亮，字幕变整句白字（dim 色为未读部分），画面更干净，适合正式/知识密度高的内容。",
+  "insert": {
+    "from": 5,
+    "config": { "compose": { "karaoke": false } },
+    "note": "默认开启逐词高亮；正式内容可关"
+  },
+  "source": { "by": "P1 卡拉OK字幕" }
+}

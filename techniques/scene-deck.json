@@ -1,0 +1,13 @@
+{
+  "id": "scene-deck",
+  "name": "演示风大屏",
+  "category": "画面",
+  "tier": "implemented",
+  "desc": "场景切换为演示风（幻灯版式 + 底部章节导航条 + 6 处锚点动效），复刻教学样片的大屏质感，适合横屏 16:9 干货口播。会重渲全部镜头。",
+  "insert": {
+    "from": 3,
+    "shots": { "sceneStyle": "deck" },
+    "note": "演示风建议配横屏；切回竖屏大字选 classic"
+  },
+  "source": { "by": "P2-9 参考样片复刻" }
+}

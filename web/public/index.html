@@ -54,6 +54,11 @@
   td b { color:var(--fg); font-weight:600; }
   .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:#1b2433; color:var(--dim); }
   .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
+  .titem { border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .titem .tdesc { font-size:12px; color:var(--dim); margin:6px 0; line-height:1.6; }
+  .titem .tnote { font-size:11px; color:#8a94a3; }
+  .titem button { font-size:12px; padding:4px 12px; }
+  .titem.bad { border-color:#7a3b3b; }
 </style>
 </head>
 <body>
@@ -134,6 +139,12 @@
       <div class="err" id="err"></div>
     </div>
 
+    <!-- 左下：技术库货架（P3-3） -->
+    <div class="card">
+      <h2>技术库 <span style="font-weight:400;font-size:12px;color:#8a94a3">点「插入」自动填好下方任务的重跑表单——确认后到右侧预览区点重跑</span></h2>
+      <div id="tech" style="display:flex;flex-direction:column;gap:10px"><div class="sub">加载中…</div></div>
+    </div>
+
     <!-- 右：进度 + 预览 -->
     <div class="card">
       <h2>② 进度与成片</h2>
@@ -171,6 +182,7 @@ async function init() {
   $('rate').value = meta.defaultRate;
   $('rateVal').textContent = meta.defaultRate;
   refreshHist();
+  refreshTech();
   if (meta.running) poll();
 }
 
@@ -252,7 +264,10 @@ async function poll() {
 async function showResult(tasks) {
   const list = Array.isArray(tasks) ? tasks : [tasks];
   lastTask = list[0];
-  const all = await j('/api/tasks');
+  const [all, chat] = await Promise.all([
+    j('/api/tasks'),
+    list.length === 1 ? j('/api/chat?name=' + encodeURIComponent(list[0])).catch(() => null) : Promise.resolve(null),
+  ]);
   $('result').innerHTML = list.map((task) => {
     const t = all.find((x) => x.name === task) || {};
     const label = list.length > 1 ? `<div class="kv" style="margin:10px 0 6px"><b style="color:var(--fg)">${task}</b></div>` : '';
@@ -289,6 +304,19 @@ async function showResult(tasks) {
       </div>
       ${t.hasOv ? '<div style="color:var(--accent);font-size:12px;margin-top:6px">● 本任务有 config 补丁生效中</div>' : ''}
     </details>` : '';
+    // 需求聊天框（P3-4）：单任务时显示；多线程持久化在任务目录 chat.json，历史=审计
+    const chatBlock = list.length === 1 && chat ? `
+    <details style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px" open>
+      <summary style="cursor:pointer;color:var(--accent);user-select:none">需求聊天框（用人话续加需求 · 聊天记录=改动审计）</summary>
+      <div id="chat-box" style="max-height:280px;overflow-y:auto;margin:10px 0;display:flex;flex-direction:column;gap:6px">${renderMsgs(chat.messages)}</div>
+      ${chat.threadTitles.length > 1 ? `<div style="font-size:11px;color:#8a94a3;margin-bottom:6px">共 ${chat.threadTitles.length} 个话题（「新话题」=换上下文重聊）</div>` : ''}
+      <div style="display:flex;gap:8px">
+        <input id="chat-in" style="flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--fg)"
+          placeholder="例：换演示风，收尾降调 3 个半音，字幕大一点　（回车发送）" onkeydown="if(event.key==='Enter')sendChat()">
+        <button onclick="sendChat(true)" title="开新话题">新话题</button>
+        <button onclick="sendChat()">发送</button>
+      </div>
+    </details>` : '';
     return `${label}
     <video controls src="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}?t=${Date.now()}"></video>
     <div class="kv">
@@ -297,7 +325,7 @@ async function showResult(tasks) {
       <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('封面.png')}" target="_blank">封面.png</a>
       <a href="/file/${encodeURIComponent(task)}/qc-report.txt" target="_blank">QC 报告</a>
       <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}" download>下载成片</a>
-    </div>${rr}`;
+    </div>${rr}${chatBlock}`;
   }).join('<hr style="border:none;border-top:1px solid var(--line);margin:20px 0">');
 }
 
@@ -324,6 +352,83 @@ async function rerun() {
     $('result').innerHTML = '';
     poll();
   } catch (e) { alert(e.message); $('rr-go').disabled = false; }
+}
+
+// —— 技术库货架（P3-3）——
+function deepMergeJS(a, b) {
+  const out = { ...a };
+  for (const k of Object.keys(b)) out[k] = b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) ? deepMergeJS(a[k], b[k]) : b[k];
+  return out;
+}
+
+async function refreshTech() {
+  try {
+    const list = await j('/api/techniques');
+    if (!list.length) { $('tech').innerHTML = '<div class="sub">techniques/ 目录为空——抖音教学视频分析入库后会出现在这里</div>'; return; }
+    $('tech').innerHTML = list.map((t) => t.error ? `
+    <div class="titem bad"><b>${t.name}</b> <span class="badge" style="background:rgba(239,68,68,.15);color:#f87171">配方损坏</span>
+      <div class="tdesc">${t.id}.json · ${t.error}</div></div>` : `
+    <div class="titem">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>${t.name}</b>
+        <span class="badge">${t.category || '其他'}</span>
+        ${t.tier === 'implemented' ? '<span class="badge ok">可直接用</span>' : '<span class="badge">待实现</span>'}
+      </div>
+      <div class="tdesc">${t.desc || ''}</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button onclick="insertTech('${t.id}')" ${t.tier === 'implemented' ? '' : 'disabled'}>⤵ 插入当前任务</button>
+        <span class="tnote">${(t.insert && t.insert.note) || ''}</span>
+      </div>
+    </div>`).join('');
+  } catch (e) { $('tech').innerHTML = `<div class="sub">技术库加载失败：${e.message}</div>`; }
+}
+
+// 插入 = 填好局部重跑表单（from / 场景·封面·字幕下拉 / config 补丁深合并），不自动提交——留给用户确认
+async function insertTech(id) {
+  if (!lastTask) { alert('先出片，或到「历史任务」点开一条成片，再插入技术'); return; }
+  if (!$('rr-from')) { alert('重跑面板不在（可能正在出片）——等完成后再插入'); return; }
+  let t;
+  try { t = (await j('/api/techniques')).find((x) => x.id === id); } catch (e) { alert(e.message); return; }
+  if (!t || !t.insert) { alert('配方缺失：' + id); return; }
+  const det = document.querySelector('#result details');
+  if (det) det.open = true;
+  if (t.insert.from) $('rr-from').value = String(t.insert.from);
+  const s = t.insert.shots || {};
+  if (s.sceneStyle) $('rr-style').value = s.sceneStyle;
+  if (s.coverStyle) $('rr-cover').value = s.coverStyle;
+  if (typeof s.captions === 'boolean') $('rr-caps').value = s.captions ? '1' : '0';
+  if (t.insert.config) {
+    let cur = {};
+    const txt = $('rr-config').value.trim();
+    if (txt) { try { cur = JSON.parse(txt); } catch { cur = {}; } }
+    $('rr-config').value = JSON.stringify(deepMergeJS(cur, t.insert.config), null, 1);
+  }
+  if (det) det.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// —— 需求聊天框（P3-4）——
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function renderMsgs(msgs) {
+  if (!msgs || !msgs.length) return '<div style="font-size:12px;color:#8a94a3">还没有需求记录——用人话告诉它怎么改，比如「换演示风，收尾降调 3 个半音」</div>';
+  return msgs.map((m) => `
+    <div style="border-left:3px solid ${m.role === 'user' ? 'var(--accent)' : 'var(--ok)'};padding:4px 10px;font-size:13px;line-height:1.7;${m.role === 'user' ? '' : 'background:rgba(255,255,255,.02);'}">
+      <b style="font-size:11px;color:#8a94a3">${m.role === 'user' ? '你' : '流水线'}${m.started ? ' · 已重跑' : ''}</b>
+      <div style="white-space:pre-wrap">${esc(m.text)}</div>
+    </div>`).join('');
+}
+async function sendChat(newThread) {
+  const inp = $('chat-in');
+  const text = ((inp && inp.value) || '').trim();
+  if (!text) return;
+  if (inp) inp.value = '';
+  try {
+    const d = await j('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: lastTask, text, newThread: !!newThread }),
+    });
+    if (d.started) { $('result').innerHTML = ''; poll(); } // 命中→已排队重跑，转进度视图
+    else await showResult(lastTask);                        // 没听懂→原地刷新（历史里能看到这轮对话）
+  } catch (e) { alert(e.message); if (inp) inp.value = text; }
 }
 
 async function refreshHist() {

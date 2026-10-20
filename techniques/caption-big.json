@@ -1,0 +1,13 @@
+{
+  "id": "caption-big",
+  "name": "大字幕",
+  "category": "字幕",
+  "tier": "implemented",
+  "desc": "字幕字号加大（默认 56 → 76），手机端静音刷视频时可读性优先，完播友好。只重跑合成起即可生效。",
+  "insert": {
+    "from": 5,
+    "config": { "compose": { "captionSize": 76 } },
+    "note": "字号可再调：64 常规加大 / 76 明显大 / 90 巨字"
+  },
+  "source": { "by": "P1 字幕渲染参数" }
+}

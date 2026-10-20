@@ -1,0 +1,13 @@
+{
+  "id": "bgm-outro-pitch",
+  "name": "BGM 收尾降调",
+  "category": "声音",
+  "tier": "implemented",
+  "desc": "成片末尾若干秒把 BGM 降 N 个半音（变调不变速），情绪收束感强，完播率教学里的高频手法。半音数取负=降调，范围 [-12, 0]；时长 0.2~8s 且不超过成片一半。",
+  "insert": {
+    "from": 5,
+    "config": { "compose": { "bgm": { "outroPitchSemitones": -2, "outroPitchSec": 2.5 } } },
+    "note": "默认 -2 半音/2.5s；想更明显可改 -3 或拉长到 3s"
+  },
+  "source": { "by": "P3-2 自研实现（滤镜链：asetrate+atempo+acrossfade，零依赖）" }
+}

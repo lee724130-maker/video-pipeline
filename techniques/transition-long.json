@@ -1,0 +1,13 @@
+{
+  "id": "transition-long",
+  "name": "绵长转场",
+  "category": "转场",
+  "tier": "implemented",
+  "desc": "镜头转场时长加长（默认 0.4s → 0.8s，fade），节奏放缓、情绪更连贯，适合抒情/叙事内容；快节奏干货建议保持默认。",
+  "insert": {
+    "from": 5,
+    "config": { "compose": { "transitionSec": 0.8 } },
+    "note": "0.4 常规 / 0.6 微缓 / 0.8 绵长（注意：镜头本体会被转场吃掉等量时长）"
+  },
+  "source": { "by": "P2 xfade 转场参数" }
+}
