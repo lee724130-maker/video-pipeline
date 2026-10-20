@@ -308,6 +308,7 @@ async function showResult(tasks) {
     const chatBlock = list.length === 1 && chat ? `
     <details style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px" open>
       <summary style="cursor:pointer;color:var(--accent);user-select:none">需求聊天框（用人话续加需求 · 聊天记录=改动审计）</summary>
+      ${chat.llm ? `<div style="font-size:12px;margin:6px 0 2px;color:${chat.llm.degraded ? '#f59e0b' : '#8a94a3'}">${chat.llm.degraded ? `⚠ qwen 不可用（${esc(chat.llm.error)}）——已降级规则模式，额度恢复/接口恢复后自动切回` : (chat.llm.on ? 'qwen 语义解析已启用（额度由你的阿里云账户控制，用完自动降级）' : '规则模式（未配置或未开启 qwen）')}</div>` : ''}
       <div id="chat-box" style="max-height:280px;overflow-y:auto;margin:10px 0;display:flex;flex-direction:column;gap:6px">${renderMsgs(chat.messages)}</div>
       ${chat.threadTitles.length > 1 ? `<div style="font-size:11px;color:#8a94a3;margin-bottom:6px">共 ${chat.threadTitles.length} 个话题（「新话题」=换上下文重聊）</div>` : ''}
       <div style="display:flex;gap:8px">

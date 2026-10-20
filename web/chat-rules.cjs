@@ -105,4 +105,15 @@ function flatPaths(obj, prefix = []) {
   return out;
 }
 
-module.exports = { parseNeed };
+// shots 补丁白名单（/api/rerun 与 qwen 语义解析同表——宁 fail 勿兜底的单一出处）
+const SHOTS_PATCH = {
+  sceneStyle: (v) => ['classic', 'deck'].includes(v),
+  coverStyle: (v) => ['tech', 'bold', 'magazine'].includes(v),
+  captions: (v) => typeof v === 'boolean',
+  width: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
+  height: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
+  voice: (v) => typeof v === 'string' && v.length > 0 && v.length < 60,
+  targetCharsPerSec: (v) => +v >= 2 && +v <= 20,
+};
+
+module.exports = { parseNeed, SHOTS_PATCH };

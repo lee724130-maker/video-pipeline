@@ -7,7 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn } = require('../pipeline/lib/common.cjs');
-const { parseNeed } = require('./chat-rules.cjs');
+const { parseNeed, SHOTS_PATCH } = require('./chat-rules.cjs');
+const { qwenParse } = require('./chat-qwen.cjs');
 const { splitter } = require('./splitter.cjs');
 
 const cfg = loadConfig();
@@ -100,17 +101,15 @@ async function pumpQueue() {
   }
 }
 
+// qwen 状态（P3-5）：ok=false 时界面明示原因（quota=额度用尽，需通知用户）并降级规则模式
+let llmState = { on: false, ok: null, error: null, kind: null, at: 0 };
+function llmOnNow() {
+  const cfg = loadConfig();
+  return (cfg.llm || {}).enabled !== false && !!(cfg.voice && cfg.voice.dashscope && cfg.voice.dashscope.key);
+}
+
 // —— 共享重跑引擎（P3-4 抽取）：/api/rerun 与聊天框同用 ——
-// 校验（白名单，宁 fail 勿兜底）→ 落盘 shots/config 补丁 → 排队跑。返回 {error} 或 {ok:true, from}
-const SHOTS_PATCH = {
-  sceneStyle: (v) => ['classic', 'deck'].includes(v),
-  coverStyle: (v) => ['tech', 'bold', 'magazine'].includes(v),
-  captions: (v) => typeof v === 'boolean',
-  width: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
-  height: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
-  voice: (v) => typeof v === 'string' && v.length > 0 && v.length < 60,
-  targetCharsPerSec: (v) => +v >= 2 && +v <= 20,
-};
+// 校验（白名单 SHOTS_PATCH，宁 fail 勿兜底）→ 落盘 shots/config 补丁 → 排队跑。返回 {error} 或 {ok:true, from}
 function startRerun(name, dir, from, patch, config, resetConfig) {
   const sj = path.join(dir, 'shots.json');
   if (!fs.existsSync(sj)) return { error: '任务不存在' };
@@ -322,6 +321,7 @@ const server = http.createServer(async (req, res) => {
         activeThread: chat.activeThread || null,
         threadTitles: (chat.threads || []).map((x) => ({ id: x.id, title: x.title })),
         messages: th ? th.messages : [],
+        llm: { on: llmOnNow(), degraded: llmState.on && llmState.ok === false, error: llmState.error, kind: llmState.kind, at: llmState.at },
       });
     }
     if (p === '/api/chat' && req.method === 'POST') {
@@ -344,8 +344,27 @@ const server = http.createServer(async (req, res) => {
       }
       const th = chat.threads.find((x) => x.id === chat.activeThread);
       th.messages.push({ role: 'user', text, at: Date.now() });
-      // 需求解析 → （命中才动）补丁 + 局部重跑
-      const need = parseNeed(text, loadTechniques());
+      // 需求解析（P3-5）：qwen 语义优先（开启且有 key），失败/关闭 → 规则模式；错误种类明示
+      const cfg = loadConfig();
+      const llmOn = (cfg.llm || {}).enabled !== false && !!(cfg.voice && cfg.voice.dashscope && cfg.voice.dashscope.key);
+      let need, via = 'rules';
+      if (llmOn) {
+        try {
+          need = await qwenParse(text, {
+            shots: readJson(path.join(dir, 'shots.json')) || {},
+            overrides: readJson(path.join(dir, 'config.overrides.json')) || {},
+            techniques: loadTechniques().filter((x) => !x.error).map((x) => ({ name: x.name, insert: x.insert })),
+          }, cfg);
+          llmState = { on: true, ok: true, error: null, kind: null, at: Date.now() };
+          via = 'qwen';
+        } catch (e) {
+          llmState = { on: true, ok: false, error: e.message, kind: e.kind || 'api', at: Date.now() };
+          warn('07-web', `qwen 解析失败（${e.kind || 'api'}）：${e.message} —— 降级规则模式`);
+          need = parseNeed(text, loadTechniques());
+        }
+      } else {
+        need = parseNeed(text, loadTechniques());
+      }
       let reply, started = false;
       if (!need.desc.length) {
         reply = '没听懂这句需求，任务没动。试试：换演示风 / 字幕大一点 / 收尾降调 3 个半音 / 关闭字幕 / BGM 小声一点 / 转场绵长 / 语速 8 字——或直接说技术库里的名字（如「BGM 收尾降调」）。';
@@ -364,7 +383,9 @@ const server = http.createServer(async (req, res) => {
           reply = `已理解 ${need.desc.length} 处改动，从第 ${need.from} 步重跑中：\n${need.desc.map((d, i) => `${i + 1}. ${d}`).join('\n')}\n——改动已累积写入本任务（补丁叠加不覆盖），聊天记录即审计日志，可继续追加需求。`;
         }
       }
-      th.messages.push({ role: 'assistant', text: reply, at: Date.now(), ops: need.desc.length ? { from: need.from, shots: need.shots, config: need.config, rateSet: need.rateSet, rateDelta: need.rateDelta } : undefined, started });
+      if (llmState.on && llmState.ok === false) reply += `\n⚠️ qwen 暂不可用（${llmState.kind === 'quota' ? '额度用尽/限流' : llmState.kind === 'network' ? '网络不通' : '接口错误'}：${llmState.error}），本轮已降级规则模式；恢复后自动切回。`;
+      else if (via === 'qwen') reply += '\n（由 qwen 语义解析）';
+      th.messages.push({ role: 'assistant', text: reply, at: Date.now(), via, ops: need.desc.length ? { from: need.from, shots: need.shots, config: need.config, rateSet: need.rateSet, rateDelta: need.rateDelta } : undefined, started });
       writeJson(chatPath, chat);
       return json(res, 200, { reply, started, activeThread: chat.activeThread });
     }

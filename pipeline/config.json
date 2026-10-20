@@ -92,5 +92,12 @@
   "silence": {
     "noiseDb": -32,
     "minDurSec": 0.28
+  },
+  "llm": {
+    "enabled": true,
+    "provider": "dashscope",
+    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    "model": "qwen-plus",
+    "timeoutMs": 30000
   }
 }
