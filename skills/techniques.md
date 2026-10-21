@@ -10,6 +10,7 @@
    （原片 + info.json + 抽帧总览/细节图）。图文作品只下图片序列。
 3. **看片拆解**：对照总览图 + 细节帧识别可复刻手法，逐条对照下方「管线现有能力清单」定档：
    - **implemented（已实现）**：现有能力直接组合就能复刻 → 直接写配方卡上架。
+   - **manual（素材契约型）**：工艺本身可用零依赖 ffmpeg 复刻，但成立依赖管线外的条件（如成对提供轮廓相似、同屏位的素材）→ 配方卡只记判据与做法，不带 insert、不提供一键插入（货架标「手动配方·看判据」）。
    - **new（新能力）**：管线做不到（如当年的「BGM 收尾降调」）→ **先开能力施工**
      （05-compose/03-scene 等 + config 默认值 + 单测，参考 P3-2 提交），能力验收后配方卡才置 implemented。
      施工期间卡片可以先入库但 `tier:"new"`，货架上按钮自动禁用、明示「待实现」——**不藏短板**。
@@ -58,7 +59,7 @@
 | 封面 | `coverStyle` tech/bold/magazine |
 | 字幕 | `captions` 开关 · `karaoke` 逐词高亮 · `captionSize` 字号 · `keywordSize/HoldSec` 关键词大字 · `captionMarginV` |
 | 声音 | `voice` 音色 · `targetCharsPerSec` 语速 · `bgm.*` 音量/淡入淡出/闪避/卡点 · **`bgm.outroPitchSemitones/Sec` 收尾降调** · **`bgm.outroEcho/outroEchoSec/outroEchoWet` 收尾延迟回声** · `loudness.*` 响度标准化 |
-| 节奏 | `transitionSec/Type` 转场 · `deckTransitionSec` 硬切 · `tailPadSec` 尾垫 · `silence.*` 剪静音 |
+| 节奏 | `transitionSec/Type` 转场（短叠化 0.15 可作形似叠化的换主体瞬间，见 `shape-match-dissolve` 手动卡）· `deckTransitionSec` 硬切 · `tailPadSec` 尾垫 · `silence.*` 剪静音 |
 | 复用 | 局部重跑 `/api/rerun`（起始步骤 1~6 + 白名单补丁）——所有配方的底层执行器 |
 
 ## 与聊天框的关系

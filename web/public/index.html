@@ -8,12 +8,16 @@
   :root { --bg:#0B0E14; --panel:#12161f; --line:#232a38; --fg:#F5F7FA; --dim:#9AA3B2; --accent:#08B6DD; --accent-2:#7C3AED; --ok:#22c55e; --err:#ef4444; }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:var(--bg); color:var(--fg); font-family:"Microsoft YaHei","PingFang SC",sans-serif; min-height:100vh; }
-  .wrap { max-width:1080px; margin:0 auto; padding:32px 24px 80px; }
+  .wrap { max-width:1240px; margin:0 auto; padding:32px 24px 80px; }
   h1 { font-size:26px; margin-bottom:6px; }
   h1 .tag { font-size:13px; color:var(--accent); font-weight:400; margin-left:10px; }
   .sub { color:var(--dim); font-size:14px; margin-bottom:28px; }
-  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:24px; align-items:start; }
-  @media (max-width:880px){ .grid{grid-template-columns:1fr;} }
+  .grid { display:grid; grid-template-columns: 440px 1fr; gap:24px; align-items:start; }
+  @media (max-width:960px){ .grid{grid-template-columns:1fr;} }
+  .rightcol { display:flex; flex-direction:column; gap:24px; }
+  .shelf { grid-column:1 / -1; }
+  .techgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
+  .techgrid > .sub { grid-column:1/-1; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
   .card h2 { font-size:16px; margin-bottom:16px; color:var(--fg); }
   label { display:block; font-size:13px; color:var(--dim); margin:14px 0 6px; }
@@ -44,7 +48,7 @@
   @keyframes pulse { 50% { opacity:.35 } }
   pre.log { background:#0d111a; border:1px solid var(--line); border-radius:8px; padding:12px; font-size:12px; color:var(--dim); max-height:230px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
   .result { margin-top:16px; }
-  .result video { width:100%; max-height:420px; border-radius:10px; background:#000; }
+  .result video { width:100%; max-height:520px; border-radius:10px; background:#000; }
   .result img.cover { width:130px; border-radius:8px; border:1px solid var(--line); }
   .kv { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:13px; color:var(--dim); }
   .kv a { color:var(--accent); text-decoration:none; }
@@ -139,21 +143,24 @@
       <div class="err" id="err"></div>
     </div>
 
-    <!-- 左下：技术库货架（P3-3） -->
-    <div class="card">
-      <h2>技术库 <span style="font-weight:400;font-size:12px;color:#8a94a3">点「插入」自动填好下方任务的重跑表单——确认后到右侧预览区点重跑</span></h2>
-      <div id="tech" style="display:flex;flex-direction:column;gap:10px"><div class="sub">加载中…</div></div>
+    <!-- 右列：进度 + 预览 -->
+    <div class="rightcol">
+      <div class="card">
+        <h2>② 进度与成片</h2>
+        <div class="steps" id="steps"></div>
+        <pre class="log" id="log">（还没开始——左侧填好文案点「一键出片」）</pre>
+        <div class="result" id="result"></div>
+      </div>
+      <div class="card">
+        <h2>③ 历史任务</h2>
+        <table id="hist"><tr><td>加载中…</td></tr></table>
+      </div>
     </div>
 
-    <!-- 右：进度 + 预览 -->
-    <div class="card">
-      <h2>② 进度与成片</h2>
-      <div class="steps" id="steps"></div>
-      <pre class="log" id="log">（还没开始——左侧填好文案点「一键出片」）</pre>
-      <div class="result" id="result"></div>
-
-      <h2 style="margin-top:26px">③ 历史任务</h2>
-      <table id="hist"><tr><td>加载中…</td></tr></table>
+    <!-- 底部全宽：技术库货架（P3-3） -->
+    <div class="card shelf">
+      <h2>技术库 <span style="font-weight:400;font-size:12px;color:#8a94a3">点「插入」自动填好当前任务的重跑表单（在右侧预览区下方）——确认后点「重跑」</span></h2>
+      <div id="tech" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
     </div>
   </div>
 </div>
@@ -372,7 +379,7 @@ async function refreshTech() {
     <div class="titem">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>${t.name}</b>
         <span class="badge">${t.category || '其他'}</span>
-        ${t.tier === 'implemented' ? '<span class="badge ok">可直接用</span>' : '<span class="badge">待实现</span>'}
+        ${t.tier === 'implemented' ? '<span class="badge ok">可直接用</span>' : (t.tier === 'manual' ? '<span class="badge">手动配方 · 看判据</span>' : '<span class="badge">待实现</span>')}
       </div>
       <div class="tdesc">${t.desc || ''}</div>
       <div style="display:flex;gap:10px;align-items:center">

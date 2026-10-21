@@ -140,7 +140,8 @@ function loadTechniques() {
   const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort() : [];
   return files.map((f) => {
     const t = readJson(path.join(dir, f));
-    if (!t || !t.id || !t.name || !t.insert) return { id: f.replace(/\.json$/, ''), name: f, error: '配方缺 id/name/insert 字段' };
+    // manual 级 = 素材契约型知识卡（判据+做法，无一键补丁），允许省 insert
+    if (!t || !t.id || !t.name || (!t.insert && t.tier !== 'manual')) return { id: f.replace(/\.json$/, ''), name: f, error: '配方缺 id/name/insert 字段（manual 级可省 insert）' };
     return t;
   });
 }
