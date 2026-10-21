@@ -259,23 +259,50 @@ function main() {
     if (pitchS !== 0 && (pitchP < 0.2 || pitchP > 8)) fail(`compose.bgm.outroPitchSec 须在 0.2~8s：${b.outroPitchSec}`);
     let applyPitch = pitchS < 0;
     if (applyPitch && pitchP >= total * 0.5) { warn('05', `收尾降调 ${pitchP}s ≥ 成片一半，已忽略`); applyPitch = false; }
-    // BGM 段滤镜链（可选降调段）→ [bg0]，之后闪避/混音照旧
-    let bgChain;
+    // 收尾延迟回声（外部教学入库 · 抖音 modal_id=7697617115544603939）：剪映教学里
+    // 「主轨 0.4s 淡出 + 复合片段挂『延迟回声』强度 50 把余音甩出画外」的等效实现：
+    // 尾段干声先 0.4s 快淡出，aecho 三抽头（250/500/750ms 几何衰减）只让回声荡过切点。
+    const echoOn = b.outroEcho === true;
+    if (b.outroEcho !== undefined && typeof b.outroEcho !== 'boolean') fail(`compose.bgm.outroEcho 须是布尔：${JSON.stringify(b.outroEcho)}`);
+    const echoE = Number(b.outroEchoSec ?? 1.5);
+    const echoW = Number(b.outroEchoWet ?? 50);
+    if (echoOn) {
+      if (!Number.isFinite(echoE) || echoE < 0.2 || echoE > 8) fail(`compose.bgm.outroEchoSec 须在 0.2~8s：${b.outroEchoSec}`);
+      if (!Number.isFinite(echoW) || echoW < 1 || echoW > 100) fail(`compose.bgm.outroEchoWet 须在 1~100（教学=50）：${b.outroEchoWet}`);
+    }
+    let applyEcho = echoOn;
+    if (applyEcho && echoE >= total * 0.5) { warn('05', `收尾回声 ${echoE}s ≥ 成片一半，已忽略`); applyEcho = false; }
+    // BGM 段滤镜链（降调段 → 回声段串联，均 0.15s acrossfade 接回主体）→ [bg0]，之后闪避/混音照旧
+    const tailSegs = [];
+    let tailIn = '[2:a]';
     if (applyPitch) {
       const rate = Math.round(44100 * Math.pow(2, pitchS / 12)); // 降 |S| 个半音后的采样率
       const tempo = Math.pow(2, -pitchS / 12).toFixed(6);        // 还原时长的变速（>1，上限 2.0 对应 -12 半音）
       const pStart = (total - pitchP).toFixed(3);
       const mEnd = (total - pitchP + 0.15).toFixed(3);
-      bgChain = [
+      tailSegs.push(
         '[2:a]asplit=2[bgb][bgt]',
         `[bgb]atrim=end=${mEnd},asetpts=PTS-STARTPTS[bgm0]`,
         `[bgt]atrim=start=${pStart},asetpts=PTS-STARTPTS,aresample=44100,asetrate=${rate},aresample=44100,atempo=${tempo}[bgm1]`,
         '[bgm0][bgm1]acrossfade=d=0.15[bgp]',
-        `[bgp]volume=${vol},afade=t=in:d=${fi.toFixed(2)},afade=t=out:st=${bgFadeOut.toFixed(3)}:d=${fo.toFixed(2)}[bg0]`,
-      ].join(';');
-    } else {
-      bgChain = `[2:a]volume=${vol},afade=t=in:d=${fi.toFixed(2)},afade=t=out:st=${bgFadeOut.toFixed(3)}:d=${fo.toFixed(2)}[bg0]`;
+      );
+      tailIn = '[bgp]';
     }
+    if (applyEcho) {
+      const eStart = (total - echoE).toFixed(3);
+      const eMEnd = (total - echoE + 0.15).toFixed(3);
+      const wetGain = (echoW / 100).toFixed(2);                       // 教学「强度」→ aecho out_gain
+      const echoFade = Math.min(0.4, echoE).toFixed(2);               // 教学「上面音频拉一下淡出」的 0.4s
+      tailSegs.push(
+        `${tailIn}asplit=2[egb][egt]`,
+        `[egb]atrim=end=${eMEnd},asetpts=PTS-STARTPTS[egm0]`,
+        `[egt]atrim=start=${eStart},asetpts=PTS-STARTPTS,afade=t=out:st=0:d=${echoFade},aecho=0.8:${wetGain}:250|500|750:0.5|0.25|0.125[egm1]`,
+        '[egm0][egm1]acrossfade=d=0.15[bgq]',
+      );
+      tailIn = '[bgq]';
+    }
+    tailSegs.push(`${tailIn}volume=${vol},afade=t=in:d=${fi.toFixed(2)},afade=t=out:st=${bgFadeOut.toFixed(3)}:d=${fo.toFixed(2)}[bg0]`);
+    const bgChain = tailSegs.join(';');
     // 配音为侧链键：说话时 BGM 自动压低（闪避），停顿处回弹
     const fc = [
       capOff ? '[0:v]copy[vout]' : '[0:v]ass=subs.ass[vout]',
@@ -285,6 +312,7 @@ function main() {
       `[bg0][vok]sidechaincompress=threshold=${th}:ratio=${ratio}:attack=15:release=450[bg]`,
       '[voa][bg]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,apad[aout]',
     ].join(';');
+    if (process.env.PIPELINE_DEBUG_FC) console.log('FC>>', fc);
     rf = run(FFMPEG, [
       '-y', '-i', 'merged.mp4', '-i', audio, '-stream_loop', '-1', '-i', bgmFile,
       '-filter_complex', fc,
@@ -297,7 +325,7 @@ function main() {
       final,
     ], cwd);
     if (!rf.ok || !fs.existsSync(final)) fail(`成片合成失败（BGM 混音）\n${rf.out.split('\n').slice(-12).join('\n')}`);
-    log('05', `BGM 混入 ${path.basename(bgmFile)}（音量 ×${vol} · 闪避 ×${ratio} · 淡入 ${fi}s / 淡出 ${fo}s${applyPitch ? ` · 收尾降调 ${pitchS} 半音/${pitchP}s` : ''}）`);
+    log('05', `BGM 混入 ${path.basename(bgmFile)}（音量 ×${vol} · 闪避 ×${ratio} · 淡入 ${fi}s / 淡出 ${fo}s${applyPitch ? ` · 收尾降调 ${pitchS} 半音/${pitchP}s` : ''}${applyEcho ? ` · 收尾延迟回声 ${echoW}%/${echoE}s` : ''}）`);
   } else {
     rf = run(FFMPEG, [
       '-y', '-i', 'merged.mp4', '-i', audio,

@@ -57,7 +57,7 @@
 | 画面 | `sceneStyle` classic/deck · `width/height` 画幅 · 背景图轮播+缓推 · deck 锚点动效 |
 | 封面 | `coverStyle` tech/bold/magazine |
 | 字幕 | `captions` 开关 · `karaoke` 逐词高亮 · `captionSize` 字号 · `keywordSize/HoldSec` 关键词大字 · `captionMarginV` |
-| 声音 | `voice` 音色 · `targetCharsPerSec` 语速 · `bgm.*` 音量/淡入淡出/闪避/卡点 · **`bgm.outroPitchSemitones/Sec` 收尾降调** · `loudness.*` 响度标准化 |
+| 声音 | `voice` 音色 · `targetCharsPerSec` 语速 · `bgm.*` 音量/淡入淡出/闪避/卡点 · **`bgm.outroPitchSemitones/Sec` 收尾降调** · **`bgm.outroEcho/outroEchoSec/outroEchoWet` 收尾延迟回声** · `loudness.*` 响度标准化 |
 | 节奏 | `transitionSec/Type` 转场 · `deckTransitionSec` 硬切 · `tailPadSec` 尾垫 · `silence.*` 剪静音 |
 | 复用 | 局部重跑 `/api/rerun`（起始步骤 1~6 + 白名单补丁）——所有配方的底层执行器 |
 

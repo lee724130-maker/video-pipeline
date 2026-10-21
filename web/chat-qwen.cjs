@@ -14,6 +14,9 @@ const CFG_RANGE = {
   'compose.bgm.volume': (v) => +v >= 0 && +v <= 1,
   'compose.bgm.outroPitchSemitones': (v) => Number.isInteger(+v) && +v >= -12 && +v <= 0,
   'compose.bgm.outroPitchSec': (v) => +v >= 0.2 && +v <= 8,
+  'compose.bgm.outroEcho': (v) => typeof v === 'boolean',
+  'compose.bgm.outroEchoSec': (v) => +v >= 0.2 && +v <= 8,
+  'compose.bgm.outroEchoWet': (v) => +v >= 1 && +v <= 100,
 };
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
 
@@ -22,7 +25,7 @@ function systemPrompt(ctx) {
   return `你是视频剪辑助手，把用户的中文改片需求解析成 JSON 补丁。只输出一个 JSON 对象，不要任何解释、不要 Markdown 代码块。
 可改字段（其余键一律禁止出现）：
 - shots: {"sceneStyle":"classic"|"deck", "coverStyle":"tech"|"bold"|"magazine", "captions":布尔, "width":360-4320整数, "height":360-4320整数, "targetCharsPerSec":2-20}
-- config（只许这些键路径，值须在范围内）: compose.captionSize(30-120整数), compose.karaoke(布尔), compose.transitionSec(0-2), compose.fadeOutSec(0-5), compose.bgm.volume(0-1), compose.bgm.outroPitchSemitones(-12~0整数，负=降调，0=关), compose.bgm.outroPitchSec(0.2-8)
+- config（只许这些键路径，值须在范围内）: compose.captionSize(30-120整数), compose.karaoke(布尔), compose.transitionSec(0-2), compose.fadeOutSec(0-5), compose.bgm.volume(0-1), compose.bgm.outroPitchSemitones(-12~0整数，负=降调，0=关), compose.bgm.outroPitchSec(0.2-8), compose.bgm.outroEcho(布尔，收尾延迟回声开关), compose.bgm.outroEchoSec(0.2-8), compose.bgm.outroEchoWet(1-100，回声强度)
 - rateSet: 语速绝对值(2-20，无则null)；rateDelta: 语速增减(-2~2，无则0)
 - from: 受影响步骤最大值——改语速=1；改 sceneStyle/coverStyle/captions/width/height=3；改 config=5（都没改=1）
 - desc: 每处改动一句中文短描述，数组

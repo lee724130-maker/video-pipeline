@@ -63,12 +63,21 @@ function parseNeed(text, techniques) {
   else if (/(关|关掉|取消|去掉|不要|无需).{0,3}字幕/.test(t)) addShot('captions', false, '字幕 → 关');
   else if (/(打开|开启|加上|恢复).{0,3}字幕/.test(t)) addShot('captions', true, '字幕 → 开');
 
-  // ⑤ BGM：降调 / 音量
+  // ⑤ BGM：降调 / 延迟回声 / 音量
   if (/(关|关掉|取消|去掉|不要).{0,4}(降调|降半音)/.test(t)) addCfg(['compose', 'bgm', 'outroPitchSemitones'], 0, '收尾降调 → 关');
   else if (/(降调|降半音)/.test(t)) {
     const m = /[^0-9]{0,6}(\d{1,2})\s*个半音/.exec(t); // 「降调 3 个半音」「降 3 个半音」都吃
     const n = m ? Math.min(12, Math.max(1, +m[1])) : 2;
     addCfg(['compose', 'bgm', 'outroPitchSemitones'], -n, `BGM 收尾降调 → ${-n} 半音（默认段长 2s）`);
+  }
+  // 延迟回声：须「回声/echo + 上下文」才动手（位置词/动作词/效果词），疑问句不碰——宁缺勿错
+  if (/(回声|echo)/i.test(t)) {
+    const off = /(关|关掉|取消|去掉|不要|无需).{0,4}(回声|echo)/i.test(t) || /(回声|echo).{0,4}(关掉|关|取消|去掉)/i.test(t);
+    const on = /(结尾|收尾|末尾|片尾|甩)/.test(t)
+      || /(加|来|挂|用|带|给|开|上|放|整).{0,6}(回声|echo)/i.test(t)
+      || /(回声|echo).{0,4}(收尾|结尾|效果|段)/i.test(t);
+    if (off) addCfg(['compose', 'bgm', 'outroEcho'], false, '收尾延迟回声 → 关');
+    else if (on) addCfg(['compose', 'bgm', 'outroEcho'], true, 'BGM 收尾延迟回声 → 开（1.5s/强度50 教学档）');
   }
   if (/(BGM|音乐|背景乐|伴奏).{0,6}(小声|轻|低|弱)/i.test(t)) addCfg(['compose', 'bgm', 'volume'], 0.10, 'BGM 音量 → 0.10（更轻）');
   else if (/(BGM|音乐|背景乐|伴奏).{0,6}(大声|响|高|强)/i.test(t)) addCfg(['compose', 'bgm', 'volume'], 0.24, 'BGM 音量 → 0.24（更响）');
