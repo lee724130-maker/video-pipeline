@@ -57,7 +57,7 @@ function main() {
   // 分镜结构：shots.json 的 type 必须在白名单（历史坑——02 静默兜底 title 导致全片标题卡）
   const shotsDoc = readJson(path.join(task, 'shots.json'));
   if (shotsDoc && Array.isArray(shotsDoc.shots)) {
-    const TYPES = ['title', 'bullet', 'keyword', 'transition', 'end'];
+    const TYPES = ['title', 'bullet', 'split', 'keyword', 'transition', 'end'];
     const bad = shotsDoc.shots.filter((s) => {
       let t = s.type || s.scene || '';
       if (t === 'list') t = 'bullet';
@@ -67,7 +67,7 @@ function main() {
       bad.length ? `${bad.length} 镜非法/缺失（${bad.map((s, i) => s.id || s.n || i + 1).join(',')}）` : `${shotsDoc.shots.length} 镜`);
     const kinds = new Set(shotsDoc.shots.map((s) => (s.scene === 'list' ? 'bullet' : (s.type || s.scene))));
     if (kinds.size === 1 && shotsDoc.shots.length >= 3) {
-      warn('06', `全部 ${shotsDoc.shots.length} 镜同一类型「${[...kinds][0]}」——大概率是 shots.json type 写错（规范字段 type，白名单 title/bullet/keyword/transition/end）`);
+      warn('06', `全部 ${shotsDoc.shots.length} 镜同一类型「${[...kinds][0]}」——大概率是 shots.json type 写错（规范字段 type，白名单 title/bullet/split/keyword/transition/end）`);
     }
   }
 

@@ -25,10 +25,20 @@ function buildAss(timeline) {
   const kv = (timeline.height || 1920) / 1920;
   const capSize = Math.max(24, Math.round((c.captionSize || 56) * k));
   const capMarginV = Math.max(40, Math.round((c.captionMarginV || 320) * kv));
+  // 字幕样式（P5-3）：outline 缺省 = 白字深描边；bar = 抖音风黑底实底条（BorderStyle=3，
+  // libass 盒是直角——ASS 不支持圆角；Outline 转盒内边距、BackColour 实黑保任意底可读）。
+  // 白名单 fail——静默兜底会掩盖拼写错误（写 bar2 渲成描边还以为条没生效）
+  const CAP_STYLES = ['outline', 'bar'];
+  const capStyle = String(c.captionStyle || 'outline');
+  if (!CAP_STYLES.includes(capStyle)) fail(`字幕样式非法: ${capStyle}（白名单: ${CAP_STYLES.join(' / ')}）`);
+  if (capStyle === 'bar') log('05', '字幕样式 bar：黑底实底条（compose.captionStyle）');
   // 关键词砸字样式：粗体大号金字，居中偏上（避开底部字幕），仅在有 keyword 时挂上
   const kwStyle = (timeline.keywords && timeline.keywords.length)
     ? `\nStyle: Kw,${c.captionFont},${Math.max(48, Math.round(Number(c.keywordSize || 130) * k))},${c.keywordColour || '&H0000D7FF'},&H00FFFFFF,&H00141414,&H96000000,-1,0,0,0,100,100,1,0,1,6,0,5,90,90,0,1`
     : '';
+  const subStyle = capStyle === 'bar'
+    ? `Style: Sub,${c.captionFont},${capSize},&H00FFFFFF,${subColour},&H00141414,&H00000000,0,0,0,0,100,100,0.5,0,3,${Math.max(8, Math.round(capSize * 0.3))},0,2,90,90,${capMarginV},1`
+    : `Style: Sub,${c.captionFont},${capSize},&H00FFFFFF,${subColour},&H00141414,&H96000000,0,0,0,0,100,100,0.5,0,1,3,1,2,90,90,${capMarginV},1`;
   const header = `[Script Info]
 Title: ${timeline.title}
 ScriptType: v4.00+
@@ -39,7 +49,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Sub,${c.captionFont},${capSize},&H00FFFFFF,${subColour},&H00141414,&H96000000,0,0,0,0,100,100,0.5,0,1,3,1,2,90,90,${capMarginV},1${kwStyle}
+${subStyle}${kwStyle}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

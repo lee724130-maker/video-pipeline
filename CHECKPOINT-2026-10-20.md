@@ -207,3 +207,39 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - 昨日成片《手机标题栏八式》未重渲：素材镜头现已支持缓推，可 `--steps 4,5,6` 升级（用户拍板再动）。
 - 探针目录 `output/_probe_paper`、`output/_kb_probe` 已验完清理。
 
+---
+
+# 2026-10-22 下午 —— output 大扫除 + P5 三件套 ③④⑤（全链 QC 19/19）
+
+## output/ 测试视频清理（用户拍板方案 A）
+
+- 盘点 21 目录 112MB → **删 17 个纯测试目录、释放 95.6 MB**（bgm-song/asset-test、c-verify、sapi×2、deck-api、dashscope-e2e、bv×2、sq/web-smoke、ktv-bg-test、vc-×5 音色试听）。
+- 保留 4：`手机标题栏八式`（用户明确=测试看效果用，不重渲）、`AI短剧变现`、`deck-demo`（P2-9 验收样片）、`零成本流水线-demo`。
+- 白名单精确匹配 + 必含 shots.json 双重校验脚本删除；output/ 在 gitignore 内与仓库无关；桌面抖音/B站片源与 BGM 源是现役素材不动。
+- 途中 web 服务静默退出（8787 无监听、后台 out 文件缺失）→ 重启恢复；后为拾取聊天新规又重启一次（杀 PID 方式）。
+
+## P5-3 字幕黑底条 `compose.captionStyle`（outline 缺省 | bar）
+
+- 05-buildAss：白名单 fail-fast；`bar` = ASS BorderStyle **3** 实黑盒（BackColour 实黑保任意底可读）+ Outline 转盒内边距（0.3×字号）+ Shadow 0；outline 分支字符串与旧版逐字一致零回归。卡拉OK 扫色在黑底条上正常（探针帧实见已读白/待读灰）。
+- config.json `compose.captionStyle:"outline"`；聊天话术「黑底条/底条/字幕条」→ bar、「描边/换回/去掉（双向语序）」→ outline；qwen 枚举+校验器同步。
+- **坑**：否定句含关键词——「去掉黑底条」「黑底条去掉」两种语序必须**先判还原意图再判 bar**，否则否定句被反着改（初版 bug，用例抓出后修，8/8 过）。
+
+## P5-4 品牌角标 `config.cornerMark`
+
+- 03 `cornerMarkHtml()`：`src`（任务 assets/ 相对或绝对路径，**缺图 fail**）/ `pos` tl|tr|bl|br 白名单（缺省 br——tr 与 bullet 序号装饰同区、底部中间是字幕）/ `width` 16-1080 / `opacity` 0-1，非法全 fail；相对 scenes/ 引用 `../assets/…`（与 bgLayer 同规则）。
+- 注入：每镜（bg 层后）+ outro 片尾卡；**封面不带**（独立发布图）；未配置返回空串零影响。base.css `.corner-mark` + `.cm-*` 四角定位，尺寸走内联 `--cm-w/--cm-op` 随 `--k` 缩放。
+- 已知边界：素材镜头（shot.asset，ffmpeg 合成）不带角标；deck 风底部导航条与 bl/br 冲突建议 tr（写进 README）。
+
+## P5-5 分镜 type `split` 左文右图分栏
+
+- 三处 TYPES 注册（02-compile / 03-scenes / 06-qc）+ `templates/scenes/split.html` + `tokensFor` 加 case；bullet 的 items 构建拆成 `itemsList()` 两类型共用。
+- schema：`media` 必填（assets/ 文件名，**文件不存在 03 fail**）+ `items`/`note` 至少一项；要点出现时刻沿用 itemTime 按口播词对齐；右图无 data-at 常驻（圆角+投影），`@media (orientation:portrait)` 自动改上文下图。
+- base.css `.split/.split-text/.split-media` 挂在 `.s-split` 下 + `.s-split .note/.items:empty` 收空位——其余页型零影响。
+
+## 验证与交付
+
+- **合并探针全链 1-6：QC 19/19**（分镜 type 白名单含 split · 字幕 4 条 · 砸字 1 个）；抽帧目检：split 分栏 + 黑底条字幕 + 右下角标 + paper 主题同帧成立；bullet 帧黑底条卡拉OK扫色可见。
+- 聊天解析 8/8 用例（bar/outline 判定 + captionSize/转场/paper 回归不误触）。
+- 文档齐：script.md（schema split 示例+白名单+字段说明）、techniques.md 能力清单、visuals.md 类型表+「新增模板步骤」纠偏（TEMPLATES 已不存在，实为 TYPES×3+tokensFor）、README 新增角标/分栏两条+字幕样式一句。
+- 演示片：`output/P5三件套演示/成片.mp4`（12s · paper+split+bar+角标 三件套合体，供网页预览）。
+

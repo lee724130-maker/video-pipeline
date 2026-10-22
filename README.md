@@ -63,11 +63,13 @@ node web/server.cjs        # 然后浏览器开 http://127.0.0.1:8787
 
 ## 发布件（P0 三件套，已支持）
 
-- **逐词字幕**：02 自动用 whisper（本地免费模型）对配音逐词对齐 → 卡拉OK高亮逐字跟语音（`audio/words.json` 缓存复用，重跑 05 秒级）。精度要求高可 `config.ktv.alignModel` 一键切 medium（更准、约 2~3 倍耗时）。
+- **逐词字幕**：02 自动用 whisper（本地免费模型）对配音逐词对齐 → 卡拉OK高亮逐字跟语音（`audio/words.json` 缓存复用，重跑 05 秒级）。精度要求高可 `config.ktv.alignModel` 一键切 medium（更准、约 2~3 倍耗时）。字幕样式 `config.compose.captionStyle` 二选一：`outline` 缺省白字深描边 / `bar` 黑底实底条（抖音教学片风，浅色底上更稳）。
 - **响度标准化**：05 出片时两遍 loudnorm 归一到 **-14 LUFS**（抖音/视频号发布标准，真峰值 ≤ -1.5 dBTP），口播/BGM/KTV 三类成片统一处理；`config.compose.loudness` 可关。
 - **封面图**：自动生成 `封面.png`（标题默认取任务标题、副标题取文案首句，`config.cover` 可覆盖文案）。**3 套风格**（`shots.coverStyle` 任务级 / `config.cover.style` 全局，网页端也有下拉）：`tech` 暗色科技（默认）/ `bold` 高对比大字（黑底暖黄）/ `magazine` 杂志留白（纸白衬线），随画幅自适应。
 - **片尾关注卡**：成片末尾自动拼 2.6s「点关注 不迷路」卡片，`config.outro` 可改文案/时长/关闭。
 - **主题切换**：`shots.sceneStyle`（网页端也有下拉）三选一——`classic` 缺省暗底网格 / `deck` 演示风（暗蓝渐变底 + 青色点缀、左对齐章节页、底部章节导航条 `shots.nav` 每镜一格标签、硬切转场，复刻幻灯讲解类样片）/ `paper` 纸感浅色（奶油底墨字 + 深红点缀、素材背景铺纸罩而非暗罩，横屏教学/知识卡片风）。`shots.captions: false` 关掉烧录字幕（纯画面+旁白）。缺省 classic 完全不受影响。
+- **品牌角标**：`config.cornerMark`（`src` 指任务 `assets/` 下的 logo 图 + `pos` tl/tr/bl/br + `width`/`opacity`）→ 每镜 + 片尾卡常驻角标，缺图/非法位置直接报错；未配置零影响（封面为独立发布图不带）。deck 风底部有导航条建议 `tr`，其余缺省 `br`。
+- **左文右图分栏**：分镜 `type:"split"`——左栏标题+要点（或一行 `note`），右栏 `media` 引 `assets/` 样机图/截图（圆角+投影），要点随配音逐条出现；UI/产品教学类内容的主力版式，横屏最佳、竖屏自动改上下分栏。见 `skills/script.md` schema。
 
 ## 素材模式 + BGM（B 档，已支持）
 

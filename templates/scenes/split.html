@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>scene</title>
+<style>/*__CSS__*/</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="bg"></div>
+    <div class="corner">{{CORNER}}</div>
+    <div class="split">
+      <div class="split-text">
+        <h2 class="heading" data-at="0.1">{{HEADING}}</h2>
+        <div class="bar" data-at="0.1"></div>
+        <p class="note" data-at="{{NOTE_AT}}">{{NOTE}}</p>
+        <ul class="items {{ITEMS_CLS}}">
+{{ITEMS}}
+        </ul>
+      </div>
+      <div class="split-media">
+        <img src="{{MEDIA}}" alt="">
+      </div>
+    </div>
+  </div>
+<!--__RUNTIME__-->
+</body>
+</html>

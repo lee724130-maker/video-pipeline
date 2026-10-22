@@ -16,6 +16,7 @@
 |---|---|---|
 | title | 钩子大字 + 副标 | 入场位移+淡入，关键词逐字高亮 |
 | bullet | 小标题 + 要点列表 | **要点随配音逐条出现**（时间由配音决定） |
+| split | 左栏小标题+要点 / 右栏配图（media 引 assets 样机图） | 左栏要点逐条出现，右图常驻（圆角+投影，竖屏自动上下分栏） |
 | keyword | 一个大词 + 一行注解 | 缩放弹入 |
 | transition | 章节序号 + 章节名 | 左→右扫入 |
 | end | 收尾金句 + CTA | 淡入 + 呼吸感光晕 |
@@ -32,6 +33,6 @@
 ## 四、新增模板的步骤
 
 1. 在 `templates/scenes/` 新建 `<type>.html`，用 `{{TOKEN}}` 占位。
-2. 在 `03-scenes.cjs` 的 `TEMPLATES` 里登记该 type 的 token 列表。
-3. 在 `skills/script.md` 的 type 白名单加一行。
+2. 在 `03-scenes.cjs`：`TYPES` 白名单加值、`tokensFor()` 加该 type 的 token 分支。
+3. 在 `02-compile.cjs` 与 `06-qc.cjs` 的 `TYPES` 同步加值，`skills/script.md` 白名单加一行。
 4. 跑一次 `node pipeline/run.cjs` 出样片，确认无豆腐块、无溢出。

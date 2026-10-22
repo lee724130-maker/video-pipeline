@@ -59,6 +59,13 @@ function parseNeed(text, techniques) {
   if (cs) addCfg(['compose', 'captionSize'], Math.min(120, Math.max(30, +cs[1])), `字幕字号 → ${cs[1]}`);
   else if (/字幕.{0,4}(大|加大|变大)/.test(t)) addCfg(['compose', 'captionSize'], 76, '字幕字号 → 76（加大）');
   else if (/字幕.{0,4}(小|减小|变小)/.test(t)) addCfg(['compose', 'captionSize'], 48, '字幕字号 → 48（减小）');
+  // 字幕样式：还原/描边意图优先判定——否定句（"去掉黑底条"/"黑底条去掉"两种语序）必须先于
+  // bar 匹配，否则含"黑底"二字的否定句会被反着改成黑底条
+  const wantOutline = /(描边|换回|改回)/.test(t)
+    || /(去掉|取消|关掉).{0,3}(黑底|黑条|底条|字幕条)/.test(t)
+    || /(黑底|黑条|底条|字幕条).{0,4}(去掉|取消|关掉|换掉)/.test(t);
+  if (wantOutline) addCfg(['compose', 'captionStyle'], 'outline', '字幕样式 → outline 描边白字（缺省）');
+  else if (/(黑底|黑条|底条|字幕条)/.test(t)) addCfg(['compose', 'captionStyle'], 'bar', '字幕样式 → bar 黑底实底条');
   if (/(关|关掉|取消|去掉|不要|无需).{0,3}(逐词|卡拉)/.test(t)) addCfg(['compose', 'karaoke'], false, '关闭逐词高亮（整句白字）');
   else if (/(打开|开启|恢复).{0,3}(逐词|卡拉)/.test(t)) addCfg(['compose', 'karaoke'], true, '开启逐词高亮');
   else if (/(关|关掉|取消|去掉|不要|无需).{0,3}字幕/.test(t)) addShot('captions', false, '字幕 → 关');

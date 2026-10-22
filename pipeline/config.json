@@ -44,6 +44,7 @@
     "captionFont": "Microsoft YaHei",
     "captionSize": 56,
     "captionMarginV": 320,
+    "captionStyle": "outline",
     "fadeOutSec": 0.8,
     "bgm": {
       "volume": 0.16,
@@ -67,6 +68,12 @@
     }
   },
   "sceneStyle": "classic",
+  "cornerMark": {
+    "src": "",
+    "pos": "br",
+    "width": 160,
+    "opacity": 0.9
+  },
   "cover": {
     "enabled": true,
     "style": "tech",

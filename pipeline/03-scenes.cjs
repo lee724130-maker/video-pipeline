@@ -5,7 +5,7 @@ const { ROOT, readJson, writeJson, ensureDir, log, warn, fail, loadConfig, bgIma
 
 const cfg = loadConfig();
 
-const TYPES = ['title', 'bullet', 'keyword', 'transition', 'end'];
+const TYPES = ['title', 'bullet', 'split', 'keyword', 'transition', 'end'];
 const WEIGHT_OK = /[一-鿿㐀-䶿0-9a-zA-Z]/;
 
 const css = fs.readFileSync(path.join(ROOT, 'templates/base.css'), 'utf8');
@@ -85,6 +85,27 @@ function bgLayer(bgs, index, durSec) {
   return `<div class="bg-user${kb}" style="${vars};background-image:url('../assets/${file}')"></div>`;
 }
 
+// —— 品牌角标（P5-4 config.cornerMark）——
+// src 为空 = 未配置零影响；pos 白名单；文件必须存在——缺图 fail，不能静默渲出无角标片
+// （deck 风底部有章节导航条，角标建议 tr；tr 与 bullet 序号装饰同区，单页二选一）
+function cornerMarkHtml(task) {
+  const cm = cfg.cornerMark || {};
+  if (!cm.src) return '';
+  const POS = ['tl', 'tr', 'bl', 'br'];
+  const pos = String(cm.pos || 'br');
+  if (!POS.includes(pos)) fail(`cornerMark.pos 非法: ${pos}（白名单: ${POS.join(' / ')}）`);
+  const rel0 = String(cm.src).replace(/\\/g, '/');
+  const file = path.isAbsolute(rel0) ? rel0 : path.join(task, 'assets', rel0);
+  if (!fs.existsSync(file)) fail(`cornerMark.src 指定的图不存在: ${file}（assets/ 相对任务目录，或绝对路径）`);
+  const w = Number(cm.width ?? 160);
+  const op = Number(cm.opacity ?? 0.9);
+  if (!(w >= 16 && w <= 1080)) fail(`cornerMark.width 超范围: ${cm.width}（16-1080 px）`);
+  if (!(op >= 0 && op <= 1)) fail(`cornerMark.opacity 超范围: ${cm.opacity}（0-1）`);
+  // 场景 HTML 落在 task/scenes/，素材在 task/assets/ → 相对引用（与 bgLayer 同规则）
+  const rel = path.relative(path.join(task, 'scenes'), file).replace(/\\/g, '/');
+  return `<img class="corner-mark cm-${pos}" src="${rel}" style="--cm-w:${w}px;--cm-op:${op}">`;
+}
+
 function itemTime(shot, timeline, itemText, i, n) {
   // 用该镜头口播原文建立可检索串（只保留有效字），保留到原文的索引映射
   const narration = shot.narrationRaw || '';
@@ -112,6 +133,23 @@ function itemTime(shot, timeline, itemText, i, n) {
   return Math.max(0.08, Math.min(rel, shot.dur - 0.35)).toFixed(2);
 }
 
+// 要点列表（bullet / split 共用）：每条按口播词对齐出现时刻，{t,d} 双行卡片形态保留
+function itemsList(shot, timeline, src) {
+  const list = src.items || [];
+  const items = list.map((t, i) => {
+    if (t && typeof t === 'object' && !String(t.t || '').trim()) {
+      fail(`镜头 ${shot.id} items[${i}] 是对象但缺 t（标题字段）`);
+    }
+    const needle = typeof t === 'object' ? t.t : t; // 双行卡片 {t,d} 按标题行对齐口播
+    const at = itemTime(shot, timeline, needle, i, list.length);
+    const inner = typeof t === 'object'
+      ? `<div class="it-b"><b>${hi(esc(t.t))}</b>${t.d ? `<i>${esc(t.d)}</i>` : ''}</div>`
+      : hi(esc(t));
+    return `      <li data-at="${at}">${inner}</li>`;
+  });
+  return { cls: `items-${list.length}`, html: items.join('\n') };
+}
+
 function tokensFor(shot, timeline, all, src) {
   const corner = `${String(shot.index + 1).padStart(2, '0')} / ${String(all.length).padStart(2, '0')}`;
   const subAt = Math.min(1.0, shot.dur * 0.3).toFixed(2);
@@ -125,24 +163,27 @@ function tokensFor(shot, timeline, all, src) {
         TAGS: tagRow(src.tags),
       };
     case 'bullet': {
-      const list = src.items || [];
-      const items = list.map((t, i) => {
-        if (t && typeof t === 'object' && !String(t.t || '').trim()) {
-          fail(`镜头 ${shot.id} items[${i}] 是对象但缺 t（标题字段）`);
-        }
-        const needle = typeof t === 'object' ? t.t : t; // 双行卡片 {t,d} 按标题行对齐口播
-        const at = itemTime(shot, timeline, needle, i, list.length);
-        const inner = typeof t === 'object'
-          ? `<div class="it-b"><b>${hi(esc(t.t))}</b>${t.d ? `<i>${esc(t.d)}</i>` : ''}</div>`
-          : hi(esc(t));
-        return `      <li data-at="${at}">${inner}</li>`;
-      });
+      const L = itemsList(shot, timeline, src);
       return {
         CORNER: corner,
         HEADING: hi(esc(src.heading || '')),
         QUOTE: quoteText(src.quote),
-        ITEMS_CLS: `items-${list.length}`,
-        ITEMS: items.join('\n'),
+        ITEMS_CLS: L.cls,
+        ITEMS: L.html,
+      };
+    }
+    case 'split': {
+      // 左文右图（P5-5）：右侧 media 引 assets/ 配图（样机/截图/海报），左侧标题+要点或短注；
+      // media 文件存在性在 main 里校验（tokensFor 拿不到 task 路径）
+      const L = itemsList(shot, timeline, src);
+      return {
+        CORNER: corner,
+        HEADING: hi(esc(src.heading || '')),
+        NOTE: esc(src.note || ''),
+        NOTE_AT: Math.min(1.2, shot.dur * 0.35).toFixed(2),
+        ITEMS_CLS: L.cls,
+        ITEMS: L.html,
+        MEDIA: '../assets/' + String(src.media || '').replace(/\\/g, '/'),
       };
     }
     case 'keyword':
@@ -197,6 +238,10 @@ function main() {
     ? `<nav class="chapnav">${navLabels.map((t, i) => `<span${i === activeIdx ? ' class="on"' : ''}>${t}</span>`).join('')}</nav>\n  `
     : '');
 
+  // 品牌角标（P5-4）：未配置返回空串零影响；每镜 + 片尾卡注入，封面独立成图不带
+  const cmHtml = cornerMarkHtml(task);
+  if (cmHtml) log('03', `品牌角标注入每镜（cornerMark.src=${cfg.cornerMark.src} pos=${cfg.cornerMark.pos || 'br'}）`);
+
   const narration = fs.readFileSync(path.join(task, 'narration.txt'), 'utf8');
   const nChars = [...narration];
   timeline.narration = nChars.join('');
@@ -214,9 +259,15 @@ function main() {
     // 内容校验：类型与必填字段对不上就 fail——空模板渲出来是「怪片」，宁可早报错
     const miss = (
       (shot.type === 'bullet' && !(src.items || []).length) ? 'items（要点列表）' :
+      (shot.type === 'split' && !src.media) ? 'media（右侧配图，assets/ 下文件名）' :
+      (shot.type === 'split' && !(src.items || []).length && !src.note) ? 'items 或 note（左侧文案至少一项）' :
       (shot.type === 'keyword' && !src.keyword) ? 'keyword（大字关键词）' :
       (shot.type === 'end' && !src.title) ? 'title（收尾金句）' : null);
     if (miss) fail(`镜头 ${shot.id} 类型 ${shot.type} 缺必填字段 ${miss}（skills/script.md 二·schema）`);
+    if (shot.type === 'split') {
+      const mp = path.join(task, 'assets', String(src.media).replace(/\\/g, '/'));
+      if (!fs.existsSync(mp)) fail(`镜头 ${shot.id} split.media 素材不存在: ${mp}（放任务 assets/ 下）`);
+    }
     const tpl = fs.readFileSync(tplPath, 'utf8');
     const tokens = tokensFor({ ...shot, narrationRaw: nChars.slice(shot.charStart, shot.charEnd).join('') }, timeline, timeline.shots, src);
 
@@ -227,6 +278,7 @@ function main() {
     html = html.replace('<div class="stage">', () => `<div class="stage s-${shot.type}">`);
     const layer = bgLayer(bgs, shot.index, shot.dur);
     if (layer) html = html.replace(/<div class="stage[^"]*">/, (m) => `${m}\n    ${layer}`);
+    if (cmHtml) html = html.replace(/<div class="stage[^"]*">/, (m) => `${m}\n    ${cmHtml}`);
     const sceneData = JSON.stringify({ duration: shot.dur, fps: timeline.fps, id: shot.id });
     const inject = navHtml(activeIdx) + `<script>window.__SCENE__ = ${sceneData};</script>\n  <script>${runtime}</script>`;
     if (!html.includes('<!--__RUNTIME__-->')) fail(`模板 ${shot.type}.html 缺 <!--__RUNTIME__--> 占位`);
@@ -252,6 +304,7 @@ function main() {
     let html = applySize(fill(fs.readFileSync(path.join(ROOT, 'templates/scenes/end.html'), 'utf8'), tokens), timeline);
     html = applyTheme(html, sceneStyle);
     html = html.replace('<div class="stage">', () => '<div class="stage s-end">');
+    if (cmHtml) html = html.replace(/<div class="stage[^"]*">/, (m) => `${m}\n    ${cmHtml}`);
     const inject = navHtml(timeline.shots.length - 1) + `<script>window.__SCENE__ = ${JSON.stringify({ duration: dur, fps: timeline.fps, id: 'outro' })};</script>\n  <script>${runtime}</script>`;
     html = html.replace('<!--__RUNTIME__-->', () => inject);
     fs.writeFileSync(path.join(outDir, 'outro.html'), html, 'utf8');

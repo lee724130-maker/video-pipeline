@@ -55,9 +55,9 @@
 
 | 面 | 能力（config/shots 键） |
 |---|---|
-| 画面 | `sceneStyle` classic/deck/paper 纸感浅色 · `width/height` 画幅 · 背景图轮播+缓推 · **图片素材镜头缓推/缓拉**（奇偶交替，`background.kenBurns:false` 关）· deck 锚点动效 |
+| 画面 | `sceneStyle` classic/deck/paper 纸感浅色 · `width/height` 画幅 · 分镜 type 含 **split 左文右图分栏**（media 引 assets 样机图）· 背景图轮播+缓推 · **图片素材镜头缓推/缓拉**（奇偶交替，`background.kenBurns:false` 关）· **`cornerMark.*` 品牌角标**（src/pos/width/opacity，每镜+片尾常驻）· deck 锚点动效 |
 | 封面 | `coverStyle` tech/bold/magazine |
-| 字幕 | `captions` 开关 · `karaoke` 逐词高亮 · `captionSize` 字号 · `keywordSize/HoldSec` 关键词大字 · `captionMarginV` |
+| 字幕 | `captions` 开关 · `karaoke` 逐词高亮 · `captionSize` 字号 · **`captionStyle` outline 描边白字\|bar 黑底实底条** · `keywordSize/HoldSec` 关键词大字 · `captionMarginV` |
 | 声音 | `voice` 音色 · `targetCharsPerSec` 语速 · `bgm.*` 音量/淡入淡出/闪避/卡点 · **`bgm.outroPitchSemitones/Sec` 收尾降调** · **`bgm.outroEcho/outroEchoSec/outroEchoWet` 收尾延迟回声** · `loudness.*` 响度标准化 |
 | 节奏 | `transitionSec/Type` 转场（短叠化 0.15 可作形似叠化的换主体瞬间，见 `shape-match-dissolve` 手动卡）· `deckTransitionSec` 硬切 · `tailPadSec` 尾垫 · `silence.*` 剪静音 |
 | 复用 | 局部重跑 `/api/rerun`（起始步骤 1~6 + 白名单补丁）——所有配方的底层执行器 |

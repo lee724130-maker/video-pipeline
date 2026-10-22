@@ -320,7 +320,7 @@ function main() {
   const totalDur = audioDur + tailPad;
   // 镜头类型白名单（skills/script.md）：历史 shots.json 有写 scene 字段的，作为别名接受；
   // 缺失/非法直接报错——旧版静默兜底 title 会把全片渲染成同一张标题卡（大坑）
-  const TYPES = ['title', 'bullet', 'keyword', 'transition', 'end'];
+  const TYPES = ['title', 'bullet', 'split', 'keyword', 'transition', 'end'];
   const SCENE_ALIAS = { list: 'bullet' }; // 历史叫法 → 规范类型
   const shotList = shots.shots.map((s, i) => {
     const start = bounds[i];

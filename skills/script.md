@@ -26,11 +26,14 @@
     { "id": "s02", "type": "bullet",     "narration": "...",
       "heading": "小标题", "items": ["要点一", "要点二", "要点三"],
       "quote": "青色引用行（可选）", "nav": "章节导航条标签（可选）" },
-    { "id": "s03", "type": "keyword",    "narration": "...",
+    { "id": "s03", "type": "split",      "narration": "...",
+      "heading": "左栏小标题", "media": "assets/样机图.png",
+      "items": ["左栏要点一", "要点二"], "note": "或用一行短注代替 items（二选一）" },
+    { "id": "s04", "type": "keyword",    "narration": "...",
       "keyword": "大字关键词", "note": "一行小字注解" },
-    { "id": "s04", "type": "transition", "narration": "...",
+    { "id": "s05", "type": "transition", "narration": "...",
       "index": "02", "heading": "章节名" },
-    { "id": "s05", "type": "end",        "narration": "...",
+    { "id": "s06", "type": "end",        "narration": "...",
       "title": "收尾金句", "subtitle": "CTA", "tags": ["CTA 按钮一", "按钮二"] }
   ]
 }
@@ -41,8 +44,11 @@
 - `items` 每条 ≤ 10 字；超过 10 字会被质检警告（竖屏一行放不下）。
   也可以写成 `{ "t": "标题", "d": "一行描述" }` 双行卡片（演示风常用）；
   对不上口播词的条目按「开场 0.5s 后均匀铺开」出现。
-- `type` 白名单：`title | bullet | keyword | transition | end`（新增类型必须同时在
-  `templates/scenes/` 加同名模板，并在 `03-scenes.cjs` 的 `TYPES` 注册）。
+- `type` 白名单：`title | bullet | split | keyword | transition | end`（新增类型必须同时在
+  `templates/scenes/` 加同名模板，并在 `03-scenes.cjs`、`02-compile.cjs`、`06-qc.cjs` 的 `TYPES` 注册）。
+- split 左文右图分栏：`media` 必填（**任务 `assets/` 下的文件名**，缺文件/缺字段 03 直接报错），
+  左栏 `items` 与 `note` 至少一项；UI/产品教学配样机图的主力版式，横屏 1920×1080 最佳
+  （竖屏自动改上文下图分栏）。要点出现时刻与 bullet 同规则按口播词对齐。
 - deck 演示风可选字段：`nav`（底部章节导航条该格标签，缺省按类型推导：开场/收尾/heading）、
   `quote`（章节页青色引用行）、`tags`（title/end 的标签行/CTA 按钮）；建议 deck 配 `width:1920 height:1080`。
 
