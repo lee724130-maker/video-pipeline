@@ -16,7 +16,7 @@
 {
   "title": "任务名（也是文件夹名）",
   "width": 1080, "height": 1920, "fps": 30,
-  "sceneStyle": "classic",        // 可选：classic（缺省）| deck（演示风：幻灯版式+底部章节导航条+硬切）
+  "sceneStyle": "classic",        // 可选：classic（缺省）| deck（演示风：幻灯版式+底部章节导航条+硬切）| paper（纸感浅色：奶油底深字，横屏教学风）
   "captions": true,               // 可选：false = 不烧录字幕（复刻样片纯画面+旁白；此时勿配 keyword 砸字）
   "voice": { "name": "zh-CN-YunxiNeural", "rate": "+8%" },
   "shots": [

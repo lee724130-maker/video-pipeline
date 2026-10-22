@@ -117,6 +117,7 @@
           <select id="sceneStyle">
             <option value="classic">经典（暗底网格 + 竖屏大字）</option>
             <option value="deck">演示风（幻灯版式 + 底部章节导航条）</option>
+            <option value="paper">纸感（奶油底深字 + 深红点缀，横屏教学）</option>
           </select>
         </div>
         <div>
@@ -294,6 +295,7 @@ async function showResult(tasks) {
         <label>场景 <select id="rr-style">
           <option value="classic" ${t.style === 'classic' ? 'selected' : ''}>classic</option>
           <option value="deck" ${t.style === 'deck' ? 'selected' : ''}>deck 演示风</option>
+          <option value="paper" ${t.style === 'paper' ? 'selected' : ''}>paper 纸感</option>
         </select></label>
         <label>封面 <select id="rr-cover">
           <option value="tech" ${t.cover === 'tech' ? 'selected' : ''}>tech</option>

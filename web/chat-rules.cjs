@@ -44,6 +44,7 @@ function parseNeed(text, techniques) {
 
   // ② 场景风格 / 画幅
   if (/(演示风|大屏|幻灯|deck)/i.test(t)) addShot('sceneStyle', 'deck', '场景风格 → deck 演示风');
+  else if (/(纸感|纸质|浅色|奶油|米色|paper)/i.test(t)) addShot('sceneStyle', 'paper', '场景风格 → paper 纸感浅色');
   else if (/(经典|竖屏大字|classic)/i.test(t)) addShot('sceneStyle', 'classic', '场景风格 → classic 经典');
   if (/横屏|16[:：]9/.test(t) && !/竖屏|9[:：]16/.test(t)) { addShot('width', 1920, '画幅 → 横屏 16:9'); addShot('height', 1080, '画幅 → 横屏 16:9'); }
   else if (/竖屏|9[:：]16/.test(t)) { addShot('width', 1080, '画幅 → 竖屏 9:16'); addShot('height', 1920, '画幅 → 竖屏 9:16'); }
@@ -116,7 +117,7 @@ function flatPaths(obj, prefix = []) {
 
 // shots 补丁白名单（/api/rerun 与 qwen 语义解析同表——宁 fail 勿兜底的单一出处）
 const SHOTS_PATCH = {
-  sceneStyle: (v) => ['classic', 'deck'].includes(v),
+  sceneStyle: (v) => ['classic', 'deck', 'paper'].includes(v),
   coverStyle: (v) => ['tech', 'bold', 'magazine'].includes(v),
   captions: (v) => typeof v === 'boolean',
   width: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,

@@ -183,3 +183,27 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - 幻灯片生成器（临时，可复用为 paper 主题参考）：`$env:TEMP\gen-slides.cjs`；任务装配：`$env:TEMP\build-task.cjs`。
 - 待清理：`$env:TEMP` 下 `slides_src\`、探针脚本（随系统 Temp 自清，非项目产物）。
 
+---
+
+# 2026-10-22 —— P5 施工①②：paper 纸感主题 + 素材镜头 Ken Burns（均验证闭环）
+
+## P5-1 `sceneStyle:"paper"` 纸感浅色主题（昨日待办①）
+
+- **实现**：`templates/paper.css` 覆盖层——base.css 是令牌驱动，只换 `:root` 令牌（奶油底 `#F2E8D6` / 墨字 `#211E1A` / 深红 `#A5322A` / 赭 `#7A5A2E`）+ 4 处硬编码装饰 override（素材背景暗罩→**纸罩**、青紫光晕→暖赭深红、网格→暖褐纸纹、要点方标辉光→深红低透）。动画全 transform/opacity 无硬编码色，砸字/卡拉OK 自动跟令牌。
+- **03-scenes**：`applyDeck` 泛化为 `applyTheme(html, sceneStyle)` + `THEME_CSS={deck,paper}`（classic 查表不中→不注入，零回归）；白名单 `['classic','deck','paper']` fail-fast；paper 日志行。
+- **触点同步**：server.cjs SCENE_STYLES 400 / chat-rules（`纸感|奶油|米色|浅色|paper` 规则 + validator）/ chat-qwen 枚举 / 网页两处下拉（新建 + 重跑面板）/ script.md schema 注释 / techniques.md 能力清单 / README 主题切换段。
+- **新配方卡**：`techniques/scene-paper.json`（tier=implemented，insert 只用 `shots:{sceneStyle:'paper'}` 与 scene-deck 同构；曾误加 config 键，03 读 `shots.sceneStyle` 优先已去掉）。
+- **验证**：paper 探针全链 1-4 → 奶油底墨字深红点缀帧 ✓；classic 回归探针（同任务切 classic 重跑 3,4）→ 暗底白字青点缀 + 暗罩压素材，与改前一致 ✓ 零回归。
+
+## P5-2 图片素材镜头 Ken Burns 缓推（昨日待办②）
+
+- **实现**：04-render 素材分支——图片 asset → `scale 2x cover + crop + zoompan` 居中缓推/缓拉，镜序奇偶交替方向（与 03 背景层 `kb-in/kb-out` 同规则）；`config.background.kenBurns:false` 退回静态原路径（原 vf 分支原样保留）；zoom 级别共用 `config.background.zoom`（1.06）；视频素材本身有运动不加。
+- **验证 A/B**（复制真实任务《手机标题栏八式》前 2 镜）：开 → 首尾帧差 YAVG **15.4**（缓推）/**10.6**（缓拉），最大缩放帧满幅无黑边、居中正确、清晰无伪影；关 → **0.015/0.019** 静止 ✓；日志三态分明（`缓推 1.06× / 缓拉 1.06× / 图片铺满`）；渲染 7s/2 镜可忽略。
+- **经验**：zoompan `d=ceil(dur*fps)+2` 供帧只多不少、`-t` 兜底裁齐；成片 4.23 vs 设计 4.22 是末帧 pts 取整，05 规整无碍。
+
+## 状态
+
+- 待办③④⑤未动：`captionStyle:"bar"` 字幕黑底圆角条 / corner-mark 品牌角标位 / 左文右图样机分栏版式。
+- 昨日成片《手机标题栏八式》未重渲：素材镜头现已支持缓推，可 `--steps 4,5,6` 升级（用户拍板再动）。
+- 探针目录 `output/_probe_paper`、`output/_kb_probe` 已验完清理。
+

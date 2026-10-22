@@ -1,0 +1,32 @@
+/* ============ paper 纸感浅色主题（P5-1）============ */
+/* 03 在 sceneStyle=paper 时把本文件整体注入 base.css 之后（同文档后写覆盖先写）。
+   base.css 是令牌驱动：这里只换 :root 令牌 + 少数硬编码装饰色 → classic/deck 零影响。
+   定位：奶油纸底 + 墨色深字 + 深红点缀，复刻「文档/知识卡片」类教学样片；
+   素材背景的 scrim 由压暗改为铺一层纸色（浅底深字，暗罩会让黑字读不出来）。 */
+
+:root {
+  --bg: #F2E8D6;
+  --fg: #211E1A;
+  --fg-dim: #8A8170;
+  --accent: #A5322A;          /* 深红：编号/强调/点缀 */
+  --accent-2: #7A5A2E;        /* 赭：数字/次级内容 */
+}
+
+/* 素材背景：纸色罩代替深色罩（可读性方向随文字色反转；config.background.scrim 仍控制浓度） */
+.bg-user::after { background: #F2E8D6; }
+
+/* 背景光晕：青/紫 → 暖赭/深红低饱和，纸面温感 */
+.bg::before {
+  background:
+    radial-gradient(48% 34% at 22% 18%, rgba(165,50,42,.09), transparent 70%),
+    radial-gradient(44% 30% at 82% 84%, rgba(122,90,46,.10), transparent 70%);
+}
+/* 网格：白色高光 → 暖褐低透，纸纹感 */
+.bg::after {
+  background-image:
+    linear-gradient(rgba(120,100,70,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120,100,70,.05) 1px, transparent 1px);
+}
+
+/* 要点方标：青色辉光 → 深红低透（浅底上高光晕会发灰） */
+ul.items li::before { box-shadow: 0 0 calc(24px * var(--k)) rgba(165,50,42,.30); }

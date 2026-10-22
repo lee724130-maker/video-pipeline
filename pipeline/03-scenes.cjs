@@ -10,6 +10,7 @@ const WEIGHT_OK = /[一-鿿㐀-䶿0-9a-zA-Z]/;
 
 const css = fs.readFileSync(path.join(ROOT, 'templates/base.css'), 'utf8');
 const deckCss = fs.readFileSync(path.join(ROOT, 'templates/deck.css'), 'utf8');
+const paperCss = fs.readFileSync(path.join(ROOT, 'templates/paper.css'), 'utf8');
 const runtime = fs.readFileSync(path.join(ROOT, 'templates/runtime.js'), 'utf8');
 
 function hi(text) {
@@ -25,10 +26,12 @@ function fill(html, tokens) {
   return out;
 }
 
-// —— deck 演示风（P2-9）——
-// deck.css 注入到 base.css 之后（同文档后写覆盖先写），classic 任务不注入零回归。
-function applyDeck(html) {
-  return html.replace('</head>', () => `<style>${deckCss}</style>\n</head>`);
+// —— 主题覆盖层（P2-9 deck / P5-1 paper）——
+// 覆盖 CSS 注入到 base.css 之后（同文档后写覆盖先写），classic 任务不注入零回归。
+const THEME_CSS = { deck: deckCss, paper: paperCss };
+function applyTheme(html, sceneStyle) {
+  const c = THEME_CSS[sceneStyle];
+  return c ? html.replace('</head>', () => `<style>${c}</style>\n</head>`) : html;
 }
 // 标签行（title/end 的 tags 数组 → 按钮行）；缺省空串，base.css 里 .tags 隐藏
 function tagRow(tags) {
@@ -175,7 +178,7 @@ function main() {
 
   // 场景风格（P2-9）：classic（缺省，经典暗底网格风）/ deck（演示风：暗蓝+青、章节卡片、底部导航条）；
   // 白名单 fail——非法值静默回落会让「以为出的是演示风」出成经典风
-  const SCENE_STYLES = ['classic', 'deck'];
+  const SCENE_STYLES = ['classic', 'deck', 'paper'];
   const sceneStyle = String(shots.sceneStyle || cfg.sceneStyle || 'classic');
   if (!SCENE_STYLES.includes(sceneStyle)) fail(`场景风格非法: ${sceneStyle}（白名单: ${SCENE_STYLES.join(' / ')}）`);
   const deck = sceneStyle === 'deck';
@@ -184,6 +187,7 @@ function main() {
   timeline.sceneStyle = sceneStyle;
   timeline.captionsOff = capOff;
   if (deck) log('03', '场景风格 deck（演示风）：暗蓝底青点缀 · 章节卡片网格 · 底部章节导航条');
+  if (sceneStyle === 'paper') log('03', '场景风格 paper（纸感浅色）：奶油底墨字深红点缀 · 素材背景纸罩（浅底深字，无暗罩）');
   if (capOff) log('03', '字幕烧录关闭（shots.captions:false）：成片 = 纯画面 + 旁白');
 
   // 章节导航条（deck 专用）：每镜一格，label 见 navLabel()，active = 当前镜
@@ -218,7 +222,7 @@ function main() {
 
     let html = fill(tpl, tokens);
     html = applySize(html, timeline);
-    if (deck) html = applyDeck(html);
+    html = applyTheme(html, sceneStyle);
     // stage 带类型 class（s-title/s-bullet/…）：deck.css 按页型分版式；classic 下无对应规则零影响
     html = html.replace('<div class="stage">', () => `<div class="stage s-${shot.type}">`);
     const layer = bgLayer(bgs, shot.index, shot.dur);
@@ -246,7 +250,7 @@ function main() {
       TAGS: '',
     };
     let html = applySize(fill(fs.readFileSync(path.join(ROOT, 'templates/scenes/end.html'), 'utf8'), tokens), timeline);
-    if (deck) html = applyDeck(html);
+    html = applyTheme(html, sceneStyle);
     html = html.replace('<div class="stage">', () => '<div class="stage s-end">');
     const inject = navHtml(timeline.shots.length - 1) + `<script>window.__SCENE__ = ${JSON.stringify({ duration: dur, fps: timeline.fps, id: 'outro' })};</script>\n  <script>${runtime}</script>`;
     html = html.replace('<!--__RUNTIME__-->', () => inject);

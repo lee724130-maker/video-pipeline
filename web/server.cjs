@@ -253,7 +253,7 @@ const server = http.createServer(async (req, res) => {
       const coverStyle = String(body.coverStyle || 'tech');
       if (!COVER_STYLES.includes(coverStyle)) return json(res, 400, { error: `封面风格非法: ${coverStyle}（可选: ${COVER_STYLES.join(' / ')}）` });
       // 场景风格（P2-9）：classic / deck，白名单 400 与 03 同表
-      const SCENE_STYLES = ['classic', 'deck'];
+      const SCENE_STYLES = ['classic', 'deck', 'paper'];
       const sceneStyle = String(body.sceneStyle || 'classic');
       if (!SCENE_STYLES.includes(sceneStyle)) return json(res, 400, { error: `场景风格非法: ${sceneStyle}（可选: ${SCENE_STYLES.join(' / ')}）` });
       for (const v of variants) {

@@ -15,7 +15,7 @@ function main() {
   const segDir = ensureDir(path.join(task, 'segments'));
   const buf = cfg.render.bufferSec;
 
-  for (const shot of timeline.shots) {
+  for (const [ord, shot] of timeline.shots.entries()) {
     const out = path.join(segDir, `${shot.id}.mp4`);
 
     // 素材镜头：直接裁切/缩放用户素材成片段（cover 铺满竖屏，不够长就循环），不走浏览器录制
@@ -24,12 +24,36 @@ function main() {
       if (!fs.existsSync(assetPath)) fail(`缺素材 ${assetPath}`);
       fs.existsSync(out) && fs.unlinkSync(out);
       const isImg = /\.(png|jpe?g|webp|bmp)$/i.test(shot.asset);
-      const vf = [
-        `scale=${timeline.width}:${timeline.height}:force_original_aspect_ratio=increase`,
-        `crop=${timeline.width}:${timeline.height}`,
-        'setsar=1',
-        `fps=${timeline.fps}`,
-      ].join(',');
+      const W = timeline.width, H = timeline.height, fps = timeline.fps;
+      // 图片素材接 Ken Burns 缓推（P5-2）：2x 超采样防抖 + zoompan 居中缓推/缓拉，
+      // 奇偶交替方向与素材背景层同规则（03 的 kb-in/kb-out）；config.background.kenBurns:false 关闭
+      // （退回静态铺满）；zoom 级别与背景层共用 config.background.zoom。视频素材本身有运动，不加。
+      const bgCfg = cfg.background || {};
+      const kb = isImg && bgCfg.kenBurns !== false;
+      let vf;
+      let kbNote = '';
+      if (kb) {
+        const zoom = Number(bgCfg.zoom ?? 1.06);
+        const frames = Math.ceil(shot.dur * fps) + 2;          // 帧供给只多不少，-t 兜底裁齐
+        const step = (zoom - 1).toFixed(4);
+        const zExpr = ord % 2
+          ? `${zoom}-${step}*on/${frames - 1}`                  // 拉远：zoom → 1
+          : `1+${step}*on/${frames - 1}`;                       // 缓推：1 → zoom
+        vf = [
+          `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase`,
+          `crop=${W * 2}:${H * 2}`,
+          `zoompan=z='${zExpr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${W}x${H}:fps=${fps}`,
+          'setsar=1',
+        ].join(',');
+        kbNote = ` · ${ord % 2 ? '缓拉' : '缓推'} ${zoom}×`;
+      } else {
+        vf = [
+          `scale=${W}:${H}:force_original_aspect_ratio=increase`,
+          `crop=${W}:${H}`,
+          'setsar=1',
+          `fps=${fps}`,
+        ].join(',');
+      }
       const src = isImg
         ? ['-loop', '1', '-i', assetPath]
         : ['-stream_loop', '-1', '-i', assetPath];
@@ -44,7 +68,7 @@ function main() {
       const d = durationOf(out);
       writeJson(path.join(task, 'segments', `${shot.id}.json`),
         { offsetSec: 0, shotDur: shot.dur, recorded: Number(d.toFixed(3)), asset: shot.asset });
-      log('04', `${shot.id} 素材 ${shot.asset} → ${d.toFixed(2)}s（设计 ${shot.dur}s${isImg ? ' · 图片铺满' : ''}）`);
+      log('04', `${shot.id} 素材 ${shot.asset} → ${d.toFixed(2)}s（设计 ${shot.dur}s${isImg ? (kb ? kbNote : ' · 图片铺满') : ''}）`);
       continue;
     }
 
