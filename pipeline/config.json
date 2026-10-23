@@ -115,5 +115,13 @@
     "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     "model": "qwen-plus",
     "timeoutMs": 30000
+  },
+  "imagegen": {
+    "enabled": true,
+    "endpoint": "https://maas.qianwenaiapi.com/compatible-mode/v1/images/generations",
+    "model": "qwen-image-2.1-turbo",
+    "size": "1024x1920",
+    "timeoutMs": 180000,
+    "key": ""
   }
 }

@@ -97,6 +97,77 @@ function libraryAdd(kind, name, task, mode) {
   return { ok: true, written: `assets/${name}`, note: '已复制进任务——分镜 shots.json 的 media 按文件名引用，改分镜后重跑对应步骤' };
 }
 
+// —— AI 生图（P7-2）：qwen-image OpenAI 兼容同步端点（千问AI平台 maas 域名——探针实测 2026-10-23：
+//   dashscope.aliyuncs.com 老域名无 images 路径=空 body 404；qwen-image-3.0 免费额度尽=403 提示；turbo/pro 可用）——
+// 只由网页手动触发，管线六步永不自动调用（零成本默认的硬保证）；key 只在 config.local/环境变量，永不出现在响应里
+const IMG_MODELS = ['qwen-image-3.0-pro', 'qwen-image-3.0', 'qwen-image-2.1-pro', 'qwen-image-2.1-turbo'];
+let imgBusy = false;
+
+function imagegenState() {
+  const ig = cfg.imagegen || {};
+  const key = ig.key || process.env.DASHSCOPE_API_KEY || (cfg.voice?.dashscope?.key) || '';
+  const where = ig.key ? 'imagegen.key' : (process.env.DASHSCOPE_API_KEY ? '环境变量 DASHSCOPE_API_KEY' : ((cfg.voice?.dashscope?.key) ? 'voice.dashscope.key' : '未配置'));
+  return { enabled: ig.enabled !== false && !!key, model: String(ig.model || 'qwen-image-2.1-turbo'), size: String(ig.size || '1024x1920'), where, key };
+}
+
+// 尺寸白名单：auto 或 WxH（以线上服务实测口径为准：面积 512²~2560²、宽高比 ≤8:1）——请求与 config 默认值都过这道
+function checkImgSize(s) {
+  if (s === 'auto') return null;
+  const m = /^(\d{3,4})x(\d{3,4})$/.exec(String(s || ''));
+  if (!m) return `size 格式非法: ${s}（写法 1024x1920，或 auto）`;
+  const w = Number(m[1]), h = Number(m[2]);
+  const area = w * h;
+  if (area < 512 * 512 || area > 2560 * 2560) return `size 面积超界: ${s}（服务实测限 512x512 ~ 2560x2560 总像素）`;
+  if (Math.max(w, h) / Math.min(w, h) > 8) return `size 宽高比超界: ${s}（上限 8:1）`;
+  return null;
+}
+
+async function genImage(prompt, size) {
+  const st = imagegenState();
+  const ig = cfg.imagegen || {};
+  if (!IMG_MODELS.includes(st.model)) throw new Error(`config.imagegen.model 非法: ${st.model}（白名单: ${IMG_MODELS.join(' / ')}）`);
+  const bad = checkImgSize(size);
+  if (bad) throw new Error(bad);
+  const t0 = Date.now();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), Number(ig.timeoutMs) || 180000);
+  try {
+    const r = await fetch(String(ig.endpoint), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${st.key}` },
+      body: JSON.stringify({ model: st.model, prompt, size, n: 1, prompt_extend: ig.promptExtend !== false, watermark: ig.watermark === true }),
+      signal: ctl.signal,
+    });
+    const txt = await r.text();
+    let j = {};
+    try { j = JSON.parse(txt); } catch { /* 非 JSON 响应（如空 body 404）→ 原文进错误 */ }
+    if (!r.ok) {
+      const em = (j.error && j.error.message) || j.message || txt.slice(0, 300) || '(空响应)';
+      const hint = j.error && j.error.code === 'insufficient_quota' ? '——额度不足：充值，或在控制台关闭「仅用免费额度」（qwen-image-3.0 系列当前卡在这）' : '';
+      throw new Error(`接口 ${r.status}: ${em}${hint}`);
+    }
+    const url = j.data && j.data[0] && j.data[0].url;
+    if (!url) throw new Error('响应缺 data[0].url：' + (txt.slice(0, 300) || '(空响应)'));
+    // 官方口径：结果 URL 只有 24 小时——立即下载落盘
+    const ir = await fetch(url, { signal: ctl.signal });
+    if (!ir.ok) throw new Error(`下载生成图失败: HTTP ${ir.status}`);
+    const buf = Buffer.from(await ir.arrayBuffer());
+    if (buf.length < 100 || buf[0] !== 0x89 || buf[1] !== 0x50 || buf[3] !== 0x47) throw new Error('下载内容不是有效 PNG');
+    return { buf, ms: Date.now() - t0, usage: j.usage || null };
+  } finally { clearTimeout(timer); }
+}
+
+function libSaveImage(buf) {
+  const dir = ensureDir(path.join(LIB, 'images'));
+  const d = new Date();
+  const p2 = (n) => String(n).padStart(2, '0');
+  const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+  let name = `ai-${stamp}.png`;
+  for (let n = 2; fs.existsSync(path.join(dir, name)); n++) name = `ai-${stamp}-${n}.png`;
+  fs.writeFileSync(path.join(dir, name), buf);
+  return name;
+}
+
 function push(line) {
   state.lines.push(line);
   if (state.lines.length > 200) state.lines.shift();
@@ -264,11 +335,13 @@ const server = http.createServer(async (req, res) => {
   try {
     // —— API ——
     if (p === '/api/meta') {
+      const igSt = imagegenState(); // 只回传状态不回传 key
       return json(res, 200, {
         voices: VOICES,
         defaultVoice: (cfg.voice?.dashscope || {}).voice || 'loongstella_v3.1',
         defaultRate: Number((cfg.voice?.dashscope || {}).targetCharsPerSec || 7.2),
         running: state.running,
+        imagegen: { enabled: igSt.enabled, model: igSt.model, size: igSt.size, where: igSt.where },
       });
     }
     if (p === '/api/status') {
@@ -405,6 +478,37 @@ const server = http.createServer(async (req, res) => {
       const r = libraryAdd(String(body.kind || ''), String(body.name || ''), String(body.task || ''), String(body.mode || ''));
       if (r.error) return json(res, r.status || 400, { error: r.error });
       return json(res, 200, r);
+    }
+
+    // —— AI 生图（P7-2）：手动触发 → 存 library/images →（可选）作背景图附加入任务；管线六步永不自动调用 ——
+    if (p === '/api/txt2img' && req.method === 'POST') {
+      const st = imagegenState();
+      if (!st.enabled) return json(res, 400, { error: `生图未启用（key 来源: ${st.where}）——在 pipeline/config.local.json 给 voice.dashscope.key（复用）或 imagegen.key（单独密钥）填 DashScope key，或设环境变量 DASHSCOPE_API_KEY；生图按张计费` });
+      if (imgBusy) return json(res, 409, { error: '已有一张图在生成中，等它完成再点' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const prompt = String(body.prompt || '').trim();
+      if (!prompt) return json(res, 400, { error: 'prompt 不能为空' });
+      if (prompt.length > 2000) return json(res, 400, { error: `prompt 过长（${prompt.length} 字符，上限 2000）` });
+      const size = String(body.size || st.size || 'auto');
+      const badSize = checkImgSize(size);
+      if (badSize) return json(res, 400, { error: `${badSize}（常用: auto / 1024x1920 / 1920x1024 / 1024x1024 / 1024x1440）` });
+      // 附加入选任务：花钱前先校验（不许生成成功后才发现任务不对）
+      const attachTask = String(body.attachTask || '');
+      if (attachTask) {
+        if (!NAME_RE.test(attachTask)) return json(res, 400, { error: 'bad task' });
+        if (!fs.existsSync(path.join(OUTPUT, attachTask, 'shots.json'))) return json(res, 404, { error: `任务不存在: ${attachTask}` });
+      }
+      imgBusy = true;
+      try {
+        const { buf, ms, usage } = await genImage(prompt, size);
+        const name = libSaveImage(buf);
+        const attach = attachTask ? libraryAdd('images', name, attachTask, String(body.attachMode || '') === 'as-is' ? 'as-is' : 'bg') : null;
+        log('07-web', `AI 生图 ${name} · ${st.model} · ${size} · ${(ms / 1000).toFixed(1)}s${usage ? ' · ' + JSON.stringify(usage) : ''}${attach && attach.ok ? ` → ${attach.written}` : ''}`);
+        return json(res, 200, { ok: true, name, saved: `library/images/${name}`, ms, attach, dataUrl: 'data:image/png;base64,' + buf.toString('base64') });
+      } catch (e) {
+        warn('07-web', `AI 生图失败: ${e.message}`);
+        return json(res, 502, { error: `生图失败: ${e.message}` });
+      } finally { imgBusy = false; }
     }
 
     // —— 任务持久聊天框（P3-4）：chat.json 多线程；需求解析→补丁→共享重跑引擎；聊天历史=改动审计 ——

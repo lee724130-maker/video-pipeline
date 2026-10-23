@@ -172,12 +172,25 @@
 
     <!-- 底部全宽：素材库（P7-1） -->
     <div class="card shelf">
-      <h2>素材库 <span style="font-weight:400;font-size:12px;color:#8a94a3">把文件丢进 <code>library\bgm｜images｜clips</code> 后点刷新 → 选目标任务 → 选用（复制进任务 assets，BGM 第 2 步 / 背景图第 3 步重跑生效）</span></h2>
+      <h2>素材库 <span style="font-weight:400;font-size:12px;color:#8a94a3">把文件丢进 <code>library\bgm｜images｜clips</code> 后点刷新 → 选目标任务 → 选用（复制进任务 assets，BGM 第 2 步 / 背景图第 3 步重跑生效）；没有现成图就用下方 ✦ AI 生图（有 key 才启用，按张计费）</span></h2>
       <div style="display:flex;gap:10px;align-items:center;margin:2px 0 10px;flex-wrap:wrap">
         <label style="margin:0">目标任务</label>
         <select id="libTask" style="max-width:280px"></select>
         <button onclick="refreshLib()">↻ 刷新</button>
         <span class="sub" id="libMsg" style="flex:1;min-width:220px"></span>
+      </div>
+      <div id="aiOff" class="sub" style="display:none;margin:0 0 10px"></div>
+      <div id="aiBox" style="display:none;margin:0 0 12px;padding-top:8px;border-top:1px dashed var(--line)">
+        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+          <textarea id="aiPrompt" style="flex:1;min-width:280px;min-height:46px" placeholder="描述要生成的画面（中英均可）：如「奶油色纸面背景，中央圆角白底 UI 窗口样机，扁平插画，深红点缀，留白充足」——场景图/背景图/成对对照素材都靠它"></textarea>
+          <select id="aiSize" style="width:130px"></select>
+          <button id="aiGo" onclick="genImage()">✦ AI 生图</button>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <label style="margin:0;font-weight:400"><input type="checkbox" id="aiAttach" checked> 生成后作背景图（bg-NN）加入上方所选任务</label>
+          <span class="sub" id="aiMsg" style="flex:1;min-width:200px"></span>
+        </div>
+        <div id="aiPreview" style="margin-top:6px"></div>
       </div>
       <div id="lib" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
     </div>
@@ -216,6 +229,7 @@ async function init() {
   refreshHist();
   refreshTech();
   refreshLib();
+  initAI();
   if (meta.running) poll();
 }
 
@@ -484,6 +498,48 @@ async function libAdd(kind, name, mode) {
 // 表单里选了素材库 BGM → 清自带上传（二选一，服务端同传 400）
 function bgmLibPick() {
   if ($('bgmLib').value) { bgmData = null; $('bgm').value = ''; $('bgmBox').textContent = '＋ 点击选择音乐（将用素材库文件）'; }
+}
+
+// —— AI 生图（P7-2）：有 key 才显示操作区；未配置只给启用说明（零成本默认，出片流程零影响）——
+const AI_SIZE_LABEL = { auto: '自动', '1024x1920': '竖 9:16', '1920x1024': '横 16:9', '1024x1024': '方 1:1', '1024x1440': '竖 3:4' };
+function initAI() {
+  const ig = meta.imagegen || {};
+  if (ig.enabled) {
+    $('aiBox').style.display = '';
+    const opts = ['auto', '1024x1920', '1920x1024', '1024x1024', '1024x1440'];
+    if (ig.size && !opts.includes(ig.size)) opts.push(ig.size);
+    $('aiSize').innerHTML = opts.map((s) => `<option value="${s}" ${s === (ig.size || '1024x1920') ? 'selected' : ''}>${AI_SIZE_LABEL[s] || s}</option>`).join('');
+    $('aiMsg').textContent = `模型 ${ig.model} · key 来源 ${ig.where} · 按张计费`;
+  } else {
+    $('aiOff').style.display = '';
+    $('aiOff').textContent = `✦ AI 生图未启用——当前没有生图 key（来源：${ig.where || '未配置'}）。启用方法：pipeline\\config.local.json 里给 voice.dashscope.key（复用现有密钥）或 imagegen.key（单独密钥）填入 DashScope key，也可设环境变量 DASHSCOPE_API_KEY；不想用可写 imagegen.enabled=false 关死。不配 key 此功能就是个说明文字，出片流程零调用零花费。`;
+  }
+}
+
+async function genImage() {
+  const prompt = $('aiPrompt').value.trim();
+  if (!prompt) { $('aiMsg').textContent = '先写一句画面描述'; return; }
+  const wantAttach = $('aiAttach').checked;
+  if (wantAttach && !$('libTask').value) { $('aiMsg').textContent = '先选目标任务（或取消「加入任务」只存素材库）'; return; }
+  $('aiGo').disabled = true;
+  $('aiMsg').textContent = '生成中…（十几秒到一分钟）';
+  $('aiPreview').innerHTML = '';
+  try {
+    const r = await j('/api/txt2img', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, size: $('aiSize').value, attachTask: wantAttach ? $('libTask').value : '', attachMode: 'bg' }),
+    });
+    let msg = `✓ ${r.saved} · ${(r.ms / 1000).toFixed(1)}s`;
+    if (r.attach && r.attach.ok) msg += ` → ${r.attach.written}（${r.attach.note}）`;
+    else if (r.attach && r.attach.error) msg += `；加入任务失败：${r.attach.error}`;
+    $('aiMsg').textContent = msg;
+    $('aiPreview').innerHTML = `<img src="${r.dataUrl}" alt="生成结果" style="max-height:280px;border-radius:8px;border:1px solid var(--line)">`;
+    refreshLib();
+  } catch (e) {
+    $('aiMsg').textContent = `✗ ${e.message}`;
+  }
+  $('aiGo').disabled = false;
 }
 
 // 插入 = 填好局部重跑表单（from / 场景·封面·字幕下拉 / config 补丁深合并），不自动提交——留给用户确认

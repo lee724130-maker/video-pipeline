@@ -5,5 +5,8 @@
     "dashscope": {
       "key": "sk-你的DashScope密钥"
     }
+  },
+  "imagegen": {
+    "key": ""
   }
 }

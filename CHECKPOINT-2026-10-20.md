@@ -325,3 +325,27 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - **验证（冒烟 24/24）**：列表过滤×5、负例×5（kind 白名单/穿越文件名/错扩展/库无此文件/任务不存在）、正例×8（BGM mp3→wav 换装且旧文件清理、`findBgm(TDIR)` 真实契约命中 `bgm.wav`、bg-NN 自动编到 01、原名复制+同名 409、clips 复制）、create 早校验×3（同传 400/无文件 404/错扩展 400 + 未落任务目录）、现场还原（deck-demo assets 备份比对原状 + 种子文件自清）。服务重启后服务端页面三要素（素材库区/refreshLib/bgmLib）在线核验通过。
 - **README 同步**：流程句挂素材库选用、技术库「7 张卡」过期数字改 12（P6 漏改）、目录树加 `library/`、素材模式+BGM 段加 P7 条目。
 
+
+## P7-2 AI 生成画面（远期 10 转正，2026-10-23 追记）
+
+- **动线**：上一环节收尾后用户「继续吧」→ 按 ROADMAP 顺序远期 10 转正。设计底线两条：**有 key 才启用、零成本默认一分不动**——
+  落法是**网页手动触发**，管线六步永远不会自动调它（零成本的硬保证）；没配 key 时界面只显示启用说明（`GET /api/meta` 新增 `imagegen` 状态驱动），出片流程零调用零影响。
+- **端点定案（零成本探针钉死，辨路全程 0 元，唯一一次真实调用留给验收）**：
+  - 正确域名是千问AI平台 `https://maas.qianwenaiapi.com/compatible-mode/v1/images/generations`（官方 curl 示例直接 `$DASHSCOPE_API_KEY`——同一把 key 通吃）；
+    `dashscope.aliyuncs.com` 老域名**没有** images 路径（空 body 404 = 首轮真实调用踩的坑，已留档进 server 注释）。
+  - OpenAI 兼容文档枚举只写 `3.0-pro/3.0/2.1-pro`，**实测 `qwen-image-2.1-turbo` 可用**（模型是否可用以服务端报错为准，不照文档白名单自我阉割）；
+    `qwen-image-3.0` 免费额度已尽且「仅用免费额度」开着 → 403 `insufficient_quota`，错误处理转中文提示（充值或关免费额度模式）。
+  - 尺寸契约以**线上实测**为准：面积 512²~**2560²**（6553600，与文档 2048² 不符）、字母 `x` 分隔、`auto` 可选；`checkImgSize()` 一处同时过请求值与 config 默认值。
+  - 探针方法论：**非法模型/非法尺寸必 400 且不生成**——先用坏模型辨路径（404 model_not_found=路径在、空 body=路径不在），再用真模型+坏尺寸辨额度（尺寸错误=模型与额度闸全过），一分钱没花把域名/模型/额度三件事全部钉死。
+- **实现**：`pipeline/config.json` 新增 `imagegen` 段（endpoint/model=`qwen-image-2.1-turbo`/size=`1024x1920`/timeoutMs=180000/**key 恒空**——key 只进 `config.local.json` 的 `imagegen.key` 或 `voice.dashscope.key`、或环境变量 `DASHSCOPE_API_KEY`；meta 与响应永只回 key **来源**不回本体）；`config.local.example.json` 补 `imagegen.key` 空位（留空即回落复用 TTS key）。
+- **server**：`POST /api/txt2img` {prompt, size, attachTask, attachMode}，顺序：未启用 400（报 key 来源+三个启用路径）→ 并发 409 → prompt 空/超 2000 字 400 → 尺寸契约 400 → **附加入选任务 404（花钱前拦截，不许生成成功后才发现任务不对）** → 同步生成（AbortController 超时）→ 服务端立即下载（结果 URL 只有 24h）→ PNG 魔数校验 → 落 `library/images/ai-<本地时间戳>.png`（撞名追加 `-2`）→ 附加入任务**复用 `libraryAdd`**（与素材库选用同一实现）→ 回传 dataUrl 供即时预览；502=上游失败（错误体非 JSON 时原文入错）；`imgBusy` 串行防重复扣费。
+- **网页**：素材库卡内 `✦ AI 生图` 区（prompt + 尺寸下拉 auto/9:16/16:9/1:1/3:4 + 生成按钮 + 结果预览 + 「作 bg-NN 加入上方所选任务」勾选复用 `#libTask`）；`initAI()` 按 meta 两态切换（操作区 vs 灰字启用说明，含启用三路径与 `imagegen.enabled=false` 关死开关）；素材库 h2 提示同步挂一句。
+- **验证（冒烟 47/47，`$env:TEMP\opencode\p7-2-imagegen-smoke.cjs`）**：
+  - A 静态 20：内联 JS `--check` + 页面 8 个 id / initAI / genImage + server 路由/状态/尺寸契约 + config 段且 key 恒空；
+  - B 无 key 负例 7：`PIPELINE_CONFIG_OVERRIDES` 空 key 补丁起 **8799 副本实例**（剥离 `DASHSCOPE_API_KEY` 环境变量）→ `enabled=false`+`where=未配置`、400 带启用方法、**响应无任何 key 字段**；
+  - C 主实例不花钱负例 8：enabled/来源/模型白名单 + 空 prompt / 面积超界 / 超长 prompt 400 + 附加入不存在任务 404（花钱前拦截）；
+  - D 真实生图 12：200 → 落库 PNG 魔数 ≥50KB、dataUrl 预览、附加入 deck-demo `bg-NN`、**deck-demo assets 前后比对还原零残留**；留样 `library/images/ai-20261023183337.png` 交用户过目（「仅用免费额度」模式开着，付费通道本来就是关的 → 这张走的免费额度）。
+- **坑与决策（后续沿用）**：
+  - **文件名时间戳首版用 `toISOString()`=UTC 差 8 小时**（`ai-20261023103337` 实为本地 18:33）→ 改本地时间拼串，留样同步改名；用户看文件名对不上墙钟必当 bug 报。
+  - **改 config.json / server.cjs 必重启 8787**（meta 与路由都挂在 require 时加载的 cfg 上——本轮重启 3 次：P7 代码 / 端点修正 / 时间戳修正）。
+  - 模型可用性**不照文档白名单**：文档枚举没有 turbo，但 config 默认 turbo 是唯一在当前账户状态下真能出图的档（3.0 额度尽）——白名单照收四档，实际能不能用由上游 400/403 说了算，错误信息翻译成人话。
