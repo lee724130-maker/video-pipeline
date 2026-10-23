@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { ROOT, FFMPEG, run, durationOf, ensureDir, readJson, writeJson, log, warn, fail, loadConfig } = require('./lib/common.cjs');
+const { ROOT, FFMPEG, run, durationOf, ensureDir, readJson, writeJson, log, warn, fail, loadConfig, resolveCornerMark } = require('./lib/common.cjs');
 
 const cfg = loadConfig();
 const HYPIT = path.join(process.env.APPDATA, 'npm', 'hypit.cmd');
@@ -14,6 +14,10 @@ function main() {
   if (!timeline) fail('缺 timeline.json');
   const segDir = ensureDir(path.join(task, 'segments'));
   const buf = cfg.render.bufferSec;
+
+  // 品牌角标（P5-4 收口）：素材镜头走 ffmpeg overlay 叠同位角标（场景镜头由 03 注入 HTML），
+  // 几何与 base.css 的 .cm-* 完全一致——边距 48px*k、宽 width*k、透明度 opacity（k=短边/1080）
+  const cm = resolveCornerMark(task);
 
   for (const [ord, shot] of timeline.shots.entries()) {
     const out = path.join(segDir, `${shot.id}.mp4`);
@@ -57,8 +61,27 @@ function main() {
       const src = isImg
         ? ['-loop', '1', '-i', assetPath]
         : ['-stream_loop', '-1', '-i', assetPath];
+      // 品牌角标 overlay（P5-4 收口）：几何与 base.css .cm-* 一致——边距 48px*k、宽 width*k、
+      // 透明度 opacity；overlay 的 x/y 表达式里 main_w/w=主图宽/角标宽（免探测角标像素尺寸）。
+      // 不叠则仍走原 -vf 单链，行为与旧版逐字一致（零回归）。
+      let eff = '-vf';
+      let chain = vf;
+      if (cm) {
+        const k = Math.min(W, H) / 1080;
+        const off = Math.round(48 * k);
+        const bw = Math.round(cm.width * k);
+        const x = cm.pos[1] === 'l' ? String(off) : `main_w-w-${off}`;
+        const y = cm.pos[0] === 't' ? String(off) : `main_h-h-${off}`;
+        chain = `[0:v]${vf}[base];`
+          + `[1:v]scale=${bw}:-1,format=rgba,colorchannelmixer=aa=${cm.opacity}[cmk];`
+          + `[base][cmk]overlay=x=${x}:y=${y}[vout]`;
+        eff = '-filter_complex';
+        src.push('-loop', '1', '-i', cm.file);
+      }
       const r = run(FFMPEG, [
-        '-y', ...src, '-vf', vf, '-t', String(shot.dur),
+        '-y', ...src, eff, chain,
+        ...(cm ? ['-map', '[vout]'] : []),
+        '-t', String(shot.dur),
         '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
         out,
       ]);
@@ -68,7 +91,7 @@ function main() {
       const d = durationOf(out);
       writeJson(path.join(task, 'segments', `${shot.id}.json`),
         { offsetSec: 0, shotDur: shot.dur, recorded: Number(d.toFixed(3)), asset: shot.asset });
-      log('04', `${shot.id} 素材 ${shot.asset} → ${d.toFixed(2)}s（设计 ${shot.dur}s${isImg ? (kb ? kbNote : ' · 图片铺满') : ''}）`);
+      log('04', `${shot.id} 素材 ${shot.asset} → ${d.toFixed(2)}s（设计 ${shot.dur}s${isImg ? (kb ? kbNote : ' · 图片铺满') : ''}${cm ? ` · 角标 ${cm.pos}` : ''}）`);
       continue;
     }
 

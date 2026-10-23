@@ -1,6 +1,6 @@
 # ROADMAP · 零成本视频流水线
 
-> 更新：2026-10-16。状态：✅ 已完成 / 🔄 进行中 / ⬜ 未开始。
+> 更新：2026-10-23。状态：✅ 已完成 / 🔄 进行中 / ⬜ 未开始。
 
 ## ✅ 已完成
 
@@ -27,7 +27,15 @@
 
 > P2 五项全部完工：网页界面 ✅ · 批量变体 ✅ · 尺寸自适应 ✅ · 封面多风格 ✅ · 演示风 deck 主题 ✅
 
-## ⬜ P3 · 远期（可选方向，看需求再启动）
+## ✅ P3~P5 · 打磨冲刺（2026-10-20 ~ 10-23，全部完成，施工记录见 `CHECKPOINT-2026-10-20.md`）
+
+| 冲刺 | 内容 |
+|---|---|
+| P3 改片三件套 ✅ | ① 局部重跑 `/api/rerun`（from 1~6 + shots 白名单补丁 + 任务级 `config.overrides.json` 三层深合并）② BGM 收尾降调 `outroPitchSemitones/Sec`（asetrate+atempo 零依赖）③ 技术库货架 `techniques/*.json` + `/api/techniques` + 网页一键插入；附带任务持久聊天框 `chat.json`（规则 17 用例 + qwen 语义解析，quota 命中自动降级规则模式并界面明示）+ 技术入库工作流规则书 `skills/techniques.md` |
+| P4 外部配方入库 ✅ | 入库工作流跑通两例：001「BGM 收尾延迟回声」`outroEcho*` 三键（echo-compose-test 24/24；**声学定案**——成片上看不见抽头是 20 倍人声掩蔽，验证必须在对应总线直量，方法论已沉淀）；002「形似叠化」tier=manual 首例（素材契约型技法只入库判据卡不实现，manual 档基建：loadTechniques 放行无 insert 卡 + 货架 badge）。货架 9 卡 |
+| P5 打磨五件套 ✅ | ① `sceneStyle:"paper"` 纸感浅色主题（奶油底墨字深红，横屏教学风）② 图片素材镜头 Ken Burns 缓推/缓拉（2x 超采样 zoompan，奇偶交替，`background.kenBurns:false` 关）③ `captionStyle:"bar"` 字幕黑底实底条（ASS BorderStyle 3，白名单 outline\|bar）④ `cornerMark` 品牌角标（场景镜 HTML 注入 + 素材镜 ffmpeg overlay 同几何 + 片尾卡，未配置零影响）⑤ 分镜 type `split` 左文右图分栏（media 引 assets 样机图，竖屏自动上下分栏）。附带实战出片《8种手机顶部标题栏》71.8s QC 18/18、页面三区布局优化、output 大扫除（17 测试目录 95.6MB）；演示片 `output/P5三件套演示` QC 19/19 |
+
+## ⬜ 远期（可选方向，看需求再启动）
 
 9. **素材库接入**——免版权 BGM/图片/视频片段的本地缓存库（用户仍可自带文件优先）
 10. **AI 生成画面**——可选接入生图 API 出场景图（有 key 才启用，保持零成本默认不变）
@@ -40,3 +48,4 @@
 - 已知口径：语速目标 7.2 字/秒（2026-10-16 用户调，原 7.6 微降）；默认音色 loongstella 飒爽新闻女；BGM 只认用户自带文件
 - 配音四级兜底：dashscope → edge → gtts → sapi（SAPI 为离线最后防线，Windows 必带中文语音 Huihui）
 - 坑位留档：见 `CHECKPOINT-2026-10-13.md`（whisper 四坑、loudnorm 两坑、DashScope mp3 头时长等，均已固化进脚本注释）
+- 施工记录：`CHECKPOINT-2026-10-20.md`（P3 改片三件套 → P4 入库+声学定案 → P5 打磨五件套，含全部验证数据与遗留项）

@@ -185,4 +185,22 @@ function bgImages(task) {
     .sort((a, b) => Number(a.match(/bg-(\d+)/i)[1]) - Number(b.match(/bg-(\d+)/i)[1]));
 }
 
-module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, deepMerge, loudnormFile, fail };
+// —— 品牌角标（config.cornerMark，P5-4）——03 出场景 HTML、04 给素材镜头叠同位角标的共用解析：
+// 未配置（src 为空）→ null 零影响；src 缺文件 / pos / width / opacity 非法 → fail（宁 fail 勿兜底）
+function resolveCornerMark(task) {
+  const cm = loadConfig().cornerMark || {};
+  if (!cm.src) return null;
+  const POS = ['tl', 'tr', 'bl', 'br'];
+  const pos = String(cm.pos || 'br');
+  if (!POS.includes(pos)) fail(`cornerMark.pos 非法: ${pos}（白名单: ${POS.join(' / ')}）`);
+  const rel0 = String(cm.src).replace(/\\/g, '/');
+  const file = path.isAbsolute(rel0) ? rel0 : path.join(task, 'assets', rel0);
+  if (!fs.existsSync(file)) fail(`cornerMark.src 指定的图不存在: ${file}（assets/ 相对任务目录，或绝对路径）`);
+  const width = Number(cm.width ?? 160);
+  const opacity = Number(cm.opacity ?? 0.9);
+  if (!(width >= 16 && width <= 1080)) fail(`cornerMark.width 超范围: ${cm.width}（16-1080 px）`);
+  if (!(opacity >= 0 && opacity <= 1)) fail(`cornerMark.opacity 超范围: ${cm.opacity}（0-1）`);
+  return { file, pos, width, opacity };
+}
+
+module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, deepMerge, loudnormFile, fail, resolveCornerMark };

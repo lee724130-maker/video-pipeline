@@ -243,3 +243,32 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - 文档齐：script.md（schema split 示例+白名单+字段说明）、techniques.md 能力清单、visuals.md 类型表+「新增模板步骤」纠偏（TEMPLATES 已不存在，实为 TYPES×3+tokensFor）、README 新增角标/分栏两条+字幕样式一句。
 - 演示片：`output/P5三件套演示/成片.mp4`（12s · paper+split+bar+角标 三件套合体，供网页预览）。
 
+---
+
+# 2026-10-23 —— 已知缺口收口：素材镜头角标 + ROADMAP 补记（用户拍板「先补已知缺口+收口文档」）
+
+## P5-4 收口：素材镜头也带品牌角标（此前只有场景镜有，品牌不齐）
+
+- **单点解析**：`common.cjs` 新增 `resolveCornerMark(task)`（校验 src 存在/pos 白名单/width 16-1080/opacity 0-1，非法全 fail），
+  03 与 04 共用——03 的 cornerMarkHtml 只剩 HTML 转换，校验逻辑不再两处重复。
+- **04 素材分支**：`-vf` 单链改条件 `filter_complex`——`[0:v]<原链>[base]; [1:v]scale=width×k,format=rgba,
+  colorchannelmixer=aa=opacity[cmk]; [base][cmk]overlay=x:y[vout]`。几何与 base.css `.cm-*` 严格同源：
+  边距 `round(48×k)`、宽 `round(width×k)`、四角用 overlay 表达式（`main_w-w-边距`，免探测 logo 像素）。
+  **未配置时仍走原 `-vf` 单链，参数逐字与旧版一致（零回归）**；KB 缓推链与叠加链可同时生效（角标叠在缩放后画面，位置稳定不随推镜漂移）。
+- **验证（探针 output/_probe_cm，横屏 1920×1080，场景镜+素材镜各一条，pos=br/width=150/opacity=0.9）**：
+  - 全链 1-6 QC **18/18**；日志两态齐：`品牌角标注入每镜`（03）+ `素材 mockup.png · 角标 br`（04）。
+  - **逐像素对位**：两镜中点帧右下红 logo bbox 完全一致 `x[1722-1871] y[882-1031]`（=右边距 48、下边距 48、150×150），
+    redPx 20416 vs 20426（差 10/22500 = Chrome 抗锯齿 vs ffmpeg alpha 合成的边缘差）——HTML 与 ffmpeg 两条渲染路径同位同尺寸。
+  - **无配置回归**：04 无 overrides 重渲 → 素材镜 redPx=0、日志无角标后缀；03 无 overrides → 场景 HTML 无 `cm-br` 元素、无 `--cm-w` 内联。
+  - 踩坑留档：CSS 注释里有字面量 `<img class="corner-mark">`，直接在 HTML 全文上跑正则会**误报有元素**——
+    验「有没有元素」必须剥掉 `<style>` 段（或查 `cm-<pos>` 类/`--cm-w` 内联特征）。
+- 已知边界不变：KTV（07）不带角标；封面不带（独立发布图）；deck 风 bl/br 与底部导航条冲突建议 tr。
+
+## ROADMAP 收口（停在 10-16 → 更新至 10-23）
+
+- 新增「✅ P3~P5 · 打磨冲刺」段：P3 改片三件套 / P4 外部配方入库+声学定案 / P5 打磨五件套 各一行（内容+验证数据）。
+- **编号撞车处理**：ROADMAP 原「⬜ P3 · 远期」改名「⬜ 远期」——CHECKPOINT 的 P3/P4/P5 是冲刺号（现已全网沿用），
+  阶段号 P3 与之同名不同义，弃阶段号保留冲刺号；远期四条候选（素材库/AI 生图/平台 profile/语音克隆）不动。
+- 维护备忘补一行施工记录指针 → `CHECKPOINT-2026-10-20.md`；README 品牌角标行改「场景镜+素材镜（ffmpeg 同几何）+片尾卡」。
+- 收口后状态：**显性 backlog 清空**（P3~P5 全完工、远期为按需启动项）；下一批工作等新片源（techniques.md 六步入库）或用户新目标。
+

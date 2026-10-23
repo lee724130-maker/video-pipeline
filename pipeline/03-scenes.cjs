@@ -1,7 +1,7 @@
 // 03 · 场景生成：shots.json + timeline.json → scenes/*.html（要点随配音逐条出现）
 const fs = require('fs');
 const path = require('path');
-const { ROOT, readJson, writeJson, ensureDir, log, warn, fail, loadConfig, bgImages } = require('./lib/common.cjs');
+const { ROOT, readJson, writeJson, ensureDir, log, warn, fail, loadConfig, bgImages, resolveCornerMark } = require('./lib/common.cjs');
 
 const cfg = loadConfig();
 
@@ -85,25 +85,14 @@ function bgLayer(bgs, index, durSec) {
   return `<div class="bg-user${kb}" style="${vars};background-image:url('../assets/${file}')"></div>`;
 }
 
-// —— 品牌角标（P5-4 config.cornerMark）——
-// src 为空 = 未配置零影响；pos 白名单；文件必须存在——缺图 fail，不能静默渲出无角标片
-// （deck 风底部有章节导航条，角标建议 tr；tr 与 bullet 序号装饰同区，单页二选一）
+// —— 品牌角标（P5-4 config.cornerMark）——解析/校验在 common.resolveCornerMark（04 素材镜头共用）；
+// 此处只负责转成场景 HTML 的 <img>（deck 风底部有章节导航条，角标建议 tr；tr 与 bullet 序号同区单页二选一）
 function cornerMarkHtml(task) {
-  const cm = cfg.cornerMark || {};
-  if (!cm.src) return '';
-  const POS = ['tl', 'tr', 'bl', 'br'];
-  const pos = String(cm.pos || 'br');
-  if (!POS.includes(pos)) fail(`cornerMark.pos 非法: ${pos}（白名单: ${POS.join(' / ')}）`);
-  const rel0 = String(cm.src).replace(/\\/g, '/');
-  const file = path.isAbsolute(rel0) ? rel0 : path.join(task, 'assets', rel0);
-  if (!fs.existsSync(file)) fail(`cornerMark.src 指定的图不存在: ${file}（assets/ 相对任务目录，或绝对路径）`);
-  const w = Number(cm.width ?? 160);
-  const op = Number(cm.opacity ?? 0.9);
-  if (!(w >= 16 && w <= 1080)) fail(`cornerMark.width 超范围: ${cm.width}（16-1080 px）`);
-  if (!(op >= 0 && op <= 1)) fail(`cornerMark.opacity 超范围: ${cm.opacity}（0-1）`);
+  const cm = resolveCornerMark(task);
+  if (!cm) return '';
   // 场景 HTML 落在 task/scenes/，素材在 task/assets/ → 相对引用（与 bgLayer 同规则）
-  const rel = path.relative(path.join(task, 'scenes'), file).replace(/\\/g, '/');
-  return `<img class="corner-mark cm-${pos}" src="${rel}" style="--cm-w:${w}px;--cm-op:${op}">`;
+  const rel = path.relative(path.join(task, 'scenes'), cm.file).replace(/\\/g, '/');
+  return `<img class="corner-mark cm-${cm.pos}" src="${rel}" style="--cm-w:${cm.width}px;--cm-op:${cm.opacity}">`;
 }
 
 function itemTime(shot, timeline, itemText, i, n) {
