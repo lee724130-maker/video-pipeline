@@ -7,6 +7,10 @@ __pycache__/
 # —— 成品与素材（一任务一文件夹，全部本地留存）——
 output/
 
+# —— 素材库（本地素材不入库，只进 library/README.md 说明）——
+library/*
+!library/README.md
+
 # —— 本机私有配置（API key / 代理 / 本地 ffmpeg 路径）——
 # 真实密钥写在 pipeline/config.local.json，模板见 config.local.example.json
 config.local.json

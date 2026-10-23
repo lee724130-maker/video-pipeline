@@ -147,9 +147,10 @@
       <input type="file" id="imgs" accept="image/jpeg,image/png,image/webp" multiple hidden>
       <div class="thumbs" id="thumbs"></div>
 
-      <label>BGM（可选，mp3；自动循环+说话闪避+卡点）</label>
+      <label>BGM（可选，mp3；自动循环+说话闪避+卡点）——或从素材库选（与上方上传二选一，自带优先）</label>
       <div class="files" id="bgmBox" onclick="document.getElementById('bgm').click()">＋ 点击选择音乐</div>
       <input type="file" id="bgm" accept="audio/mpeg" hidden>
+      <select id="bgmLib" onchange="bgmLibPick()"><option value="">（素材库：未选用——刷新底部素材库后出现可选项）</option></select>
 
       <button class="primary" id="go" onclick="create()">🎬 一键出片</button>
       <div class="err" id="err"></div>
@@ -167,6 +168,18 @@
         <h2>③ 历史任务</h2>
         <table id="hist"><tr><td>加载中…</td></tr></table>
       </div>
+    </div>
+
+    <!-- 底部全宽：素材库（P7-1） -->
+    <div class="card shelf">
+      <h2>素材库 <span style="font-weight:400;font-size:12px;color:#8a94a3">把文件丢进 <code>library\bgm｜images｜clips</code> 后点刷新 → 选目标任务 → 选用（复制进任务 assets，BGM 第 2 步 / 背景图第 3 步重跑生效）</span></h2>
+      <div style="display:flex;gap:10px;align-items:center;margin:2px 0 10px;flex-wrap:wrap">
+        <label style="margin:0">目标任务</label>
+        <select id="libTask" style="max-width:280px"></select>
+        <button onclick="refreshLib()">↻ 刷新</button>
+        <span class="sub" id="libMsg" style="flex:1;min-width:220px"></span>
+      </div>
+      <div id="lib" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
     </div>
 
     <!-- 底部全宽：技术库货架（P3-3） -->
@@ -202,6 +215,7 @@ async function init() {
   $('rateVal').textContent = meta.defaultRate;
   refreshHist();
   refreshTech();
+  refreshLib();
   if (meta.running) poll();
 }
 
@@ -218,6 +232,7 @@ $('bgm').addEventListener('change', async (e) => {
   if (!f) { bgmData = null; $('bgmBox').textContent = '＋ 点击选择音乐'; return; }
   bgmData = await toBase64(f);
   $('bgmBox').textContent = '♪ ' + f.name;
+  $('bgmLib').value = ''; // 自带上传与素材库二选一（服务端同传 400）
 });
 
 async function create() {
@@ -236,7 +251,7 @@ async function create() {
     const d = await j('/api/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, sceneStyle: $('sceneStyle').value, captions: $('captions').checked, assets: imgData, bgm: bgmData, hooks, ...spec }),
+      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, sceneStyle: $('sceneStyle').value, captions: $('captions').checked, assets: imgData, bgm: bgmData, bgmFromLibrary: $('bgmLib').value || '', hooks, ...spec }),
     });
     lastTask = d.name;
     batchNames = d.batch || [d.name];
@@ -414,6 +429,61 @@ async function refreshTech() {
     $('tech').innerHTML = cats.map((c) => `
       <div class="cathead"><b>${c}</b><span>${groups[c].length} 张</span></div>${groups[c].map(card).join('')}`).join('');
   } catch (e) { $('tech').innerHTML = `<div class="sub">技术库加载失败：${e.message}</div>`; }
+}
+
+// —— 素材库（P7-1）：library/{bgm,images,clips} 列表 + 选用复制进任务；建任务表单的「素材库选 BGM」下拉共用这份数据 ——
+const LIB_META = {
+  bgm: { label: 'BGM', hint: '把 mp3/wav/m4a/aac/ogg/flac/mp4 丢进 library\\bgm', acts: [{ m: '', t: '♪ 设为任务 BGM' }] },
+  images: { label: '图片', hint: '把 jpg/png/webp 丢进 library\\images', acts: [{ m: 'bg', t: '↓ 作背景图 (bg-NN)' }, { m: 'as-is', t: '⎘ 原名复制（样机图/分镜引用）' }] },
+  clips: { label: '视频片段', hint: '把 mp4/mov/webm/mkv 丢进 library\\clips', acts: [{ m: '', t: '⎘ 复制进任务（分镜引用）' }] },
+};
+const libEsc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+async function refreshLib() {
+  try {
+    const d = await j('/api/library');
+    const tasks = await j('/api/tasks');
+    const sel = $('libTask');
+    const keep = sel.value;
+    sel.innerHTML = tasks.length
+      ? tasks.map((t) => `<option value="${libEsc(t.name)}">${t.name}</option>`).join('')
+      : '<option value="">（还没有任务）</option>';
+    if (keep && tasks.some((t) => t.name === keep)) sel.value = keep;
+    // 建任务表单的素材库 BGM 下拉同步（自带上传与它二选一）
+    const bl = $('bgmLib');
+    const blKeep = bl.value;
+    bl.innerHTML = '<option value="">（素材库：未选用）</option>'
+      + (d.kinds.bgm || []).map((it) => `<option value="${libEsc(it.name)}">${it.name}</option>`).join('');
+    if (blKeep && (d.kinds.bgm || []).some((it) => it.name === blKeep)) bl.value = blKeep;
+    $('lib').innerHTML = Object.keys(LIB_META).map((k) => {
+      const meta = LIB_META[k];
+      const items = d.kinds[k] || [];
+      const head = `<div class="cathead"><b>${meta.label}</b><span>${items.length} 个</span></div>`;
+      if (!items.length) return head + `<div class="sub" style="grid-column:1/-1">${meta.hint} 后点刷新</div>`;
+      return head + items.map((it) => `
+        <div class="titem">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="word-break:break-all">${it.name}</b><span class="badge">${fmtSize(it.size)}</span></div>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+            ${meta.acts.map((a) => `<button onclick="libAdd('${k}','${libEsc(it.name)}','${a.m}')">${a.t}</button>`).join('')}
+          </div>
+        </div>`).join('');
+    }).join('');
+  } catch (e) { $('lib').innerHTML = `<div class="sub">素材库加载失败：${e.message}</div>`; }
+}
+
+async function libAdd(kind, name, mode) {
+  const task = $('libTask').value;
+  if (!task) { $('libMsg').textContent = '先选目标任务'; return; }
+  try {
+    const r = await j('/api/library/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, name, task, mode }) });
+    $('libMsg').textContent = `✓ ${r.written} — ${r.note}`;
+  } catch (e) { $('libMsg').textContent = `✗ ${e.message}`; }
+}
+
+// 表单里选了素材库 BGM → 清自带上传（二选一，服务端同传 400）
+function bgmLibPick() {
+  if ($('bgmLib').value) { bgmData = null; $('bgm').value = ''; $('bgmBox').textContent = '＋ 点击选择音乐（将用素材库文件）'; }
 }
 
 // 插入 = 填好局部重跑表单（from / 场景·封面·字幕下拉 / config 补丁深合并），不自动提交——留给用户确认

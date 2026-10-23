@@ -39,12 +39,12 @@ node pipeline/run.cjs output/<任务名>
 node web/server.cjs        # 然后浏览器开 http://127.0.0.1:8787
 ```
 
-填口播文案 → （可选）传背景图/BGM → 选音色、拖语速滑条 → 点「一键出片」，六步进度条 + 实时日志，完成后在线预览成片（可拖进度条）、下载、看 QC 报告。镜头由 `web/splitter.cjs` 按句自动拆分（首句标题卡、含逗号句要点卡、末句收尾卡）；要精细分镜仍建议按 `skills/script.md` 手写 `shots.json` 跑命令行。只监听 127.0.0.1，不对外网开放。
+填口播文案 → （可选）传背景图/BGM 或从底部「素材库」选用 → 选音色、拖语速滑条 → 点「一键出片」，六步进度条 + 实时日志，完成后在线预览成片（可拖进度条）、下载、看 QC 报告。镜头由 `web/splitter.cjs` 按句自动拆分（首句标题卡、含逗号句要点卡、末句收尾卡）；要精细分镜仍建议按 `skills/script.md` 手写 `shots.json` 跑命令行。只监听 127.0.0.1，不对外网开放。
 
 ## 改片三件套（P3：出完片还能一直改）
 
 - **局部重跑**：预览区「局部重跑」面板选起始步骤（1配音~6质检）+ 改风格/字幕/封面，或直接贴 config 补丁 JSON——复用上游产物，只重跑受影响步骤。
-- **技术库货架**：左下货架每张卡=一个剪辑手法配方（`techniques/*.json`），点「插入」自动填好重跑表单。抖音教学视频按 `skills/techniques.md` 的工作流入库，货架实时上架不用重启。现共 7 张卡，收尾音频具备两种可叠加染色：**降调**（`compose.bgm.outroPitchSemitones/Sec`）与**延迟回声甩尾**（`compose.bgm.outroEcho/Sec/Wet`，教学入库 001：尾段 0.4s 干声淡出 + 250/500/750ms 三抽头 aecho，强度 50 = 教学值）。
+- **技术库货架**：左下货架每张卡=一个剪辑手法配方（`techniques/*.json`），点「插入」自动填好重跑表单。抖音教学视频按 `skills/techniques.md` 的工作流入库，货架实时上架不用重启。现共 12 张卡（按画面/封面/字幕/声音/转场分组展示），收尾音频具备两种可叠加染色：**降调**（`compose.bgm.outroPitchSemitones/Sec`）与**延迟回声甩尾**（`compose.bgm.outroEcho/Sec/Wet`，教学入库 001：尾段 0.4s 干声淡出 + 250/500/750ms 三抽头 aecho，强度 50 = 教学值）。
 - **需求聊天框**：预览区用人话续加需求（「换演示风，收尾降调 3 个半音，字幕大一点」），解析成补丁累积叠加后局部重跑；多线程持久化在任务目录 `chat.json`，聊天记录即改动审计。语义解析走 DashScope qwen（`config.llm`，key 复用 TTS 的）；**额度用尽/接口故障自动降级纯规则模式并在界面明示原因**，断供不断片。
 
 ## 目录约定
@@ -53,6 +53,7 @@ node web/server.cjs        # 然后浏览器开 http://127.0.0.1:8787
 剪辑应用/
 ├─ skills/            # 环节规则书（我写分镜/画面时遵守）
 ├─ techniques/        # 技术库配方卡（入库工作流见 skills/techniques.md）
+├─ library/           # 素材库：本地 BGM/图片/视频片段缓存（不入 git，见 library/README.md）
 ├─ pipeline/          # 流水线脚本
 │   └─ tools/tts.py    # edge-tts 封装（唯一 Python 依赖）
 ├─ templates/         # 场景模板（base.css 设计令牌 + scenes/*.html）
@@ -76,6 +77,7 @@ node web/server.cjs        # 然后浏览器开 http://127.0.0.1:8787
 
 - **素材混排**：把图片/视频丢进任务的 `assets/`，`shots.json` 里给某镜头加 `"asset": "文件名"`，该镜就用素材画面（自动 cover 铺满竖屏、不够长循环、超出截断），与生成场景混排在同一条时间线。图片素材自动接 Ken Burns 缓推/缓拉（镜序奇偶交替方向，2x 超采样防抖，`config.background.kenBurns:false` 关回静态，`zoom` 同背景层可调）。
 - **素材背景**：`assets/` 里放 `bg-01.jpg ~ bg-09.jpg`（png/webp 也行）即可全局换背景——口播按镜头序号轮播做底图 + Ken Burns 缓推动画（原网格光晕设计叠加其上，自动压暗保字幕可读），KTV 全曲轮播 + 1s 交叉淡化，封面用第一张。不放就用内置风格，`config.background`（scrim/kenBurns/zoom）可调。
+- **素材库（P7）**：根目录 `library/{bgm,images,clips}` 放可复用素材（白名单扩展名，git 不入库），网页底部「素材库」区选目标任务一键选用——复制进任务 `assets/`（BGM 自动清旧换 `bgm.<ext>`、图片可自动编 `bg-NN`），再重跑对应步骤生效；建任务表单的 BGM 也能直接下拉选用（与自带上传二选一，自带优先）。
 - **BGM 卡点**：任务根目录放 `bgm.mp3`（或 wav/m4a 等，也认 `assets/bgm.*`），合成时自动：循环铺满全片 + 说话时侧链闪避 + 淡入淡出 + 镜头边界吸附到检测出的节拍网格（无明显节奏的曲子自动跳过卡点，只混音）。
 
 ## KTV 歌词视频（07 步，独立模式）

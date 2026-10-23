@@ -6,7 +6,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn } = require('../pipeline/lib/common.cjs');
+const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS } = require('../pipeline/lib/common.cjs');
 const { parseNeed, SHOTS_PATCH } = require('./chat-rules.cjs');
 const { qwenParse } = require('./chat-qwen.cjs');
 const { splitter } = require('./splitter.cjs');
@@ -34,6 +34,68 @@ const VOICES = [
 // queue：批量变体队列（P2-6）。一次提交 N 条 → 逐条全链跑，每条独立任务目录
 const state = { running: false, task: '', step: 0, stepName: '', lines: [], ok: null, at: 0, queue: [], done: [] };
 const NAME_RE = /^[\w一-鿿-]{1,40}$/;
+
+// —— 素材库（P7-1）：library/<kind>/ 本地免版权素材缓存；选用=复制进 output/<task>/assets/ ——
+// 文件名白名单只许目录内 basename（防 ../ 穿越）；扩展名与管线契约同表（BGM=findBgm、图片=bg-NN/jpg·png·webp）
+const LIB = path.join(ROOT, 'library');
+const LIB_KINDS = {
+  bgm: { label: 'BGM', dir: 'bgm', exts: BGM_EXTS },
+  images: { label: '图片', dir: 'images', exts: ['jpg', 'jpeg', 'png', 'webp'] },
+  clips: { label: '视频片段', dir: 'clips', exts: ['mp4', 'mov', 'webm', 'mkv'] },
+};
+const LIB_NAME_RE = /^[\w\-. 一-鿿()（）【】]{1,120}$/;
+const LIB_EXT = (n) => (String(n).split('.').pop() || '').toLowerCase();
+
+function libraryList() {
+  const kinds = {};
+  for (const [kind, def] of Object.entries(LIB_KINDS)) {
+    const dir = ensureDir(path.join(LIB, def.dir));
+    kinds[kind] = fs.readdirSync(dir)
+      .filter((f) => !f.startsWith('.') && def.exts.includes(LIB_EXT(f)))
+      .map((f) => { const st = fs.statSync(path.join(dir, f)); return { name: f, size: st.size, mt: st.mtimeMs }; })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return { root: LIB, kinds };
+}
+
+// 复制库内 BGM 进任务 assets：统一命名 bgm.<ext>，先清同任务旧 bgm.*（findBgm 按表返回，留旧会歧义）
+function libBgmInto(src, adir) {
+  ensureDir(adir);
+  for (const old of fs.readdirSync(adir)) if (/^bgm\.(\w+)$/i.test(old)) fs.unlinkSync(path.join(adir, old));
+  const target = `bgm.${LIB_EXT(src)}`;
+  fs.copyFileSync(src, path.join(adir, target));
+  return target;
+}
+
+function libraryAdd(kind, name, task, mode) {
+  const def = LIB_KINDS[kind];
+  if (!def) return { error: `kind 非法: ${kind}（白名单: ${Object.keys(LIB_KINDS).join(' / ')}）`, status: 400 };
+  if (!LIB_NAME_RE.test(name) || /[\\/]/.test(name)) return { error: `文件名非法: ${name}（只许库内文件名，不带路径）`, status: 400 };
+  if (!def.exts.includes(LIB_EXT(name))) return { error: `不支持的类型: ${name}（可选: ${def.exts.join(' / ')}）`, status: 400 };
+  const src = path.join(LIB, def.dir, name);
+  if (!fs.existsSync(src)) return { error: `素材库里没有这个文件: ${name}（先放进 library\\${def.dir}\\ 再刷新）`, status: 404 };
+  if (!NAME_RE.test(task)) return { error: 'bad task', status: 400 };
+  const tdir = path.join(OUTPUT, task);
+  if (!fs.existsSync(path.join(tdir, 'shots.json'))) return { error: `任务不存在: ${task}`, status: 404 };
+  const adir = path.join(tdir, 'assets');
+  if (kind === 'bgm') {
+    const written = libBgmInto(src, adir);
+    return { ok: true, written: `assets/${written}`, note: '已设为任务 BGM——从第 2 步重跑生效（卡点 + 混音）' };
+  }
+  if (kind === 'images' && mode === 'bg') {
+    ensureDir(adir);
+    let n = 0;
+    for (const f of fs.readdirSync(adir)) { const m = /^bg-(\d+)\./i.exec(f); if (m) n = Math.max(n, Number(m[1])); }
+    const written = `bg-${String(n + 1).padStart(2, '0')}.${LIB_EXT(name)}`;
+    fs.copyFileSync(src, path.join(adir, written));
+    return { ok: true, written: `assets/${written}`, note: '已作背景图加入——从第 3 步重跑生效（场景轮播）' };
+  }
+  const target = path.join(adir, name);
+  if (fs.existsSync(target)) return { error: `任务里已有同名文件: assets/${name}（先删掉或换名再加）`, status: 409 };
+  ensureDir(adir);
+  fs.copyFileSync(src, target);
+  return { ok: true, written: `assets/${name}`, note: '已复制进任务——分镜 shots.json 的 media 按文件名引用，改分镜后重跑对应步骤' };
+}
 
 function push(line) {
   state.lines.push(line);
@@ -268,6 +330,15 @@ const server = http.createServer(async (req, res) => {
       const platform = body.platform ? String(body.platform) : '';
       if (platform && !PLATFORMS[platform]) return json(res, 400, { error: `平台规格非法: ${platform}（可选: ${Object.keys(PLATFORMS).join(' / ') || 'config.platforms 未配置'}）` });
       if (platform && (body.width != null || body.height != null)) return json(res, 400, { error: 'platform 与 width/height 只能二选一（平台规格自带画幅）' });
+      // 素材库选用 BGM（P7-1）：与自带上传二选一（老口径自带优先；同传宁 400 勿静默丢一份）
+      const bgmLib = body.bgmFromLibrary ? String(body.bgmFromLibrary) : '';
+      if (bgmLib && body.bgm) return json(res, 400, { error: 'BGM 自带上传与素材库选用只能二选一（清掉其中一个再出片）' });
+      let bgmLibSrc = '';
+      if (bgmLib) {
+        if (!LIB_NAME_RE.test(bgmLib) || /[\\/]/.test(bgmLib) || !BGM_EXTS.includes(LIB_EXT(bgmLib))) return json(res, 400, { error: `素材库 BGM 文件名非法: ${bgmLib}（可选扩展名: ${BGM_EXTS.join(' / ')}）` });
+        bgmLibSrc = path.join(LIB, 'bgm', bgmLib);
+        if (!fs.existsSync(bgmLibSrc)) return json(res, 404, { error: `素材库里没有这个文件: ${bgmLib}（先放进 library\\bgm\\ 再刷新）` });
+      }
       for (const v of variants) {
         if (!NAME_RE.test(v.name)) return json(res, 400, { error: `变体任务名非法: ${v.name}` });
         const dir = ensureDir(path.join(OUTPUT, v.name));
@@ -285,7 +356,7 @@ const server = http.createServer(async (req, res) => {
         writeJson(path.join(dir, 'shots.json'), shots);
         // 素材：背景图（base64，按序命名 bg-NN）+ BGM——变体共享同一套素材
         const assets = Array.isArray(body.assets) ? body.assets.slice(0, 9) : [];
-        if (assets.length || body.bgm) ensureDir(path.join(dir, 'assets'));
+        if (assets.length || body.bgm || bgmLibSrc) ensureDir(path.join(dir, 'assets'));
         assets.forEach((a, i) => {
           const m = /^data:image\/(jpe?g|png|webp);base64,(.+)$/.exec(String(a) || '');
           if (!m) return;
@@ -295,6 +366,8 @@ const server = http.createServer(async (req, res) => {
         if (body.bgm) {
           const mb = /^data:audio\/(mpeg|mp3);base64,(.+)$/.exec(String(body.bgm) || '');
           if (mb) fs.writeFileSync(path.join(dir, 'assets', 'bgm.mp3'), Buffer.from(mb[2], 'base64'));
+        } else if (bgmLibSrc) {
+          libBgmInto(bgmLibSrc, path.join(dir, 'assets')); // 素材库 BGM（P7-1）：复制为 assets/bgm.<ext>
         }
         written.push({ name: v.name, dir });
       }
@@ -321,6 +394,17 @@ const server = http.createServer(async (req, res) => {
     // —— 技术库货架（P3-3）：techniques/*.json 每技术一配方；坏文件不藏、以 error 态直示 ——
     if (p === '/api/techniques' && req.method === 'GET') {
       return json(res, 200, loadTechniques());
+    }
+
+    // —— 素材库（P7-1）：library/ 列表 + 选用复制进任务 assets ——
+    if (p === '/api/library' && req.method === 'GET') {
+      return json(res, 200, libraryList());
+    }
+    if (p === '/api/library/add' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const r = libraryAdd(String(body.kind || ''), String(body.name || ''), String(body.task || ''), String(body.mode || ''));
+      if (r.error) return json(res, r.status || 400, { error: r.error });
+      return json(res, 200, r);
     }
 
     // —— 任务持久聊天框（P3-4）：chat.json 多线程；需求解析→补丁→共享重跑引擎；聊天历史=改动审计 ——

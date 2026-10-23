@@ -36,12 +36,19 @@
 | P5 打磨五件套 ✅ | ① `sceneStyle:"paper"` 纸感浅色主题（奶油底墨字深红，横屏教学风）② 图片素材镜头 Ken Burns 缓推/缓拉（2x 超采样 zoompan，奇偶交替，`background.kenBurns:false` 关）③ `captionStyle:"bar"` 字幕黑底实底条（ASS BorderStyle 3，白名单 outline\|bar）④ `cornerMark` 品牌角标（场景镜 HTML 注入 + 素材镜 ffmpeg overlay 同几何 + 片尾卡，未配置零影响）⑤ 分镜 type `split` 左文右图分栏（media 引 assets 样机图，竖屏自动上下分栏）。附带实战出片《8种手机顶部标题栏》71.8s QC 18/18、页面三区布局优化、output 大扫除（17 测试目录 95.6MB）；演示片 `output/P5三件套演示` QC 19/19 |
 | P6 平台发布规格 ✅ | 远期 11 转正（用户点名启动）：`config.platforms` 四平台 profile（抖音/视频号 1080×1920、小红书 1080×1440 3:4、B站 1920×1080 + `durHint` 时长档 + 可选 `safeTop/safeBottom/captionSize/captionMarginV` 覆盖键，加平台零改码）+ `shots.platform` 白名单（02 查表写 timeline；与 width/height **值**冲突 fail）+ 网页「发布规格」平台/自定义两组下拉（默认抖音组）+ 聊天平台词（否定守卫「别发抖音」不认，qwen prompt 同步枚举）+ `SHOTS_PATCH.platform`（动态查 config 表）+ **画幅类补丁 from 钳到 2**（`--from 3` 会跳过 02 留旧画幅时间轴——顺手收口的存量坑）。实测：B 探针小红书 3:4 全链 18/18（**新画幅首测**，safeTop 150→113px 注入、字号 72 进 ASS）、D 无平台旧路径 18/18 零漂移、A 网页建任务 douyin 全链 18/18、E rerun douyin→bilibili from 3→2 钳制、3×400 负例（未知平台/二选一）、双 02 fail（白名单/冲突精确报错）、durHint 超档 warn 不拦、规则单测 27/27 |
 
+## ✅ P7 · 素材库（2026-10-23）
+
+| 冲刺 | 内容 |
+|---|---|
+| P7-1 素材库接入 ✅ | 远期 9 转正：根目录 `library/{bgm,images,clips}` 本地素材缓存（`library/README.md` 契约 + git 只入说明；白名单扩展名与 `findBgm`/bg-NN 同表，隐藏文件与表外扩展静默忽略）；`GET /api/library` 列表 + `POST /api/library/add` 选用=**复制**进任务 `assets/`（BGM 自动清旧换 `bgm.<ext>` 防 findBgm 歧义、图片 mode=bg 自动编 bg-NN、原名同存 409、路径穿越/错扩展/未知文件/未知任务 400/404 全拦）；建任务 `bgmFromLibrary` 与自带上传**二选一**（同传 400，排队前早校验不落任务目录）；网页底部「素材库」区（任务下拉 + 三分组列表 + 选用按钮 + 生效步骤提示）+ 表单 BGM 下拉共用数据；`common.cjs` 导出 `BGM_EXTS` 单一出处。冒烟 24/24（含管线 `findBgm` 真实契约命中 + 测试现场备份还原零残留）；README 同步（流程句 / 技术库卡数 7→12 改错 / 目录树 / 素材模式段） |
+
 ## ⬜ 远期（可选方向，看需求再启动）
 
-9. **素材库接入**——免版权 BGM/图片/视频片段的本地缓存库（用户仍可自带文件优先）
+9. ~~**素材库接入**——免版权 BGM/图片/视频片段的本地缓存库（用户仍可自带文件优先）~~ ✅ 2026-10-23 实现（见 P7 行）
 10. **AI 生成画面**——可选接入生图 API 出场景图（有 key 才启用，保持零成本默认不变）
 11. ~~**平台发布规格预设**——抖音/视频号/B站/小红书各自的安全区、字幕字号、时长偏好做成 profile~~ ✅ 2026-10-23 实现（见 P6 行）
 12. **语音克隆音色**——DashScope 支持声音复刻，用自己的声音出片（需要 API 支持与额度）
+13. **手动剪辑页面（Editor 精修）**——用户点名（2026-10-23），成片某段不满意时网页手动调整：时间轴多轨、片段拖动/裁剪/拆分/撤销、右侧属性面板、预览播放、渲染导出。**参考源**：① `D:\AI-Anime-main` 的 `/editor` 页面（React+antd；`pages/Editor/EditorPage.tsx` + `components/Timeline.tsx` 三轨 10-100px/s 缩放 + `PropsPanel.tsx`；`backend/modules/editor` 把 timeline 转 workflow JSON 交 ffmpeg 渲染；可抄的交互：DragState 拖拽状态机、0.1s 网格、`commitTimeline` 统一写入+400ms 防抖撤销栈、右缘 10px resize 手柄、滚轮劫持横滚、预览区文字直接拖拽改归一化坐标）② Canva 编辑器 UX `https://www.canva.cn/design/DAHY0Um0vZM/aAiTSfnx1nOsDXo6MMEQLQ/edit`。**立项时先定**：与本管线的结合方式（编辑结果回写 shots.json 走局部重跑 vs 独立成片精修器），以及素材/字幕与现有 assets、caption 体系的对齐。当日不开发（用户明示）。
 
 ## 维护备忘
 

@@ -317,3 +317,11 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - **验收**：12 卡 0 broken（HTTP API + node 直读 techniques/ 双口径一致）；聊天点名回归：「把纸感教学风用上」→ `sceneStyle=paper` from=3 照常命中；manual/new 卡名不产补丁 = 设计行为（parseNeed L38 无 insert 跳过，点名即应用补丁，无补丁可应用）。演示不烧渲染额度，「插入重跑 QC」闭环待 implemented 新卡立项后再走。
 - **用户反馈追加：货架按 category 分组**（12 卡平铺难分辨）——refreshTech 改为按 `t.category` 分组 + 组头（`.cathead` 全宽横线 + N 张计数），组序固定 画面→封面→字幕→声音→转场、未知类排后；卡内重复的 category 徽章移除。内联 JS 编译检查过、真实 12 卡分组仿真 5/1/2/2/2 全对账；index.html 磁盘直读（server 425 行）改静态页免重启。
 
+## P7 素材库接入（2026-10-23 追记）
+- **动线**：用户指示「Editor 手动剪辑页的想法记清单不开发，按 ROADMAP 顺序继续」→ 远期 9 转正为 P7-1；Editor 手动剪辑页入远期 13（参考源已摸底：`D:\AI-Anime-main` `/editor` 三轨时间轴 + PropsPanel + 后端 ffmpeg 转 workflow 渲染，可抄 DragState/0.1s 网格/400ms 防抖撤销/预览区文字拖拽；Canva 链接在案）。
+- **数据面**：`library/{bgm,images,clips}` 三类白名单——bgm 用 `BGM_EXTS`（common.cjs 导出，与 findBgm 同表单一出处）、images jpg·jpeg·png·webp、clips mp4·mov·webm·mkv；隐藏文件与表外扩展静默忽略不报错。选用=复制制（任务自包含，与库文件脱钩）：BGM 走 `libBgmInto` 清旧 `bgm.*` 再落 `bgm.<ext>`（findBgm 按扩展名表首命中，留旧必歧义）、图片 `mode=bg` 自动编下一号 `bg-NN`、原名复制撞名 409。
+- **create 分支**：`bgmFromLibrary` 与自带 base64 **二选一**（同传 400；验证插在平台校验后、variants 循环前——排队前返回不落任务目录），正例复制与 /api/library/add 共用 `libBgmInto` 同一实现。
+- **网页**：底部素材库全宽区（目标任务下拉默认最新任务 + 三分组 `.cathead` + 每行选用按钮 + `libMsg` 回执带生效步骤提示）；表单 BGM 下拉 `#bgmLib` 与面板共用 `/api/library` 数据，与自带上传双向互斥（前端清值、服务端 400 双保险）。
+- **验证（冒烟 24/24）**：列表过滤×5、负例×5（kind 白名单/穿越文件名/错扩展/库无此文件/任务不存在）、正例×8（BGM mp3→wav 换装且旧文件清理、`findBgm(TDIR)` 真实契约命中 `bgm.wav`、bg-NN 自动编到 01、原名复制+同名 409、clips 复制）、create 早校验×3（同传 400/无文件 404/错扩展 400 + 未落任务目录）、现场还原（deck-demo assets 备份比对原状 + 种子文件自清）。服务重启后服务端页面三要素（素材库区/refreshLib/bgmLib）在线核验通过。
+- **README 同步**：流程句挂素材库选用、技术库「7 张卡」过期数字改 12（P6 漏改）、目录树加 `library/`、素材模式+BGM 段加 P7 条目。
+

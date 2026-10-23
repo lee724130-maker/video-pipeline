@@ -203,4 +203,4 @@ function resolveCornerMark(task) {
   return { file, pos, width, opacity };
 }
 
-module.exports = { FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, deepMerge, loudnormFile, fail, resolveCornerMark };
+module.exports = { BGM_EXTS, FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, deepMerge, loudnormFile, fail, resolveCornerMark };
