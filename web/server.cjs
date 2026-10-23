@@ -146,8 +146,8 @@ function loadTechniques() {
   const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort() : [];
   return files.map((f) => {
     const t = readJson(path.join(dir, f));
-    // manual 级 = 素材契约型知识卡（判据+做法，无一键补丁），允许省 insert
-    if (!t || !t.id || !t.name || (!t.insert && t.tier !== 'manual')) return { id: f.replace(/\.json$/, ''), name: f, error: '配方缺 id/name/insert 字段（manual 级可省 insert）' };
+    // manual 级 = 素材契约型知识卡（判据+做法，无一键补丁），new 级 = 施工期卡（货架标"待实现"禁按钮）——两者都允许省 insert
+    if (!t || !t.id || !t.name || (!t.insert && t.tier !== 'manual' && t.tier !== 'new')) return { id: f.replace(/\.json$/, ''), name: f, error: '配方缺 id/name/insert 字段（manual/new 级可省 insert）' };
     return t;
   });
 }

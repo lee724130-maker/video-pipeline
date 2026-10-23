@@ -310,3 +310,9 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 ## 状态
 **P6 完工**（远期 11 → ✅，ROADMAP 冲刺段扩为 P3~P6）。显性 backlog 再次清空；远期剩素材库 / AI 生图 / 语音克隆，等需求启动。
 
+## 入库实跑首例（技术视频 → 配方卡，追记）
+- **片源**：抖音@Ludi `modal_id=7698358547440094502`《Vibe知识大赏丨别再管所有弹出来的东西都叫"弹窗"了》2026-10-19，1分56秒 1080×1620；douyin-archive 六步走通：原片+原声+抽帧23+总览2+页面截图，落 `桌面\douyin_video\`。
+- **拆解定档（三档各取一张，正好演示货架对成熟度的分层处理）**：`item-color-code` 枚举条目色标 = **new**（`keywordColour` 现为 config 级全局单色，逐条换色+底部进度轨待施工，按钮禁用「待实现」不藏短板）；`right-wrong-split` 正误对照双栏、`recap-map-outro` 收尾一图收点 = **manual**（素材契约：成对同构图两态/左右绿红素材，split 装载，无 insert 只给判据做法）。source 全部留痕 modal_id。
+- **顺手修 bug**：server.cjs 配方加载器只给 manual 开「省 insert」的口子，techniques.md L16 承诺的 new 档货架待遇（待实现徽章+禁按钮）没兑现——前端 396/400 行早已支持，server L150 补 `t.tier !== 'new'`，重启 8787 生效。
+- **验收**：12 卡 0 broken（HTTP API + node 直读 techniques/ 双口径一致）；聊天点名回归：「把纸感教学风用上」→ `sceneStyle=paper` from=3 照常命中；manual/new 卡名不产补丁 = 设计行为（parseNeed L38 无 insert 跳过，点名即应用补丁，无补丁可应用）。演示不烧渲染额度，「插入重跑 QC」闭环待 implemented 新卡立项后再走。
+
