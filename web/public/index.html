@@ -18,6 +18,9 @@
   .shelf { grid-column:1 / -1; }
   .techgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
   .techgrid > .sub { grid-column:1/-1; }
+  .cathead { grid-column:1/-1; display:flex; align-items:baseline; gap:8px; margin-top:8px; padding-bottom:5px; border-bottom:1px solid var(--line); }
+  .cathead b { font-size:14px; }
+  .cathead span { font-size:11px; color:#8a94a3; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
   .card h2 { font-size:16px; margin-bottom:16px; color:var(--fg); }
   label { display:block; font-size:13px; color:var(--dim); margin:14px 0 6px; }
@@ -384,15 +387,11 @@ function deepMergeJS(a, b) {
 }
 
 async function refreshTech() {
-  try {
-    const list = await j('/api/techniques');
-    if (!list.length) { $('tech').innerHTML = '<div class="sub">techniques/ 目录为空——抖音教学视频分析入库后会出现在这里</div>'; return; }
-    $('tech').innerHTML = list.map((t) => t.error ? `
+  const card = (t) => t.error ? `
     <div class="titem bad"><b>${t.name}</b> <span class="badge" style="background:rgba(239,68,68,.15);color:#f87171">配方损坏</span>
       <div class="tdesc">${t.id}.json · ${t.error}</div></div>` : `
     <div class="titem">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>${t.name}</b>
-        <span class="badge">${t.category || '其他'}</span>
         ${t.tier === 'implemented' ? '<span class="badge ok">可直接用</span>' : (t.tier === 'manual' ? '<span class="badge">手动配方 · 看判据</span>' : '<span class="badge">待实现</span>')}
       </div>
       <div class="tdesc">${t.desc || ''}</div>
@@ -400,7 +399,20 @@ async function refreshTech() {
         <button onclick="insertTech('${t.id}')" ${t.tier === 'implemented' ? '' : 'disabled'}>⤵ 插入当前任务</button>
         <span class="tnote">${(t.insert && t.insert.note) || ''}</span>
       </div>
-    </div>`).join('');
+    </div>`;
+  try {
+    const list = await j('/api/techniques');
+    if (!list.length) { $('tech').innerHTML = '<div class="sub">techniques/ 目录为空——抖音教学视频分析入库后会出现在这里</div>'; return; }
+    // 按 category 分组展示（组头固定顺序：画面→封面→字幕→声音→转场，未知类排最后）
+    const order = ['画面', '封面', '字幕', '声音', '转场'];
+    const groups = {};
+    for (const t of list) { const c = t.category || '其他'; if (!groups[c]) groups[c] = []; groups[c].push(t); }
+    const cats = Object.keys(groups).sort((a, b) => {
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib);
+    });
+    $('tech').innerHTML = cats.map((c) => `
+      <div class="cathead"><b>${c}</b><span>${groups[c].length} 张</span></div>${groups[c].map(card).join('')}`).join('');
   } catch (e) { $('tech').innerHTML = `<div class="sub">技术库加载失败：${e.message}</div>`; }
 }
 

@@ -315,4 +315,5 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - **拆解定档（三档各取一张，正好演示货架对成熟度的分层处理）**：`item-color-code` 枚举条目色标 = **new**（`keywordColour` 现为 config 级全局单色，逐条换色+底部进度轨待施工，按钮禁用「待实现」不藏短板）；`right-wrong-split` 正误对照双栏、`recap-map-outro` 收尾一图收点 = **manual**（素材契约：成对同构图两态/左右绿红素材，split 装载，无 insert 只给判据做法）。source 全部留痕 modal_id。
 - **顺手修 bug**：server.cjs 配方加载器只给 manual 开「省 insert」的口子，techniques.md L16 承诺的 new 档货架待遇（待实现徽章+禁按钮）没兑现——前端 396/400 行早已支持，server L150 补 `t.tier !== 'new'`，重启 8787 生效。
 - **验收**：12 卡 0 broken（HTTP API + node 直读 techniques/ 双口径一致）；聊天点名回归：「把纸感教学风用上」→ `sceneStyle=paper` from=3 照常命中；manual/new 卡名不产补丁 = 设计行为（parseNeed L38 无 insert 跳过，点名即应用补丁，无补丁可应用）。演示不烧渲染额度，「插入重跑 QC」闭环待 implemented 新卡立项后再走。
+- **用户反馈追加：货架按 category 分组**（12 卡平铺难分辨）——refreshTech 改为按 `t.category` 分组 + 组头（`.cathead` 全宽横线 + N 张计数），组序固定 画面→封面→字幕→声音→转场、未知类排后；卡内重复的 category 徽章移除。内联 JS 编译检查过、真实 12 卡分组仿真 5/1/2/2/2 全对账；index.html 磁盘直读（server 425 行）改静态页免重启。
 
