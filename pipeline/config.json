@@ -74,6 +74,12 @@
     "width": 160,
     "opacity": 0.9
   },
+  "platforms": {
+    "douyin": { "label": "抖音", "width": 1080, "height": 1920, "durHint": 180 },
+    "shipinhao": { "label": "视频号", "width": 1080, "height": 1920, "durHint": 180 },
+    "xiaohongshu": { "label": "小红书", "width": 1080, "height": 1440, "durHint": 300 },
+    "bilibili": { "label": "B站", "width": 1920, "height": 1080, "durHint": 0 }
+  },
   "cover": {
     "enabled": true,
     "style": "tech",

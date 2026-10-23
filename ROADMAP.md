@@ -27,19 +27,20 @@
 
 > P2 五项全部完工：网页界面 ✅ · 批量变体 ✅ · 尺寸自适应 ✅ · 封面多风格 ✅ · 演示风 deck 主题 ✅
 
-## ✅ P3~P5 · 打磨冲刺（2026-10-20 ~ 10-23，全部完成，施工记录见 `CHECKPOINT-2026-10-20.md`）
+## ✅ P3~P6 · 打磨冲刺（2026-10-20 ~ 10-23，全部完成，施工记录见 `CHECKPOINT-2026-10-20.md`）
 
 | 冲刺 | 内容 |
 |---|---|
 | P3 改片三件套 ✅ | ① 局部重跑 `/api/rerun`（from 1~6 + shots 白名单补丁 + 任务级 `config.overrides.json` 三层深合并）② BGM 收尾降调 `outroPitchSemitones/Sec`（asetrate+atempo 零依赖）③ 技术库货架 `techniques/*.json` + `/api/techniques` + 网页一键插入；附带任务持久聊天框 `chat.json`（规则 17 用例 + qwen 语义解析，quota 命中自动降级规则模式并界面明示）+ 技术入库工作流规则书 `skills/techniques.md` |
 | P4 外部配方入库 ✅ | 入库工作流跑通两例：001「BGM 收尾延迟回声」`outroEcho*` 三键（echo-compose-test 24/24；**声学定案**——成片上看不见抽头是 20 倍人声掩蔽，验证必须在对应总线直量，方法论已沉淀）；002「形似叠化」tier=manual 首例（素材契约型技法只入库判据卡不实现，manual 档基建：loadTechniques 放行无 insert 卡 + 货架 badge）。货架 9 卡 |
 | P5 打磨五件套 ✅ | ① `sceneStyle:"paper"` 纸感浅色主题（奶油底墨字深红，横屏教学风）② 图片素材镜头 Ken Burns 缓推/缓拉（2x 超采样 zoompan，奇偶交替，`background.kenBurns:false` 关）③ `captionStyle:"bar"` 字幕黑底实底条（ASS BorderStyle 3，白名单 outline\|bar）④ `cornerMark` 品牌角标（场景镜 HTML 注入 + 素材镜 ffmpeg overlay 同几何 + 片尾卡，未配置零影响）⑤ 分镜 type `split` 左文右图分栏（media 引 assets 样机图，竖屏自动上下分栏）。附带实战出片《8种手机顶部标题栏》71.8s QC 18/18、页面三区布局优化、output 大扫除（17 测试目录 95.6MB）；演示片 `output/P5三件套演示` QC 19/19 |
+| P6 平台发布规格 ✅ | 远期 11 转正（用户点名启动）：`config.platforms` 四平台 profile（抖音/视频号 1080×1920、小红书 1080×1440 3:4、B站 1920×1080 + `durHint` 时长档 + 可选 `safeTop/safeBottom/captionSize/captionMarginV` 覆盖键，加平台零改码）+ `shots.platform` 白名单（02 查表写 timeline；与 width/height **值**冲突 fail）+ 网页「发布规格」平台/自定义两组下拉（默认抖音组）+ 聊天平台词（否定守卫「别发抖音」不认，qwen prompt 同步枚举）+ `SHOTS_PATCH.platform`（动态查 config 表）+ **画幅类补丁 from 钳到 2**（`--from 3` 会跳过 02 留旧画幅时间轴——顺手收口的存量坑）。实测：B 探针小红书 3:4 全链 18/18（**新画幅首测**，safeTop 150→113px 注入、字号 72 进 ASS）、D 无平台旧路径 18/18 零漂移、A 网页建任务 douyin 全链 18/18、E rerun douyin→bilibili from 3→2 钳制、3×400 负例（未知平台/二选一）、双 02 fail（白名单/冲突精确报错）、durHint 超档 warn 不拦、规则单测 27/27 |
 
 ## ⬜ 远期（可选方向，看需求再启动）
 
 9. **素材库接入**——免版权 BGM/图片/视频片段的本地缓存库（用户仍可自带文件优先）
 10. **AI 生成画面**——可选接入生图 API 出场景图（有 key 才启用，保持零成本默认不变）
-11. **平台发布规格预设**——抖音/视频号/B站/小红书各自的安全区、字幕字号、时长偏好做成 profile
+11. ~~**平台发布规格预设**——抖音/视频号/B站/小红书各自的安全区、字幕字号、时长偏好做成 profile~~ ✅ 2026-10-23 实现（见 P6 行）
 12. **语音克隆音色**——DashScope 支持声音复刻，用自己的声音出片（需要 API 支持与额度）
 
 ## 维护备忘

@@ -70,6 +70,7 @@ node web/server.cjs        # 然后浏览器开 http://127.0.0.1:8787
 - **主题切换**：`shots.sceneStyle`（网页端也有下拉）三选一——`classic` 缺省暗底网格 / `deck` 演示风（暗蓝渐变底 + 青色点缀、左对齐章节页、底部章节导航条 `shots.nav` 每镜一格标签、硬切转场，复刻幻灯讲解类样片）/ `paper` 纸感浅色（奶油底墨字 + 深红点缀、素材背景铺纸罩而非暗罩，横屏教学/知识卡片风）。`shots.captions: false` 关掉烧录字幕（纯画面+旁白）。缺省 classic 完全不受影响。
 - **品牌角标**：`config.cornerMark`（`src` 指任务 `assets/` 下的 logo 图 + `pos` tl/tr/bl/br + `width`/`opacity`）→ **场景镜（HTML 注入）+ 素材镜（ffmpeg overlay，与 CSS 同一几何：48×k 边距、width×k、透明度）+ 片尾卡**全片常驻角标，缺图/非法位置直接报错；未配置零影响（封面为独立发布图不带）。deck 风底部有导航条建议 `tr`，其余缺省 `br`。
 - **左文右图分栏**：分镜 `type:"split"`——左栏标题+要点（或一行 `note`），右栏 `media` 引 `assets/` 样机图/截图（圆角+投影），要点随配音逐条出现；UI/产品教学类内容的主力版式，横屏最佳、竖屏自动改上下分栏。见 `skills/script.md` schema。
+- **平台发布规格**：网页建任务「发布规格」下拉两组——**平台组**（抖音 / 视频号 / 小红书 3:4 / B站横屏 → `shots.platform` 查 `pipeline/config.json` 的 `platforms` 表出画幅 + 时长档 `durHint`，表可加平台零改码，可选 `safeTop/safeBottom/captionSize/captionMarginV` 覆盖键）与**自定义组**（竖/横/方三画幅，旧路径不变）。聊天说「发抖音」「横屏发B站」同样命中（「别发抖音」类否定句不认）；`platform` 与 `width/height` 同时写且值不一致直接 fail。
 
 ## 素材模式 + BGM（B 档，已支持）
 

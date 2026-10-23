@@ -46,6 +46,19 @@ function parseNeed(text, techniques) {
   if (/(演示风|大屏|幻灯|deck)/i.test(t)) addShot('sceneStyle', 'deck', '场景风格 → deck 演示风');
   else if (/(纸感|纸质|浅色|奶油|米色|paper)/i.test(t)) addShot('sceneStyle', 'paper', '场景风格 → paper 纸感浅色');
   else if (/(经典|竖屏大字|classic)/i.test(t)) addShot('sceneStyle', 'classic', '场景风格 → classic 经典');
+  // 平台规格（P6）：平台自带画幅。带轻量否定守卫（"别发抖音"不认，正反两种语序都挡）——
+  // 拿不准就什么都不做（宁缺勿错），语义拿不准时由 qwen 语义解析兜
+  const platNeg = /(不要|别|不是|不用|无需|非|不发|别发)\s*发?\s*(抖音|B站|b站|哔哩|bilibili|视频号|小红书)/i
+    || /(抖音|B站|b站|哔哩|bilibili|视频号|小红书)\s*(不发|不要|别发|不了|算了)/i;
+  let plat = '';
+  if (!platNeg.test(t)) {
+    if (/(抖音|douyin)/i.test(t)) plat = 'douyin';
+    else if (/(B站|哔哩|bilibili)/i.test(t)) plat = 'bilibili';
+    else if (/视频号/.test(t)) plat = 'shipinhao';
+    else if (/小红书/.test(t)) plat = 'xiaohongshu';
+  }
+  if (plat) addShot('platform', plat, `平台 → ${plat}（按 config.platforms 出画幅/时长档）`);
+  // 画幅词照常写 width/height：与平台值一致 → 02 放行；矛盾（"发抖音但要横屏"）→ 02 精确 fail
   if (/横屏|16[:：]9/.test(t) && !/竖屏|9[:：]16/.test(t)) { addShot('width', 1920, '画幅 → 横屏 16:9'); addShot('height', 1080, '画幅 → 横屏 16:9'); }
   else if (/竖屏|9[:：]16/.test(t)) { addShot('width', 1080, '画幅 → 竖屏 9:16'); addShot('height', 1920, '画幅 → 竖屏 9:16'); }
 
@@ -106,7 +119,9 @@ function parseNeed(text, techniques) {
     config: Object.keys(config).length ? config : null,
     rateSet,
     rateDelta,
-    from: Math.max(from, 1),
+    // 画幅类补丁（platform/width/height）在 02 解析进 timeline → from 必须含 02：
+    // addShot 默认给 3，但 --from 3 跳过 02 会留旧画幅时间轴（startRerun 侧还有同口径兜底）
+    from: Math.min(Math.max(from, 1), shots.platform || shots.width || shots.height ? 2 : Infinity),
     desc,
   };
 }
@@ -123,6 +138,8 @@ function flatPaths(obj, prefix = []) {
 }
 
 // shots 补丁白名单（/api/rerun 与 qwen 语义解析同表——宁 fail 勿兜底的单一出处）
+// platform 值必须在 config.platforms 表内（动态查 config，表是加平台的单一出处）
+const { loadConfig } = require('../pipeline/lib/common.cjs');
 const SHOTS_PATCH = {
   sceneStyle: (v) => ['classic', 'deck', 'paper'].includes(v),
   coverStyle: (v) => ['tech', 'bold', 'magazine'].includes(v),
@@ -131,6 +148,7 @@ const SHOTS_PATCH = {
   height: (v) => Number.isInteger(+v) && +v >= 360 && +v <= 4320,
   voice: (v) => typeof v === 'string' && v.length > 0 && v.length < 60,
   targetCharsPerSec: (v) => +v >= 2 && +v <= 20,
+  platform: (v) => typeof v === 'string' && /^[a-z][a-z0-9_-]{0,23}$/.test(v) && Object.keys(loadConfig().platforms || {}).includes(v),
 };
 
 module.exports = { parseNeed, SHOTS_PATCH };

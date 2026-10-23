@@ -90,11 +90,19 @@
 
       <div class="row">
         <div>
-          <label>画幅</label>
+          <label>发布规格</label>
           <select id="size">
-            <option value="1080x1920">竖屏 9:16（抖音/视频号）</option>
-            <option value="1920x1080">横屏 16:9（B站/YouTube）</option>
-            <option value="1080x1080">方形 1:1（小红书）</option>
+            <optgroup label="平台规格（安全区/时长档按平台预设）">
+              <option value="plat:douyin">抖音 · 竖屏 1080×1920</option>
+              <option value="plat:shipinhao">视频号 · 竖屏 1080×1920</option>
+              <option value="plat:xiaohongshu">小红书 · 3:4 1080×1440</option>
+              <option value="plat:bilibili">B站 · 横屏 1920×1080</option>
+            </optgroup>
+            <optgroup label="自定义画幅">
+              <option value="size:1080x1920">竖屏 9:16 1080×1920</option>
+              <option value="size:1920x1080">横屏 16:9 1920×1080</option>
+              <option value="size:1080x1080">方形 1:1 1080×1080</option>
+            </optgroup>
           </select>
         </div>
         <div>
@@ -215,13 +223,17 @@ async function create() {
   if (!text) { $('err').textContent = '先把口播文案填上'; return; }
   $('go').disabled = true;
   try {
-    const [w, h] = $('size').value.split('x').map(Number);
+    // 发布规格：plat:* → platform（02 查表出画幅），size:* → 显式 width/height（旧路径不变）
+    const [specKind, specVal] = $('size').value.split(':');
+    const spec = specKind === 'plat'
+      ? { platform: specVal }
+      : { width: Number(specVal.split('x')[0]), height: Number(specVal.split('x')[1]) };
     const hooks = $('hooks').value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     if (hooks.length === 1) { $('err').textContent = '批量变体至少填 2 行钩子；只填 1 行请清空（= 出单条）'; $('go').disabled = false; return; }
     const d = await j('/api/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, sceneStyle: $('sceneStyle').value, captions: $('captions').checked, assets: imgData, bgm: bgmData, hooks, width: w, height: h }),
+      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, sceneStyle: $('sceneStyle').value, captions: $('captions').checked, assets: imgData, bgm: bgmData, hooks, ...spec }),
     });
     lastTask = d.name;
     batchNames = d.batch || [d.name];

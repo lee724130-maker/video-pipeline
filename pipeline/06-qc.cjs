@@ -45,6 +45,11 @@ function main() {
   // 时长：设计时长 + 片尾关注卡（03 写入 timeline.outro）
   const expected = timeline.duration + (timeline.outro ? Number(timeline.outro.durSec || 0) : 0);
   check('时长', Math.abs(dur - expected) <= 0.3, `${dur.toFixed(2)}s / 设计 ${expected}s`);
+  // 平台时长档（config.platforms.*.durHint 经 02 落 timeline）：只提示不拦——
+  // 发布时限是平台规则不是片子质量，超档给一行 warn 让用户发布前自行判断
+  if (Number(timeline.durHint) > 0 && dur > Number(timeline.durHint)) {
+    warn('06', `平台「${timeline.platform}」时长档 ${timeline.durHint}s：当前 ${dur.toFixed(1)}s 超档（参考值，发布前请自行确认平台限制）`);
+  }
   check('分辨率', `${v.width}x${v.height}` === `${timeline.width}x${timeline.height}`, `${v.width}x${v.height}`);
   check('帧率', v.r_frame_rate === `${timeline.fps}/1`, v.r_frame_rate);
   check('编码', v.codec_name === 'h264', v.codec_name);

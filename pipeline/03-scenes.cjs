@@ -67,8 +67,12 @@ function sizeVars(timeline) {
   const w = Number(timeline.width) || 1080;
   const h = Number(timeline.height) || 1920;
   const k = Math.min(w, h) / 1080;
-  const safe = Math.round(180 * (h / 1920));
-  return `<style>:root{--k:${Number(k.toFixed(4))};--safe-top:${safe}px;--safe-bottom:${safe}px}</style>`;
+  const scale = h / 1920;
+  const safe = Math.round(180 * scale);
+  // 平台 profile 显式安全区（config.platforms.*.safeTop/safeBottom，1920 高口径像素）→ 覆盖公式
+  const top = timeline.safeTop != null ? Math.round(Number(timeline.safeTop) * scale) : safe;
+  const bot = timeline.safeBottom != null ? Math.round(Number(timeline.safeBottom) * scale) : safe;
+  return `<style>:root{--k:${Number(k.toFixed(4))};--safe-top:${top}px;--safe-bottom:${bot}px}</style>`;
 }
 function applySize(html, timeline) {
   return html.replace('</head>', () => `${sizeVars(timeline)}\n</head>`);

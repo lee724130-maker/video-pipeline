@@ -382,13 +382,40 @@ function main() {
     if (keywords.length) log('02', `关键词砸字 ${keywords.length} 个：${keywords.map((k) => k.text).join('、')}`);
   }
 
+  // 平台发布规格预设（ROADMAP 远期 11 转正）：shots.platform → config.platforms 查表出画幅/时长档。
+  // 可选覆盖键 safeTop/safeBottom/captionSize/captionMarginV 落 timeline——不写就沿用按画幅缩放的
+  // 现行公式（零视觉回归），写了才覆盖；platform 与显式 width/height 数值不一致 → fail：
+  // 两处画幅打架必渲错版，宁 fail 勿兜底
+  const pnum = (v) => (v != null && v !== '' && Number.isFinite(+v) ? +v : null);
+  let plat = null;
+  let platFields = {};
+  if (shots.platform) {
+    const table = cfg.platforms || {};
+    plat = table[shots.platform];
+    if (!plat) fail(`shots.platform 非法: ${shots.platform}（白名单: ${Object.keys(table).join(' / ') || 'config.platforms 未配置'}）`);
+    if (!Number.isInteger(+plat.width) || !Number.isInteger(+plat.height)) fail(`config.platforms.${shots.platform} 缺整数 width/height`);
+    if (shots.width != null && Number(shots.width) !== +plat.width) fail(`width=${shots.width} 与平台 ${shots.platform}（${plat.width}×${plat.height}）冲突——platform/width 二选一或对齐值`);
+    if (shots.height != null && Number(shots.height) !== +plat.height) fail(`height=${shots.height} 与平台 ${shots.platform}（${plat.width}×${plat.height}）冲突——platform/width 二选一或对齐值`);
+    const dh = pnum(plat.durHint);
+    platFields = {
+      platform: shots.platform,
+      ...(pnum(plat.safeTop) != null ? { safeTop: pnum(plat.safeTop) } : {}),
+      ...(pnum(plat.safeBottom) != null ? { safeBottom: pnum(plat.safeBottom) } : {}),
+      ...(pnum(plat.captionSize) != null ? { captionSize: pnum(plat.captionSize) } : {}),
+      ...(pnum(plat.captionMarginV) != null ? { captionMarginV: pnum(plat.captionMarginV) } : {}),
+      ...(dh != null && dh > 0 ? { durHint: dh } : {}),
+    };
+    log('02', `平台规格 ${shots.platform}（${plat.label || shots.platform}）→ ${plat.width}×${plat.height}${dh > 0 ? ` · 时长档 ${dh}s` : ''}`);
+  }
+
   // outro/cover 是 03 的产物（06 对账用）：02 只重算主体，旧值保留不抹
   const tlPrev = fs.existsSync(path.join(task, 'timeline.json'))
     ? (readJson(path.join(task, 'timeline.json')) || {}) : {};
   const timeline = {
     title: shots.title || path.basename(task),
-    width: shots.width || 1080,
-    height: shots.height || 1920,
+    width: plat ? +plat.width : (shots.width || 1080),
+    height: plat ? +plat.height : (shots.height || 1920),
+    ...platFields,
     fps: shots.fps || 30,
     audioDuration: Number(audioDur.toFixed(3)),
     duration: Number(totalDur.toFixed(3)),

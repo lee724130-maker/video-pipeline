@@ -116,11 +116,17 @@ function startRerun(name, dir, from, patch, config, resetConfig) {
   if (!Number.isInteger(from) || from < 1 || from > 6) return { error: 'from 必须是 1~6' };
   patch = patch && typeof patch === 'object' ? patch : {};
   const shots = readJson(sj) || {};
+  // 平台补丁（P6）：platform/width/height 同补 = 语义矛盾宁 fail；platform 是画幅单一出处 →
+  // 旧任务遗留的显式 width/height 让位删除（否则与平台表打架触发 02 冲突 fail）。
+  // 画幅类补丁在 02 解析进 timeline，from 必须含 02——--from 3 会跳过 02 留旧画幅时间轴
+  if (patch.platform && (patch.width != null || patch.height != null)) return { error: 'platform 与 width/height 只能二选一（平台规格自带画幅）' };
+  if (patch.platform || patch.width != null || patch.height != null) from = Math.min(from, 2);
   for (const k of Object.keys(patch)) {
     if (!SHOTS_PATCH[k]) return { error: `不支持的 shots 字段: ${k}（可改: ${Object.keys(SHOTS_PATCH).join(' / ')}）` };
     if (!SHOTS_PATCH[k](patch[k])) return { error: `字段值非法: ${k}=${JSON.stringify(patch[k])}` };
     shots[k] = patch[k];
   }
+  if (patch.platform) { delete shots.width; delete shots.height; }
   writeJson(sj, shots);
   // config 补丁：深合并进任务级 config.overrides.json（经 PIPELINE_CONFIG_OVERRIDES 让全步骤生效）；resetConfig 清空
   const ovPath = path.join(dir, 'config.overrides.json');
@@ -256,13 +262,18 @@ const server = http.createServer(async (req, res) => {
       const SCENE_STYLES = ['classic', 'deck', 'paper'];
       const sceneStyle = String(body.sceneStyle || 'classic');
       if (!SCENE_STYLES.includes(sceneStyle)) return json(res, 400, { error: `场景风格非法: ${sceneStyle}（可选: ${SCENE_STYLES.join(' / ')}）` });
+      // 平台发布规格（P6）：白名单=config.platforms 表；选平台就不发 width/height——
+      // shots.platform 是画幅单一出处（02 查表解析），两处并存宁 400 勿兜底
+      const PLATFORMS = cfg.platforms || {};
+      const platform = body.platform ? String(body.platform) : '';
+      if (platform && !PLATFORMS[platform]) return json(res, 400, { error: `平台规格非法: ${platform}（可选: ${Object.keys(PLATFORMS).join(' / ') || 'config.platforms 未配置'}）` });
+      if (platform && (body.width != null || body.height != null)) return json(res, 400, { error: 'platform 与 width/height 只能二选一（平台规格自带画幅）' });
       for (const v of variants) {
         if (!NAME_RE.test(v.name)) return json(res, 400, { error: `变体任务名非法: ${v.name}` });
         const dir = ensureDir(path.join(OUTPUT, v.name));
         const shots = {
           title: v.name,
-          width: Number(body.width) || 1080,
-          height: Number(body.height) || 1920,
+          ...(platform ? { platform } : { width: Number(body.width) || 1080, height: Number(body.height) || 1920 }),
           fps: cfg.output?.fps || 30,
           shots: v.shots,
           voice: String(body.voice || cfg.voice?.dashscope?.voice || ''),

@@ -272,3 +272,41 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - 维护备忘补一行施工记录指针 → `CHECKPOINT-2026-10-20.md`；README 品牌角标行改「场景镜+素材镜（ffmpeg 同几何）+片尾卡」。
 - 收口后状态：**显性 backlog 清空**（P3~P5 全完工、远期为按需启动项）；下一批工作等新片源（techniques.md 六步入库）或用户新目标。
 
+---
+
+# 2026-10-23 ② —— P6 平台发布规格（远期 11 转正，用户点名启动）：按发布平台选规格出片
+
+## 用户需求
+> 视频按发布平台出不同规格：发抖音选抖音规格（竖屏短视频）；发 B 站等平台用横屏长视频规格。
+
+## 实现（7 文件）
+- **数据层** `pipeline/config.json` 新增 `platforms` 表：`douyin`/`shipinhao` 1080×1920、`xiaohongshu` 1080×1440（3:4）、`bilibili` 1920×1080；字段 `label/width/height/durHint` + 可选覆盖键 `safeTop/safeBottom/captionSize/captionMarginV`——**缺省不写 = 沿用按画幅缩放的现行公式（零视觉回归），写了才覆盖**；加平台零改码。
+- **schema** `shots.platform`（白名单=config.platforms 键）→ **02 查表**写 timeline（画幅 + 覆盖键 + durHint>0 才写）；与显式 width/height **值**不一致 fail、表缺整数宽高 fail、未知键 fail（报错全带可选项清单）。
+- **03** sizeVars：`timeline.safeTop/safeBottom` 存在时按 `h/1920` 缩放后覆盖公式；**05** buildAss：`timeline.captionSize/captionMarginV` 覆盖 config（缺省走 config 不变）；**06**：`durHint` 超档只 warn 不拦（QC 项数不变）。
+- **web**：create 校验 platform 白名单 400 + platform/width 同传 400 + 选平台只写 `shots.platform`（画幅单一出处）；`startRerun` platform 补丁**让位删除**旧 width/height、platform+width 同补丁 400、**画幅类补丁 from 钳到 2**；网页「发布规格」下拉两组（平台组在前默认抖音 / 自定义组三尺寸原样，`plat:*`/`size:*` 分派）；聊天平台词 + 否定守卫（「别发抖音」不认，正反语序都挡）；`SHOTS_PATCH.platform` 动态查 config 表（大小写/注入串/未知键全拒）；qwen prompt 枚举 platform + from 档改 2。
+- **存量坑顺手收口**：`--from 3` 跳过 02 → 画幅补丁从 3 起跑会留**旧画幅时间轴**（width/height 旧规则就有这毛病）。三处收口：parseNeed 返回钳 2、startRerun 入口钳 2（兜住 qwen/手动 API）、qwen prompt 改档。
+
+## 验证（11 组全过）
+- **单测 27/27**（p6-check：语法×7 + config 表 + 规则×14 + SHOTS_PATCH×6）。
+- **A 网页建任务 douyin**：shots 只有 platform、`[02] 平台规格 douyin（抖音）→ 1080×1920 · 时长档 180s`、QC 18/18。
+- **B 小红书 3:4 新画幅首测 + 覆盖键全链**（`PIPELINE_CONFIG_OVERRIDES` 注 safeTop 150/safeBottom 300/captionSize 72）：timeline 六键齐、场景注入 `--safe-top:113px;--safe-bottom:225px`（150×0.75 取整）、ASS `Fontsize: 72`、帧检 3:4 版面正常字号肉眼变大、18/18。
+- **D 无 platform 旧路径**：timeline 只有 width/height、18/18 零漂移。
+- **E `/api/rerun {from:3, platform:bilibili}`**：响应 **from=2（钳制生效）**、1920×1080、18/18、durHint 不写（=0 关档）。
+- **E2 聊天「改成发小红书」**：**qwen 语义直出 platform/from=2**（二选一指令生效，回复「改成小红书平台规格 · 由 qwen 语义解析」）、1080×1440、18/18。
+- **C 网页自定义方形**（非平台组）：shots 无 platform、1080×1080、18/18 旧路径零回归。
+- **负例 3×400**：未知平台（报白名单四键）/ platform+width 同传 ×2（**值相同也拦**——单一出处不容两处并存）。
+- **02 fail×2**：`shots.platform 非法: hack（白名单: douyin / shipinhao / xiaohongshu / bilibili）`、`width=1920 与平台 douyin（1080×1920）冲突——platform/width 二选一或对齐值`，exit=1。
+- **durHint warn**：`⚠ 平台「douyin」时长档 2s：当前 13.6s 超档（参考值…）` + 18/18 照过不拦。
+- **UI 冒烟 12/12**（下拉两组结构 + spec 分派 + 内联 JS `--check`；本会话无桌面浏览器，脚本抽取校验替代）。
+
+## 坑与决策（后续沿用）
+- **改 web 代码必先重启 8787**：首轮 A 白跑——服务是旧会话起的进程，内存旧代码把 platform 静默丢弃（建任务不报错、照常出片，极隐蔽）。杀进程重起后重做才对。判别法：看任务 shots.json 有没有 platform 键。
+- **`fs.cpSync(src, dst, {recursive:true})` 本机静默崩**：exit 1、无异常、无 stderr（疑似杀软钩子拦拷贝）；测试脚本改 `readdirSync+copyFileSync` 循环绕开。项目代码未用 cpSync，不受影响。
+- **默认下拉 = 抖音组**（有意变更）：产品定位即抖音短视频工具（用户原话「选抖音」）；默认建任务 shots 带 platform 而非 width/height，像素与旧默认 1080×1920 完全一致，只多一行时长档日志。
+- **小红书取 3:4**（区别于抖音竖屏的特色画幅，也是拿到 3:4 的唯一入口）；「竖屏发小红书」类两词同写 → 02 冲突 fail 报错自明，重发「发小红书」即可。
+- **聊天否定守卫宁缺勿错**：命中否定词整块不判平台（「别发抖音」零改动落空），复杂语义交给 qwen；画幅词照写 width/height——与平台值一致 02 放行、矛盾 02 精确报错，规则层不重复造冲突逻辑。
+- 探针全清：`_probe_p6_*`×4 + `P6探针A抖音` + `P6回归C方形`（output 只留 5 白名单目录）。
+
+## 状态
+**P6 完工**（远期 11 → ✅，ROADMAP 冲刺段扩为 P3~P6）。显性 backlog 再次清空；远期剩素材库 / AI 生图 / 语音克隆，等需求启动。
+

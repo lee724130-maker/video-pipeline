@@ -25,10 +25,11 @@ function systemPrompt(ctx) {
   const techNames = (ctx.techniques || []).map((t) => t.name).join('、') || '（暂无）';
   return `你是视频剪辑助手，把用户的中文改片需求解析成 JSON 补丁。只输出一个 JSON 对象，不要任何解释、不要 Markdown 代码块。
 可改字段（其余键一律禁止出现）：
-- shots: {"sceneStyle":"classic"|"deck"|"paper", "coverStyle":"tech"|"bold"|"magazine", "captions":布尔, "width":360-4320整数, "height":360-4320整数, "targetCharsPerSec":2-20}
+- shots: {"sceneStyle":"classic"|"deck"|"paper", "coverStyle":"tech"|"bold"|"magazine", "captions":布尔, "width":360-4320整数, "height":360-4320整数, "targetCharsPerSec":2-20, "platform":"douyin"|"shipinhao"|"xiaohongshu"|"bilibili"}
+  平台规格=按平台出画幅（抖音1080×1920/视频号1080×1920/小红书1080×1440/B站1920×1080），platform 与 width/height 只许二选一
 - config（只许这些键路径，值须在范围内）: compose.captionSize(30-120整数), compose.karaoke(布尔), compose.captionStyle(outline描边白字|bar黑底条), compose.transitionSec(0-2), compose.fadeOutSec(0-5), compose.bgm.volume(0-1), compose.bgm.outroPitchSemitones(-12~0整数，负=降调，0=关), compose.bgm.outroPitchSec(0.2-8), compose.bgm.outroEcho(布尔，收尾延迟回声开关), compose.bgm.outroEchoSec(0.2-8), compose.bgm.outroEchoWet(1-100，回声强度)
 - rateSet: 语速绝对值(2-20，无则null)；rateDelta: 语速增减(-2~2，无则0)
-- from: 受影响步骤最大值——改语速=1；改 sceneStyle/coverStyle/captions/width/height=3；改 config=5（都没改=1）
+- from: 受影响步骤最大值——改语速=1；改 platform/width/height=2（02 重排时间轴）；改 sceneStyle/coverStyle/captions=3；改 config=5（都没改=1）
 - desc: 每处改动一句中文短描述，数组
 技术库已有技术（用户点名时直接套用其默认参数）：${techNames}
 当前任务状态：shots=${JSON.stringify(ctx.shots || {})}；已生效补丁=${JSON.stringify(ctx.overrides || {})}

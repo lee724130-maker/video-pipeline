@@ -16,6 +16,7 @@
 {
   "title": "任务名（也是文件夹名）",
   "width": 1080, "height": 1920, "fps": 30,
+  "platform": "douyin",           // 可选：平台规格，与 width/height 二选一（值冲突 02 fail）；白名单查 config.platforms 出画幅+时长档
   "sceneStyle": "classic",        // 可选：classic（缺省）| deck（演示风：幻灯版式+底部章节导航条+硬切）| paper（纸感浅色：奶油底深字，横屏教学风）
   "captions": true,               // 可选：false = 不烧录字幕（复刻样片纯画面+旁白；此时勿配 keyword 砸字）
   "voice": { "name": "zh-CN-YunxiNeural", "rate": "+8%" },
@@ -40,6 +41,11 @@
 ```
 
 - `narration` 按顺序拼起来 = 整条配音文本（**不写标点分镜符号**，正常断句即可）。
+- `platform` 平台发布规格：`douyin` 1080×1920 / `shipinhao` 1080×1920 / `xiaohongshu` 1080×1440 /
+  `bilibili` 1920×1080（表在 `pipeline/config.json` 的 `platforms`，加平台零改码）——02 查表写入
+  timeline（画幅/时长档）；与 `width/height` 同时写且**值不一致直接 fail**。可选覆盖键
+  `safeTop/safeBottom/captionSize/captionMarginV`（不写就走按画幅缩放的现行公式），
+  `durHint` 时长档秒数（06 超档只 warn 不拦）。
 - 镜头时长不填，由 `02-compile` 用逐词时间戳自动切分。
 - `items` 每条 ≤ 10 字；超过 10 字会被质检警告（竖屏一行放不下）。
   也可以写成 `{ "t": "标题", "d": "一行描述" }` 双行卡片（演示风常用）；

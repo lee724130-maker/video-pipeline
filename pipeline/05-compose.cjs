@@ -23,8 +23,11 @@ function buildAss(timeline) {
   // （竖屏 1080×1920：56/320/130 原值；横屏/方形 marginV 320→180，避免贴底或顶出画面）
   const k = Math.min(timeline.width, timeline.height) / 1080;
   const kv = (timeline.height || 1920) / 1920;
-  const capSize = Math.max(24, Math.round((c.captionSize || 56) * k));
-  const capMarginV = Math.max(40, Math.round((c.captionMarginV || 320) * kv));
+  // 平台 profile 覆盖（config.platforms.*.captionSize/captionMarginV 经 02 落 timeline）→ 缺省走 config
+  const capSizeSrc = timeline.captionSize != null ? Number(timeline.captionSize) : (c.captionSize || 56);
+  const capMarginVSrc = timeline.captionMarginV != null ? Number(timeline.captionMarginV) : (c.captionMarginV || 320);
+  const capSize = Math.max(24, Math.round(capSizeSrc * k));
+  const capMarginV = Math.max(40, Math.round(capMarginVSrc * kv));
   // 字幕样式（P5-3）：outline 缺省 = 白字深描边；bar = 抖音风黑底实底条（BorderStyle=3，
   // libass 盒是直角——ASS 不支持圆角；Outline 转盒内边距、BackColour 实黑保任意底可读）。
   // 白名单 fail——静默兜底会掩盖拼写错误（写 bar2 渲成描边还以为条没生效）
