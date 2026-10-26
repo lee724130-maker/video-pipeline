@@ -6,7 +6,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS } = require('../pipeline/lib/common.cjs');
+const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS, readCloneVoices, writeCloneVoices, deriveCloneTarget } = require('../pipeline/lib/common.cjs');
 const { parseNeed, SHOTS_PATCH } = require('./chat-rules.cjs');
 const { qwenParse } = require('./chat-qwen.cjs');
 const { splitter } = require('./splitter.cjs');
@@ -166,6 +166,52 @@ function libSaveImage(buf) {
   for (let n = 2; fs.existsSync(path.join(dir, name)); n++) name = `ai-${stamp}-${n}.png`;
   fs.writeFileSync(path.join(dir, name), buf);
   return name;
+}
+
+// —— 声音复刻（P8，探针实测 2026-10-26：dashscope 老域名这条路是通的不用 WorkspaceId；创建失败不计费）——
+// 同一个 customization 端点换 input.action：create_voice / list_voice / query_voice / delete_voice
+// target_model 必须与后续合成模型一致——直接用现役 qwen-audio-3.1-tts-flash，零换模型；
+// 音色清单落 pipeline/voice-clone.json（账号私有不进 git），01 出片时按 voiceId 找回 targetModel 且禁用兜底
+let cloneBusy = false;
+
+function cloneState() {
+  const c = (cfg.voice || {}).clone || {};
+  const key = c.key || process.env.DASHSCOPE_API_KEY || (cfg.voice?.dashscope?.key) || '';
+  const where = c.key ? 'voice.clone.key' : (process.env.DASHSCOPE_API_KEY ? '环境变量 DASHSCOPE_API_KEY' : ((cfg.voice?.dashscope?.key) ? 'voice.dashscope.key' : '未配置'));
+  return {
+    enabled: c.enabled !== false && !!key, key, where,
+    endpoint: String(c.endpoint || 'https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization'),
+    targetModel: String(c.targetModel || 'qwen-audio-3.1-tts-flash'),
+    prefix: String(c.prefix || 'myvoice'),
+    maxLen: Number(c.maxPromptAudioLength) || 15,
+    languageHints: Array.isArray(c.languageHints) && c.languageHints.length ? c.languageHints : ['zh'],
+    timeoutMs: Number(c.timeoutMs) || 60000,
+    deployTimeoutSec: Number(c.deployTimeoutSec) || 90,
+  };
+}
+
+// enrollment 端点统一 POST（model 固定 voice-enrollment）；非 2xx 带 status/额度提示抛错
+async function enroll(st, input, timeoutMs) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs || st.timeoutMs);
+  try {
+    const r = await fetch(st.endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${st.key}` },
+      body: JSON.stringify({ model: 'voice-enrollment', input }),
+      signal: ctl.signal,
+    });
+    const txt = await r.text();
+    let j = {};
+    try { j = JSON.parse(txt); } catch { /* 非 JSON → 原文进错误 */ }
+    if (!r.ok) {
+      const em = j.message || (j.error && j.error.message) || txt.slice(0, 300) || '(空响应)';
+      const err = new Error(`复刻接口 ${r.status}: ${em}${r.status === 403 ? '——额度/权限：查账户余额与「仅用免费额度」开关（Qwen 系列复刻创建按官方口径 ¥0.01/次）' : ''}`);
+      err.status = r.status === 400 ? 400 : (r.status === 403 ? 403 : 502);
+      throw err;
+    }
+    return j;
+  } finally { clearTimeout(timer); }
 }
 
 function push(line) {
@@ -336,12 +382,17 @@ const server = http.createServer(async (req, res) => {
     // —— API ——
     if (p === '/api/meta') {
       const igSt = imagegenState(); // 只回传状态不回传 key
+      const cSt = cloneState();
       return json(res, 200, {
         voices: VOICES,
         defaultVoice: (cfg.voice?.dashscope || {}).voice || 'loongstella_v3.1',
         defaultRate: Number((cfg.voice?.dashscope || {}).targetCharsPerSec || 7.2),
         running: state.running,
         imagegen: { enabled: igSt.enabled, model: igSt.model, size: igSt.size, where: igSt.where },
+        clone: {
+          enabled: cSt.enabled, targetModel: cSt.targetModel, where: cSt.where,
+          voices: readCloneVoices().map((v) => ({ ...v, targetModel: v.targetModel || deriveCloneTarget(v.voiceId) })),
+        },
       });
     }
     if (p === '/api/status') {
@@ -509,6 +560,96 @@ const server = http.createServer(async (req, res) => {
         warn('07-web', `AI 生图失败: ${e.message}`);
         return json(res, 502, { error: `生图失败: ${e.message}` });
       } finally { imgBusy = false; }
+    }
+
+    // —— 声音复刻三路由（P8）：创建(含审核轮询) / 同步远端状态 / 删除 ——
+    if (p === '/api/voice/clone' && req.method === 'POST') {
+      const st = cloneState();
+      if (!st.enabled) return json(res, 400, { error: `克隆未启用（key 来源: ${st.where}）——在 pipeline/config.local.json 给 voice.dashscope.key（复用）或 voice.clone.key（单独密钥）填 DashScope key，或设环境变量 DASHSCOPE_API_KEY；复刻 Qwen 系列按官方口径 ¥0.01/次（创建失败不计费），合成按所选模型计费` });
+      if (cloneBusy) return json(res, 409, { error: '已有一个复刻任务在进行中，等它完成' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const audio = String(body.audio || '');
+      const m = /^data:audio\/(mpeg|mp3|wav|x-wav|mp4|m4a|x-m4a|aac|ogg|flac);base64,([A-Za-z0-9+/=]+)$/.exec(audio);
+      if (!m) return json(res, 400, { error: '样本须为 base64 Data URI 且是音频（audio/mpeg|wav|m4a|aac|ogg|flac）' });
+      const bytes = Math.floor(m[2].length * 0.75);
+      if (bytes < 5000) return json(res, 400, { error: `样本太小（${bytes}B）——录 10~20 秒干净人声（无 BGM、少混响）再复刻` });
+      if (bytes > 15 * 1024 * 1024) return json(res, 400, { error: `样本过大（${(bytes / 1048576).toFixed(1)}MB，上限 15MB）——10~20 秒 mp3 远远够` });
+      const sampleName = String(body.sampleName || '').slice(0, 60);
+      cloneBusy = true;
+      try {
+        const j = await enroll(st, {
+          action: 'create_voice', target_model: st.targetModel, prefix: st.prefix,
+          audio, language_hints: st.languageHints, max_prompt_audio_length: st.maxLen,
+        });
+        const voiceId = j.output && j.output.voice_id;
+        if (!voiceId) throw Object.assign(new Error('复刻响应缺 output.voice_id：' + JSON.stringify(j).slice(0, 300)), { status: 502 });
+        // 审核态轮询 DEPLOYING → OK/UNDEPLOYED；查询抖动按未就绪继续（上限 deployTimeoutSec，超时存 DEPLOYING 交给「同步」）
+        let status = 'DEPLOYING';
+        const t0 = Date.now();
+        while (Date.now() - t0 < st.deployTimeoutSec * 1000) {
+          try {
+            const q = await enroll(st, { action: 'query_voice', voice_id: voiceId });
+            status = (q.output && q.output.status) || 'DEPLOYING';
+            if (status !== 'DEPLOYING') break;
+          } catch { /* 刚创建可能查询不到，按审核中继续 */ }
+          await new Promise((r) => setTimeout(r, 2500));
+        }
+        const voices = readCloneVoices().filter((v) => v.voiceId !== voiceId);
+        voices.unshift({ voiceId, status, targetModel: st.targetModel, sampleName, createdAt: new Date().toISOString() });
+        writeCloneVoices(voices);
+        log('07-web', `声音复刻 ${voiceId} · ${status} · 样本 ${sampleName || '(未记名)'} · ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+        const note = status === 'OK' ? '已就绪——上方「配音音色」下拉选它出片（克隆音色不走兜底换声）'
+          : status === 'UNDEPLOYED' ? '审核未通过——换一段更干净的样本（10~20 秒、无 BGM）重新复刻'
+          : '审核中——稍后点「↻ 同步」刷新状态再用';
+        return json(res, 200, { ok: true, voiceId, status, note });
+      } catch (e) {
+        warn('07-web', `声音复刻失败: ${e.message}`);
+        return json(res, e.status || 502, { error: `复刻失败: ${e.message}` });
+      } finally { cloneBusy = false; }
+    }
+    if (p === '/api/voice/clone/sync' && req.method === 'POST') {
+      const st = cloneState();
+      if (!st.enabled) return json(res, 400, { error: `克隆未启用（key 来源: ${st.where}）` });
+      try {
+        const j = await enroll(st, { action: 'list_voice', page_size: 50, page_index: 0 });
+        const remote = (j.output && j.output.voice_list) || [];
+        const known = readCloneVoices();
+        // 远端为准（本地被删/改的以远端状态覆盖）；本地元数据（样本名/时间）能带上就带上
+        const voices = remote.map((r) => {
+          const k = known.find((v) => v.voiceId === r.voice_id);
+          return {
+            voiceId: r.voice_id,
+            status: r.status || 'OK',
+            targetModel: (k && k.targetModel) || deriveCloneTarget(r.voice_id),
+            sampleName: (k && k.sampleName) || '',
+            createdAt: (k && k.createdAt) || r.gmt_create || '',
+          };
+        });
+        writeCloneVoices(voices);
+        log('07-web', `声音复刻同步：远端 ${voices.length} 个音色`);
+        return json(res, 200, { ok: true, voices });
+      } catch (e) {
+        warn('07-web', `声音复刻同步失败: ${e.message}`);
+        return json(res, e.status || 502, { error: `同步失败: ${e.message}` });
+      }
+    }
+    if (p === '/api/voice/clone/delete' && req.method === 'POST') {
+      const st = cloneState();
+      if (!st.enabled) return json(res, 400, { error: `克隆未启用（key 来源: ${st.where}）` });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const voiceId = String(body.voiceId || '');
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,119}$/.test(voiceId)) return json(res, 400, { error: 'bad voiceId' });
+      const known = readCloneVoices();
+      if (!known.some((v) => v.voiceId === voiceId)) return json(res, 404, { error: `本地清单没有 ${voiceId}——先点「↻ 同步」拉取账号里的音色` });
+      try {
+        await enroll(st, { action: 'delete_voice', voice_id: voiceId });
+        writeCloneVoices(known.filter((v) => v.voiceId !== voiceId));
+        log('07-web', `声音复刻删除 ${voiceId}`);
+        return json(res, 200, { ok: true, note: '已删除——若某任务仍选用它，出片会明确报错，去表单换个音色' });
+      } catch (e) {
+        warn('07-web', `声音复刻删除失败: ${e.message}`);
+        return json(res, e.status || 502, { error: `删除失败: ${e.message}` });
+      }
     }
 
     // —— 任务持久聊天框（P3-4）：chat.json 多线程；需求解析→补丁→共享重跑引擎；聊天历史=改动审计 ——

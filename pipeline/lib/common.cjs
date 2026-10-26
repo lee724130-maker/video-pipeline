@@ -203,4 +203,23 @@ function resolveCornerMark(task) {
   return { file, pos, width, opacity };
 }
 
-module.exports = { BGM_EXTS, FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, deepMerge, loudnormFile, fail, resolveCornerMark };
+// —— 克隆音色清单（P8 声音复刻）：网页创建后写入，01 出片读取——单文件单一出处，不进 git ——
+// voice_id 格式 = {target_model}-{prefix}-{唯一标识}（官方口径），故可从 id 前缀反推合成模型
+const CLONE_FILE = path.join(ROOT, 'pipeline', 'voice-clone.json');
+const CLONE_TARGETS = [
+  'qwen-audio-3.1-tts-flash', 'qwen-audio-3.1-tts-plus',
+  'qwen-audio-3.0-tts-flash', 'qwen-audio-3.0-tts-plus',
+  'cosyvoice-v3.5-flash', 'cosyvoice-v3.5-plus', 'cosyvoice-v3-flash', 'cosyvoice-v3-plus', 'cosyvoice-v2',
+];
+function deriveCloneTarget(voiceId) {
+  return CLONE_TARGETS.find((m) => String(voiceId || '').startsWith(m + '-')) || '';
+}
+function readCloneVoices() {
+  const j = readJson(CLONE_FILE);
+  return j && Array.isArray(j.voices) ? j.voices : [];
+}
+function writeCloneVoices(voices) {
+  writeJson(CLONE_FILE, { voices, syncedAt: new Date().toISOString() });
+}
+
+module.exports = { BGM_EXTS, FFMPEG, FFPROBE, ROOT, log, warn, run, ffprobe, durationOf, durationDecoded, ensureDir, readJson, writeJson, findBgm, bgImages, loadConfig, deepMerge, loudnormFile, fail, resolveCornerMark, readCloneVoices, writeCloneVoices, deriveCloneTarget };

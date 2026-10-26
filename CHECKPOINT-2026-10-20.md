@@ -366,3 +366,33 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - 桌面出现过 `鍓粫搴旂敤`（实为 `剪辑应用` 的 UTF-8 字节被按 GBK 误读后建成的目录，GBK 编码还原与真名 UTF-8 字节**逐字节一致**）：今天 16:13 P6 负例测试时段，某环节把中文 ROOT 经 936 代码页走了一遭，探针任务 `output/_probe_p6_f1_badplat/audio` 落进了这个假 ROOT；当时「探针全清」只清真 `output/`，漏了它。文件名还含私用区字符 U+E047，各软件显示不一致。
 - 同日一并清除项目内同族垃圾 `UsersADMINI~1AppDataLocalTemp\badtest`（10-16 产物：带反斜杠的绝对路径丢了 `\` 被当相对路径创建）。两目录**删除前结构复核、删除后验证**，git status 干净、真身 19 项完好。
 - **教训固化**：凡中文路径经 PowerShell 命令行/控制台传递的环节都可能被 GBK 误读——本项目第二次踩（第一次只是显示乱码，这次**建出了实体目录**）。此后规矩：探针/脚本里的中文 ROOT 常量一律用 write 工具落盘（UTF-8 直写），禁止内联进 PS 命令行。
+
+## P8 · 语音克隆重工（2026-10-26，远期 12 转正，冒烟 29/29 全绿）
+
+### 立项与探针（零成本方法论第三次实战）
+
+- 隔三天复工：先核查（git 干净、output/library 无用户新产物、**8787 已因重启挂掉**→ 拉起），再按清单顺序启动远期 12。
+- **API 摸底**（websearch + 官方文档）：声音复刻 = `POST /api/v1/services/audio/tts/customization`，`model:"voice-enrollment"` 固定，`input.action` 换操作：`create_voice`（target_model+prefix≤10 字母数字+audio URL 或 **Base64 Data URI**+language_hints+max_prompt_audio_length 3~30s）/ `list_voice` / `query_voice` / `update_voice` / `delete_voice`；返回 `output.voice_id`，**官方口径 voice_id 格式 = `{target_model}-{prefix}-{唯一标识}`，直接当合成的 voice 参数**；审核态 `DEPLOYING→OK/UNDEPLOYED`。计费口径（文档两处矛盾，以实践文档为准）：CosyVoice 系列创建免费、**Qwen 系列 ¥0.01/个**（创建失败不计费）；MiniMax 支线（9.9 元解锁费）不用。
+- **探针三发**（`$env:TEMP\opencode\clone-probe.cjs`，全零成本）：① `list_voice` on dashscope 老域名 → **200**（不像 images 那样 404，不用 WorkspaceId！）② qianwenai 域名 → 200（备用）③ `create_voice` 坏样本 → **400 `Audio.DecoderError: detect audio failed`**——参数先于计费校验 = 坏样本辨路径零花费；账号音色数 0。
+- **关键集成决策**：现役模型 `qwen-audio-3.1-tts-flash` 恰在 target_model 白名单 → `voice.clone.targetModel` = 现役模型，**零换模型**；config 注释旧坑「next 模型忽略 voice 参数」不适用（config 本来就用 flash 严格校验版）。
+
+### 施工与设计要点
+
+- `config.json` `voice.clone`：endpoint/targetModel/prefix(max 10 字母数字)/maxPromptAudioLength 15/languageHints["zh"]/timeoutMs/deployTimeoutSec 90/**key 恒空**（复用 `voice.dashscope.key` → 环境变量 → `voice.clone.key` 链，meta 只回来源）。
+- `pipeline/voice-clone.json` 账号私有清单（gitignore）；common 三助手单一出处：`readCloneVoices / writeCloneVoices / deriveCloneTarget`（从 id 前缀对 9 个白名单 target model 反推，命中返回模型名否则空串）。
+- server 三路由：`POST /api/voice/clone`（Data URI MIME 白名单 + ≥5KB ≤15MB 本地校验、cloneBusy 409、创建成功后服务端轮询 `query_voice` ≤90s，查询抖动按 DEPLOYING 继续、超时存 DEPLOYING 交「同步」；响应 note 三态文案）/ `POST /api/voice/clone/sync`（`list_voice` 远端为准全量合并、本地样本名/时间能带就带、未知远端 id derive 反推模型）/ `POST /api/voice/clone/delete`（voiceId 白名单正则 + 本地清单 404 拦截——防打错字打到 API）。enroll 统一助手：非 2xx 带 status 分级（400/403/502）+ 403 附「余额与仅用免费额度」提示。
+- **01 禁兜底四连**（宁 fail 勿兜底落到克隆场景）：命中清单 → `attempts=['dashscope']` 只此一条（不许 edge/gtts/sapi 静默顶替）；状态非 OK → fail「点同步刷新，不静默换音色」；缺 targetModel → fail；**清单外但 id 长得像克隆形状**（deriveCloneTarget 命中，如清单丢失/别处创建）→ fail「点同步拉取」。key 缺失对克隆是 fail 不是 warn 跳过。meta 记 `voice.clone:true + 实际 model`。
+- 网页：音色下拉 `<optgroup label="克隆音色">`（非 OK disabled 带状态后缀）+ `<details>` 折叠面板（文件选择→✦复刻→服务端等审核→列表展示/↻同步/删除带 confirm；计费口径与样本要求写明；无 key 只显示启用说明，meta.clone.enabled 两态驱动）。
+
+### 冒烟 29/29（p8-clone-smoke.cjs 留存）
+
+- A 静态 7（config 段/gitignore/common 导出+derive/三路由/01 四守卫/网页五件套）；B 无 key 8799 副本实例 2（PIPELINE_CONFIG_OVERRIDES 空 key 补丁 → enabled=false + POST 400 带 config.local 指引）；C 主实例 4 零花费负例（缺 audio/非音频 MIME/太小/删未知名 404）。
+- D 真实 E2E：样本 = deck-demo TTS 口播切 15s（**不用真人素材**，克隆 TTS 声测机制合法）→ 复刻 **11.4s 到 OK**（voice_id `qwen-audio-3.1-tts-flash-myvoice-55290a5eac004509855bbc6ebddb13a3`）→ 直连合成 mp3 → 01 全链 provider=dashscope/voice.clone=true/duration 真实 → 清单外形状 id fail ✓ → 状态改 DEPLOYING fail ✓（finally 还原验证）→ 探针目录清理、清单只剩留样。
+- **花费**：复刻创建 1 次（官方口径 ¥0.01 或免费档，实测无 403 = 账号接受了）+ 测试合成若干（TTS 免费额度）。留样音色可用可删。
+- 服务：8787 已带 P8 代码重启（clone.enabled=true，key 来源 voice.dashscope.key）；01 为子进程逐次拉取，后续 01 改动无需重启。
+
+### 遗留与下一步
+
+- 留样克隆音色是**机械测试音色**（TTS 声切片），用户要「自己的声音」需自录 10~20s 干净人声在面板重複（删除旧的即可）。
+- `qwen-audio-3.1-tts-flash` 原生 rate 对克隆音色的效果未单测（01 的 atempo 残差校正链天然兜住语速）。
+- 剩余清单：远期 13 Editor 精修页（立项两选项待拍板）→ 技术侧 `item-color-code`（new 档）→ 用户实测反馈（素材库/货架/生图/克隆面板攒一批）。

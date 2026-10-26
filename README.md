@@ -17,7 +17,7 @@
 | 环节 | 工具 | 产物 |
 |---|---|---|
 | 环境自检 | `pipeline/00-checkenv.cjs` | 工具链就绪报告 |
-| 配音 | DashScope qwen TTS（免费额度，多种音色）；四级兜底 edge→gTTS→SAPI 离线（断网也出片） | `audio/voice.mp3` + meta |
+| 配音 | DashScope qwen TTS（免费额度，多种音色）+ **声音复刻**（克隆自己的声音，复刻按次计费）；四级兜底 edge→gTTS→SAPI 离线（断网也出片；克隆音色不走兜底，失败明说） | `audio/voice.mp3` + meta |
 | 编排 | 我按 `skills/script.md` 写分镜表 | `shots.json`（含镜头时长，由真实配音时间反推）；whisper 逐词对齐出 `audio/words.json`（字幕逐字精确，缓存复用） |
 | 画面方案 | 我按 `skills/visuals.md` 定每镜画面 | 场景 HTML |
 | 场景生成 | `pipeline/03-scenes.cjs` | `scenes/s01.html …`（要点随配音逐条出现）+ 片尾卡/封面版式 |
@@ -39,7 +39,7 @@ node pipeline/run.cjs output/<任务名>
 node web/server.cjs        # 然后浏览器开 http://127.0.0.1:8787
 ```
 
-填口播文案 → （可选）传背景图/BGM 或从底部「素材库」选用 → 选音色、拖语速滑条 → 点「一键出片」，六步进度条 + 实时日志，完成后在线预览成片（可拖进度条）、下载、看 QC 报告。镜头由 `web/splitter.cjs` 按句自动拆分（首句标题卡、含逗号句要点卡、末句收尾卡）；要精细分镜仍建议按 `skills/script.md` 手写 `shots.json` 跑命令行。只监听 127.0.0.1，不对外网开放。
+填口播文案 → （可选）传背景图/BGM 或从底部「素材库」选用 → 选音色（可「🎙 克隆音色」用自己的声音）、拖语速滑条 → 点「一键出片」，六步进度条 + 实时日志，完成后在线预览成片（可拖进度条）、下载、看 QC 报告。镜头由 `web/splitter.cjs` 按句自动拆分（首句标题卡、含逗号句要点卡、末句收尾卡）；要精细分镜仍建议按 `skills/script.md` 手写 `shots.json` 跑命令行。只监听 127.0.0.1，不对外网开放。
 
 ## 改片三件套（P3：出完片还能一直改）
 
@@ -79,6 +79,7 @@ node web/server.cjs        # 然后浏览器开 http://127.0.0.1:8787
 - **素材背景**：`assets/` 里放 `bg-01.jpg ~ bg-09.jpg`（png/webp 也行）即可全局换背景——口播按镜头序号轮播做底图 + Ken Burns 缓推动画（原网格光晕设计叠加其上，自动压暗保字幕可读），KTV 全曲轮播 + 1s 交叉淡化，封面用第一张。不放就用内置风格，`config.background`（scrim/kenBurns/zoom）可调。
 - **素材库（P7）**：根目录 `library/{bgm,images,clips}` 放可复用素材（白名单扩展名，git 不入库），网页底部「素材库」区选目标任务一键选用——复制进任务 `assets/`（BGM 自动清旧换 `bgm.<ext>`、图片可自动编 `bg-NN`），再重跑对应步骤生效；建任务表单的 BGM 也能直接下拉选用（与自带上传二选一，自带优先）。
 - **AI 生图（P7-2）**：素材库区直接用文字出图——写画面描述 →「✦ AI 生图」→ 出图自动落 `library/images/ai-*.png`，可勾选顺手作背景图加入所选任务。**有 DashScope key 才启用**（`pipeline/config.local.json` 的 `voice.dashscope.key` 复用 / `imagegen.key` 单独密钥 / 环境变量 `DASHSCOPE_API_KEY`；`imagegen.enabled=false` 可关死），模型 `qwen-image-2.1-turbo`、按张计费（当前在免费额度内，额度尽会明确提示充值或关「仅用免费额度」）；没配 key 只显示启用说明——**出片六步永不自动调用它，零成本默认不变**。
+- **语音克隆（P8）**：表单音色下拉旁「🎙 克隆音色」折叠面板——选一段 **10~20 秒干净人声**（无 BGM、少混响，mp3/wav/m4a ≤15MB）→「✦ 复刻」→ 服务端等审核通过（通常十几秒）→ 音色下拉出现「克隆音色」组，选中即用自己的声音出片。**有 DashScope key 才启用**（`voice.dashscope.key` 复用 / `voice.clone.key` 单独 / 环境变量 `DASHSCOPE_API_KEY`）；复刻 Qwen 系列按官方口径 ¥0.01/次（创建失败不计费），合成分开按所选模型计费。**克隆音色出片不走四级兜底**——状态未就绪、清单里没有该 id 都明确报错并指引「↻ 同步」，绝不静默换成别的声音；同步按钮拉账号音色列表，删除不可恢复。清单在 `pipeline/voice-clone.json`（账号私有，不进 git）。
 - **BGM 卡点**：任务根目录放 `bgm.mp3`（或 wav/m4a 等，也认 `assets/bgm.*`），合成时自动：循环铺满全片 + 说话时侧链闪避 + 淡入淡出 + 镜头边界吸附到检测出的节拍网格（无明显节奏的曲子自动跳过卡点，只混音）。
 
 ## KTV 歌词视频（07 步，独立模式）

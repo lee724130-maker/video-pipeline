@@ -91,6 +91,18 @@
         </div>
       </div>
 
+      <details id="cloneBox" style="display:none">
+        <summary style="cursor:pointer;font-weight:600;font-size:13px">🎙 克隆音色——用自己的声音出片（需 DashScope key；复刻与合成分开计费）</summary>
+        <div style="display:flex;gap:8px;align-items:center;margin:8px 0 6px;flex-wrap:wrap">
+          <input type="file" id="cloneFile" accept="audio/*" style="flex:1;min-width:200px">
+          <button id="cloneGo" onclick="cloneGo()">✦ 复刻</button>
+          <button onclick="cloneSync()">↻ 同步状态</button>
+        </div>
+        <div class="sub" style="margin-bottom:6px">样本：<b>10~20 秒干净人声</b>（无 BGM、少混响），mp3 / wav / m4a ≤15MB。复刻 Qwen 系列按官方口径 ¥0.01/次（创建失败不计费）；成功后上方音色下拉出现「克隆音色」组，选中出片<b>不走兜底换声</b>（失败就明说，不会静默换成别的声音）。</div>
+        <div id="cloneMsg" class="sub" style="margin-bottom:6px"></div>
+        <div id="cloneList" class="sub"></div>
+      </details>
+
       <div class="row">
         <div>
           <label>发布规格</label>
@@ -220,16 +232,78 @@ function toBase64(file) {
   return new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(file); });
 }
 
+// —— 克隆音色（P8）——
+const CLONE_STATUS = { OK: '可用', DEPLOYING: '审核中', UNDEPLOYED: '未通过' };
+
+function renderVoiceSel(keep) {
+  const cl = (meta.clone && meta.clone.voices) || [];
+  const opts = meta.voices.map((v) =>
+    `<option value="${v.id}" ${v.id === meta.defaultVoice ? 'selected' : ''}>${v.name}</option>`);
+  if (cl.length) {
+    opts.push('<optgroup label="克隆音色">');
+    for (const v of cl) {
+      const label = `${esc(v.voiceId)}${v.sampleName ? '（' + esc(v.sampleName) + '）' : ''} · ${CLONE_STATUS[v.status] || esc(v.status)}`;
+      opts.push(`<option value="${esc(v.voiceId)}" ${v.status !== 'OK' ? 'disabled' : ''}>${label}</option>`);
+    }
+    opts.push('</optgroup>');
+  }
+  $('voice').innerHTML = opts.join('');
+  if (keep && [...$('voice').options].some((o) => o.value === keep)) $('voice').value = keep;
+}
+
+function renderCloneList() {
+  const cl = (meta.clone && meta.clone.voices) || [];
+  $('cloneList').innerHTML = cl.length
+    ? cl.map((v) => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:2px 0"><code>${esc(v.voiceId)}</code>${v.sampleName ? `<span>${esc(v.sampleName)}</span>` : ''}<b>${CLONE_STATUS[v.status] || esc(v.status)}</b><button onclick="cloneDel('${esc(v.voiceId)}')">删除</button></div>`).join('')
+    : '<div>还没有克隆音色——选段 10~20 秒干净人声，点「✦ 复刻」。</div>';
+}
+
+async function cloneGo() {
+  const f = $('cloneFile').files[0];
+  if (!f) { $('cloneMsg').textContent = '先选一段样本音频（10~20 秒干净人声）'; return; }
+  $('cloneGo').disabled = true;
+  $('cloneMsg').textContent = '上传并复刻中…（审核通过通常十几秒）';
+  try {
+    const r = await j('/api/voice/clone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: await toBase64(f), sampleName: f.name }) });
+    meta.clone.voices = [{ voiceId: r.voiceId, status: r.status, sampleName: f.name }, ...(meta.clone.voices || []).filter((v) => v.voiceId !== r.voiceId)];
+    renderVoiceSel(r.status === 'OK' ? r.voiceId : $('voice').value);
+    renderCloneList();
+    $('cloneMsg').textContent = `${r.status === 'OK' ? '✓' : '…'} ${r.voiceId} — ${r.note}`;
+  } catch (e) { $('cloneMsg').textContent = '✗ ' + e.message; }
+  $('cloneGo').disabled = false;
+}
+
+async function cloneSync() {
+  $('cloneMsg').textContent = '同步中…';
+  try {
+    const r = await j('/api/voice/clone/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    meta.clone.voices = r.voices;
+    renderVoiceSel($('voice').value);
+    renderCloneList();
+    $('cloneMsg').textContent = `同步 OK — 账号内 ${r.voices.length} 个克隆音色`;
+  } catch (e) { $('cloneMsg').textContent = '✗ ' + e.message; }
+}
+
+async function cloneDel(id) {
+  if (!confirm('删除克隆音色 ' + id + '？不可恢复；仍选用它的任务出片会明确报错')) return;
+  try {
+    const r = await j('/api/voice/clone/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voiceId: id }) });
+    meta.clone.voices = (meta.clone.voices || []).filter((v) => v.voiceId !== id);
+    renderVoiceSel(meta.defaultVoice); renderCloneList();
+    $('cloneMsg').textContent = '✓ ' + (r.note || '已删除');
+  } catch (e) { $('cloneMsg').textContent = '✗ ' + e.message; }
+}
+
 async function init() {
   meta = await j('/api/meta');
-  $('voice').innerHTML = meta.voices.map((v) =>
-    `<option value="${v.id}" ${v.id === meta.defaultVoice ? 'selected' : ''}>${v.name}</option>`).join('');
+  renderVoiceSel();
   $('rate').value = meta.defaultRate;
   $('rateVal').textContent = meta.defaultRate;
   refreshHist();
   refreshTech();
   refreshLib();
   initAI();
+  if (meta.clone && meta.clone.enabled) { $('cloneBox').style.display = ''; renderCloneList(); }
   if (meta.running) poll();
 }
 

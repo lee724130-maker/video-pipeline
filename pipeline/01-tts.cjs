@@ -1,7 +1,7 @@
 // 01 · 配音：shots.json 口播稿 → voice.mp3（+ 可选逐词时间戳）
 const fs = require('fs');
 const path = require('path');
-const { ROOT, FFMPEG, run, durationOf, durationDecoded, ensureDir, readJson, writeJson, log, warn, fail, loadConfig } = require('./lib/common.cjs');
+const { ROOT, FFMPEG, run, durationOf, durationDecoded, ensureDir, readJson, writeJson, log, warn, fail, loadConfig, readCloneVoices, deriveCloneTarget } = require('./lib/common.cjs');
 
 const cfg = loadConfig();
 
@@ -36,8 +36,20 @@ function main() {
   const words = path.join(task, 'audio', 'words.json');
   [mp3, words].forEach((f) => fs.existsSync(f) && fs.unlinkSync(f));
 
+  // —— 克隆音色（P8）：shots.voice 命中清单 → 用音色自带 targetModel 合成，且禁用兜底换声（点名要自己的声音）——
+  const voiceName = String(shots.voice || (voiceCfg.dashscope || {}).voice || '');
+  const cloneHit = readCloneVoices().find((v) => v.voiceId === voiceName) || null;
+  if (cloneHit) {
+    if (cloneHit.status !== 'OK') fail(`克隆音色未就绪（${voiceName} 状态 ${cloneHit.status}）——去网页「克隆音色」点「↻ 同步」刷新状态，审核通过后再出片；不静默换音色`);
+    if (!cloneHit.targetModel) fail(`克隆音色缺 targetModel（${voiceName}）——去网页点「↻ 同步」补全，或手填 pipeline/voice-clone.json`);
+  } else if (voiceName && deriveCloneTarget(voiceName)) {
+    // id 长得像克隆音色（{target_model}-{prefix}-{唯一标识}）但本地清单没有——清单丢失/别处创建，不静默降级换声
+    fail(`音色 ${voiceName} 是克隆音色但本地清单（pipeline/voice-clone.json）没有——去网页「克隆音色」点「↻ 同步」拉取账号音色，或在表单换回默认音色`);
+  }
+
   // sapi = Windows 自带语音离线兜底（断网/无额度也能出配音），排在所有联网通道之后
-  const attempts = provider === 'gtts' ? ['gtts']
+  const attempts = cloneHit ? ['dashscope'] // 克隆音色点名专用：不许 edge/gtts/sapi 静默顶替，失败就明说
+    : provider === 'gtts' ? ['gtts']
     : provider === 'edge' ? ['edge']
     : provider === 'sapi' ? ['sapi']
     : provider === 'dashscope' ? ['dashscope', 'gtts', 'sapi']
@@ -61,14 +73,17 @@ function main() {
     } else if (p === 'dashscope') {
       const d = voiceCfg.dashscope || {};
       const key = d.key || process.env.DASHSCOPE_API_KEY || '';
-      if (!key) { warn('01', 'dashscope 未配置 key，跳过'); continue; }
+      if (!key) {
+        if (cloneHit) fail('克隆音色需要 dashscope key（pipeline/config.local.json → voice.dashscope.key，或环境变量 DASHSCOPE_API_KEY）——不做降级换声');
+        warn('01', 'dashscope 未配置 key，跳过'); continue;
+      }
       // 音色优先级：shots.json.voice（按任务/按视频指定）> config.voice.dashscope.voice
       // ⚠️ 只有 qwen-audio-3.1-tts-flash 严格校验 voice；next 模型会忽略该参数
-      const voiceName = String(shots.voice || d.voice || '');
+      // 克隆音色的合成模型必须 = 创建时的 target_model（官方口径），不能用 config 默认模型
       dashVoice = voiceName;
       r = run(process.execPath, [
         path.join(__dirname, 'tools/tts_dashscope.cjs'), path.join(task, 'narration.txt'),
-        mp3, key, d.model || 'qwen-audio-3.1-tts-next', voiceName,
+        mp3, key, cloneHit ? cloneHit.targetModel : (d.model || 'qwen-audio-3.1-tts-next'), voiceName,
         String(dashRate),
       ]);
       if (r.ok) dashNativeRate = dashRate > 0 && /native_rate=/.test(r.out);
@@ -102,7 +117,7 @@ function main() {
     fs.existsSync(words) && fs.unlinkSync(words);
   }
 
-  if (!used) fail('配音失败（dashscope / edge-tts / gTTS 都不可用）——检查网络、代理 ' + cfg.proxy + ' 或 key');
+  if (!used) fail(cloneHit ? `克隆音色合成失败（${voiceName}）——查网络/key/音色状态，不做降级换声` : '配音失败（dashscope / edge-tts / gTTS 都不可用）——检查网络、代理 ' + cfg.proxy + ' 或 key');
 
   // 语速统一：在时间轴计算之前变速，后续所有对齐基于变速后的音频
   const tempo = tempoOf(used);
@@ -158,7 +173,7 @@ function main() {
     charsPerSec: Number((narration.length / dur).toFixed(2)),
     nativeRate: used === 'dashscope' && dashNativeRate ? dashRate : 0,
     voice: used === 'edge' ? (cfg.voice.edge || {})
-      : used === 'dashscope' ? { ...(cfg.voice.dashscope || {}), voice: dashVoice }
+      : used === 'dashscope' ? { ...(cfg.voice.dashscope || {}), voice: dashVoice, ...(cloneHit ? { clone: true, model: cloneHit.targetModel } : {}) }
       : used === 'sapi' ? (cfg.voice.sapi || {})
       : (cfg.voice.gtts || {}),
     hasWordTiming: fs.existsSync(words),

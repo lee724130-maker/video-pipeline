@@ -4,6 +4,9 @@
   "voice": {
     "dashscope": {
       "key": "sk-你的DashScope密钥"
+    },
+    "clone": {
+      "key": ""
     }
   },
   "imagegen": {

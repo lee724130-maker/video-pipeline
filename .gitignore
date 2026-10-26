@@ -15,6 +15,9 @@ library/*
 # 真实密钥写在 pipeline/config.local.json，模板见 config.local.example.json
 config.local.json
 
+# —— 克隆音色清单（账号私有：voice_id 与本账号绑定，不进 git）——
+pipeline/voice-clone.json
+
 # —— 临时文件与日志 ——
 *.log
 *.tmp

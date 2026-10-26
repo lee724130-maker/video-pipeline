@@ -1,6 +1,6 @@
 # ROADMAP · 零成本视频流水线
 
-> 更新：2026-10-23。状态：✅ 已完成 / 🔄 进行中 / ⬜ 未开始。
+> 更新：2026-10-26。状态：✅ 已完成 / 🔄 进行中 / ⬜ 未开始。
 
 ## ✅ 已完成
 
@@ -43,12 +43,18 @@
 | P7-1 素材库接入 ✅ | 远期 9 转正：根目录 `library/{bgm,images,clips}` 本地素材缓存（`library/README.md` 契约 + git 只入说明；白名单扩展名与 `findBgm`/bg-NN 同表，隐藏文件与表外扩展静默忽略）；`GET /api/library` 列表 + `POST /api/library/add` 选用=**复制**进任务 `assets/`（BGM 自动清旧换 `bgm.<ext>` 防 findBgm 歧义、图片 mode=bg 自动编 bg-NN、原名同存 409、路径穿越/错扩展/未知文件/未知任务 400/404 全拦）；建任务 `bgmFromLibrary` 与自带上传**二选一**（同传 400，排队前早校验不落任务目录）；网页底部「素材库」区（任务下拉 + 三分组列表 + 选用按钮 + 生效步骤提示）+ 表单 BGM 下拉共用数据；`common.cjs` 导出 `BGM_EXTS` 单一出处。冒烟 24/24（含管线 `findBgm` 真实契约命中 + 测试现场备份还原零残留）；README 同步（流程句 / 技术库卡数 7→12 改错 / 目录树 / 素材模式段） |
 | P7-2 AI 生图 ✅ | 远期 10 转正：网页素材库卡内「✦ AI 生图」区（prompt + 尺寸下拉 auto/竖9:16/横16:9/方1:1/3:4 + 生成 + 预览 + 可选作 bg-NN 附加入所选任务）；`POST /api/txt2img` → 千问AI平台 `maas.qianwenaiapi.com/compatible-mode/v1/images/generations`（**零成本探针定案**：dashscope 老域名无 images 路径=空 body 404；OpenAI 兼容文档枚举没写 `qwen-image-2.1-turbo` 但实测可用且有额度、`qwen-image-3.0` 免费额度尽=403 带中文提示；尺寸以线上实测为准 512²~2560²、字母 `x`、`auto` 可选；结果 URL 仅 24h → 服务端立即下载、PNG 魔数校验落 `library/images/ai-<本地时间戳>.png`）；**零成本硬保证 = 管线六步永不自动调用**、`config.imagegen.key` 恒空（key 只进 config.local / 环境变量 `DASHSCOPE_API_KEY`，meta 与响应永只回 key 来源）；附加入任务在**花钱前** 404 拦截、并发 409、prompt≤2000、非 JSON 错误体原文入错；无 key 页面只显示启用说明（meta 两态驱动）。冒烟 **47/47**（无 key 用 `PIPELINE_CONFIG_OVERRIDES` 空 key 补丁起 8799 副本实例全负例 + 主实例 4 负例零花费 + 真实 1 张 E2E：落库/附加入 deck-demo/还原零残留、留样 1 张在素材库）；README / `config.local.example.json` 同步 |
 
+## ✅ P8 · 语音克隆（2026-10-26）
+
+| 冲刺 | 内容 |
+|---|---|
+| P8 语音克隆 ✅ | 远期 12 转正：DashScope 声音复刻（`voice-enrollment` 同端点换 `input.action`：create/query/list/delete；**老域名 dashscope.aliyuncs.com 直通、不用 WorkspaceId**，探针实测 2026-10-26；`target_model` 必须 = 后续合成模型 → 直接用现役 `qwen-audio-3.1-tts-flash` **零换模型**，voice_id 官方格式 `{target_model}-{prefix}-{唯一标识}` 直接当合成 `voice` 参数）+ `config.voice.clone` 段（key 恒空，复用 voice.dashscope.key 链）+ `pipeline/voice-clone.json` 账号私有清单（common 三助手 `readCloneVoices/writeCloneVoices/deriveCloneTarget` 单一出处，gitignore 不进库）；`POST /api/voice/clone`（样本 Base64 Data URI 10~20s ≤15MB 本地校验、cloneBusy 串行、服务端轮询审核态 DEPLOYING→OK ≤90s 超时存 DEPLOYING 交「同步」）+ `/clone/sync`（远端为准合并、derive 从 id 前缀反推 targetModel）+ `/clone/delete`（本地清单 404 拦截）；网页音色下拉「克隆音色」optgroup（非 OK disabled）+ 折叠面板（选样本→✦复刻/↻同步/删除 + 计费口径说明，无 key 只显示启用说明）；**01 禁兜底**：命中克隆音色 → attempts 只剩 dashscope（不许 edge/gtts/sapi 静默顶替），状态非 OK / 缺 targetModel / **清单外克隆形状 id**（deriveCloneTarget 命中即拦）全 fail 带「点同步」指引；meta 记 `voice.clone:true + 实际 model`。计费实测：复刻创建 200 无 403（Qwen 系列官方口径 ¥0.01/次、创建失败不计费；探针「坏样本 400 Audio.DecoderError」证明参数先于计费校验）。冒烟 **29/29**（A 静态 7 + B 无 key 8799 副本实例 2 + C 主实例 4 零花费负例 + D 真实 E2E：15s 样本复刻 **11.4s 到 OK** → 直连合成 mp3 → 01 全链 provider=dashscope/voice.clone=true/不降级 → 禁兜底双负例 → 清理零残留）；留样音色 `qwen-audio-3.1-tts-flash-myvoice-55290a5e…`（status=OK，下拉可选，不用可面板删除）。README / `config.local.example.json` 同步 |
+
 ## ⬜ 远期（可选方向，看需求再启动）
 
 9. ~~**素材库接入**——免版权 BGM/图片/视频片段的本地缓存库（用户仍可自带文件优先）~~ ✅ 2026-10-23 实现（见 P7 行）
 10. ~~**AI 生成画面**——可选接入生图 API 出场景图（有 key 才启用，保持零成本默认不变）~~ ✅ 2026-10-23 实现（见 P7-2 行）
 11. ~~**平台发布规格预设**——抖音/视频号/B站/小红书各自的安全区、字幕字号、时长偏好做成 profile~~ ✅ 2026-10-23 实现（见 P6 行）
-12. **语音克隆音色**——DashScope 支持声音复刻，用自己的声音出片（需要 API 支持与额度）
+12. ~~**语音克隆音色**——DashScope 支持声音复刻，用自己的声音出片（需要 API 支持与额度）~~ ✅ 2026-10-26 实现（见 P8 行）
 13. **手动剪辑页面（Editor 精修）**——用户点名（2026-10-23），成片某段不满意时网页手动调整：时间轴多轨、片段拖动/裁剪/拆分/撤销、右侧属性面板、预览播放、渲染导出。**参考源**：① `D:\AI-Anime-main` 的 `/editor` 页面（React+antd；`pages/Editor/EditorPage.tsx` + `components/Timeline.tsx` 三轨 10-100px/s 缩放 + `PropsPanel.tsx`；`backend/modules/editor` 把 timeline 转 workflow JSON 交 ffmpeg 渲染；可抄的交互：DragState 拖拽状态机、0.1s 网格、`commitTimeline` 统一写入+400ms 防抖撤销栈、右缘 10px resize 手柄、滚轮劫持横滚、预览区文字直接拖拽改归一化坐标）② Canva 编辑器 UX `https://www.canva.cn/design/DAHY0Um0vZM/aAiTSfnx1nOsDXo6MMEQLQ/edit`。**立项时先定**：与本管线的结合方式（编辑结果回写 shots.json 走局部重跑 vs 独立成片精修器），以及素材/字幕与现有 assets、caption 体系的对齐。当日不开发（用户明示）。
 
 ## 维护备忘

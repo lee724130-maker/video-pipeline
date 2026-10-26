@@ -24,6 +24,17 @@
       "rate": 6,
       "tempo": 1.15,
       "targetCharsPerSec": 7.2
+    },
+    "clone": {
+      "enabled": true,
+      "endpoint": "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization",
+      "targetModel": "qwen-audio-3.1-tts-flash",
+      "prefix": "myvoice",
+      "maxPromptAudioLength": 15,
+      "languageHints": ["zh"],
+      "timeoutMs": 60000,
+      "deployTimeoutSec": 90,
+      "key": ""
     }
   },
   "render": {
