@@ -151,4 +151,33 @@ const SHOTS_PATCH = {
   platform: (v) => typeof v === 'string' && /^[a-z][a-z0-9_-]{0,23}$/.test(v) && Object.keys(loadConfig().platforms || {}).includes(v),
 };
 
-module.exports = { parseNeed, SHOTS_PATCH };
+// —— Editor 轻改（P9）：shots.shots[] 单镜字段白名单 ——
+// 与 SHOTS_PATCH 同打法：字段 → 校验函数；身份字段 id/n、镜数与顺序由 /api/editor/shots 守住
+// （轻改边界 = 不增删不排序镜头，结构调整归「重剪」段另立项）；类型必填项（keyword/split/title/end）
+// 与素材文件存在性由 server 路由做语境校验；口径来源 skills/script.md 二·schema（字段全集扫自现存任务）
+const TYPE_WL = ['title', 'bullet', 'split', 'keyword', 'transition', 'end'];
+const sMax = (max) => (v) => typeof v === 'string' && v.length <= max;
+const SHOT_EDIT = {
+  type: (v) => typeof v === 'string' && TYPE_WL.includes(v),
+  narration: (v) => typeof v === 'string' && v.trim().length > 0 && v.length <= 200,
+  title: sMax(80),
+  subtitle: sMax(150),
+  kicker: sMax(40),
+  heading: sMax(60),
+  quote: sMax(150),
+  keyword: sMax(30),
+  note: sMax(150),
+  index: sMax(8),
+  nav: sMax(20),
+  tags: (v) => Array.isArray(v) && v.length <= 8 && v.every((x) => typeof x === 'string' && x.length <= 30),
+  items: (v) => Array.isArray(v) && v.length <= 10 && v.every((x) =>
+    (typeof x === 'string' && x.length <= 60)
+    || (x && typeof x === 'object' && !Array.isArray(x)
+      && Object.keys(x).every((k) => k === 't' || k === 'd')
+      && typeof x.t === 'string' && x.t.trim().length > 0 && x.t.length <= 60
+      && (x.d === undefined || (typeof x.d === 'string' && x.d.length <= 120)))),
+  media: (v) => v === '' || sMax(120)(v),
+  asset: (v) => v === '' || sMax(120)(v),
+};
+
+module.exports = { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL };

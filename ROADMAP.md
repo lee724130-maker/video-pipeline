@@ -49,13 +49,19 @@
 |---|---|
 | P8 语音克隆 ✅ | 远期 12 转正：DashScope 声音复刻（`voice-enrollment` 同端点换 `input.action`：create/query/list/delete；**老域名 dashscope.aliyuncs.com 直通、不用 WorkspaceId**，探针实测 2026-10-26；`target_model` 必须 = 后续合成模型 → 直接用现役 `qwen-audio-3.1-tts-flash` **零换模型**，voice_id 官方格式 `{target_model}-{prefix}-{唯一标识}` 直接当合成 `voice` 参数）+ `config.voice.clone` 段（key 恒空，复用 voice.dashscope.key 链）+ `pipeline/voice-clone.json` 账号私有清单（common 三助手 `readCloneVoices/writeCloneVoices/deriveCloneTarget` 单一出处，gitignore 不进库）；`POST /api/voice/clone`（样本 Base64 Data URI 10~20s ≤15MB 本地校验、cloneBusy 串行、服务端轮询审核态 DEPLOYING→OK ≤90s 超时存 DEPLOYING 交「同步」）+ `/clone/sync`（远端为准合并、derive 从 id 前缀反推 targetModel）+ `/clone/delete`（本地清单 404 拦截）；网页音色下拉「克隆音色」optgroup（非 OK disabled）+ 折叠面板（选样本→✦复刻/↻同步/删除 + 计费口径说明，无 key 只显示启用说明）；**01 禁兜底**：命中克隆音色 → attempts 只剩 dashscope（不许 edge/gtts/sapi 静默顶替），状态非 OK / 缺 targetModel / **清单外克隆形状 id**（deriveCloneTarget 命中即拦）全 fail 带「点同步」指引；meta 记 `voice.clone:true + 实际 model`。计费实测：复刻创建 200 无 403（Qwen 系列官方口径 ¥0.01/次、创建失败不计费；探针「坏样本 400 Audio.DecoderError」证明参数先于计费校验）。冒烟 **29/29**（A 静态 7 + B 无 key 8799 副本实例 2 + C 主实例 4 零花费负例 + D 真实 E2E：15s 样本复刻 **11.4s 到 OK** → 直连合成 mp3 → 01 全链 provider=dashscope/voice.clone=true/不降级 → 禁兜底双负例 → 清理零残留）；留样音色 `qwen-audio-3.1-tts-flash-myvoice-55290a5e…`（status=OK，下拉可选，不用可面板删除）。README / `config.local.example.json` 同步 |
 
+## ✅ P9 · Editor 精修页 · 轻改（2026-10-26）
+
+| 冲刺 | 内容 |
+|---|---|
+| P9 Editor 轻改 ✅ | 远期 13 立项拍板（用户 10-26 选**两段式**：先轻改后重剪）→ 第一段完工：独立页 `/editor`（单文件 `web/public/editor.html`，与控制台同设计语言；首页头部 ✂ 链接、任务深链 `#任务名`、载入守未保存 confirm）。**单镜字段编辑**：口播/类型（6 型白名单下拉互切）/素材 asset 与分栏 media（任务 assets/ 下拉选用）/items 逐行可增删（string 与 `{t,d}` 双行卡**原形态往返**）/title/subtitle/kicker/heading/quote/keyword/note/index/nav/tags；`SHOT_EDIT` 白名单进 `chat-rules.cjs`（与 SHOTS_PATCH 同表打法，字段全集扫自现存 5 任务+script.md schema）。**边界服务端硬守**：镜数不增删、`id/n` 按位锁死、未知字段 400、keyword/split/title/end 类型必填早拦、素材文件名穿越/不存在早拦（02/03 的错提前到保存前）；**每次保存前 `shots.json.bak` 覆盖备份**（= 上次保存前状态）。**口播漂移双向判定**（`narrationDrift`，对 01 写的任务根 `narration.txt`，与 02/03 同处）：保存响应给建议 from（动口播=1 / 未动=2），`startRerun` 里**硬钳制**——口播 ≠ 已配音文本一律钳到第 1 步（P6 画幅钳制同款，堵死「改口播不重配音拿旧音频对新词」的沟）。保存与重跑全走共享引擎（运行中 409，与 rerun/聊天同源）；页面带 diff 计数、字数计、重跑轮询（`/api/status`）。冒烟 **34/34**：页面读取 5 + 负例 15（零写入字节级核验）+ 正例 14（口播改动建议 from1 / 重跑漂移钳到 1 / 同步后建议 from2 / 运行中 409 / 真实全链重跑成片重建漂移归零 / 三连编辑落盘 / .bak 两代语义 / 清理零残留）。**施工中修两 bug**：① narrationDrift 路径写错 `audio/` 下（01 实写任务根）② 保存响应拿改动前 `orig` 判漂移（永远同步，应比改后 `list`）。**排一颗环境雷**：本机 Node 22.23.2 `fs.cpSync` 撞**中文父路径**必崩 0xC0000409（ASCII 路径对照 OK、手写 copyDir 全过；库内全用 `copyFileSync` 不受影响，探针复制改手写）——见 CHECKPOINT 坑档 |
+
 ## ⬜ 远期（可选方向，看需求再启动）
 
 9. ~~**素材库接入**——免版权 BGM/图片/视频片段的本地缓存库（用户仍可自带文件优先）~~ ✅ 2026-10-23 实现（见 P7 行）
 10. ~~**AI 生成画面**——可选接入生图 API 出场景图（有 key 才启用，保持零成本默认不变）~~ ✅ 2026-10-23 实现（见 P7-2 行）
 11. ~~**平台发布规格预设**——抖音/视频号/B站/小红书各自的安全区、字幕字号、时长偏好做成 profile~~ ✅ 2026-10-23 实现（见 P6 行）
 12. ~~**语音克隆音色**——DashScope 支持声音复刻，用自己的声音出片（需要 API 支持与额度）~~ ✅ 2026-10-26 实现（见 P8 行）
-13. **手动剪辑页面（Editor 精修）**——用户点名（2026-10-23），成片某段不满意时网页手动调整：时间轴多轨、片段拖动/裁剪/拆分/撤销、右侧属性面板、预览播放、渲染导出。**参考源**：① `D:\AI-Anime-main` 的 `/editor` 页面（React+antd；`pages/Editor/EditorPage.tsx` + `components/Timeline.tsx` 三轨 10-100px/s 缩放 + `PropsPanel.tsx`；`backend/modules/editor` 把 timeline 转 workflow JSON 交 ffmpeg 渲染；可抄的交互：DragState 拖拽状态机、0.1s 网格、`commitTimeline` 统一写入+400ms 防抖撤销栈、右缘 10px resize 手柄、滚轮劫持横滚、预览区文字直接拖拽改归一化坐标）② Canva 编辑器 UX `https://www.canva.cn/design/DAHY0Um0vZM/aAiTSfnx1nOsDXo6MMEQLQ/edit`。**立项时先定**：与本管线的结合方式（编辑结果回写 shots.json 走局部重跑 vs 独立成片精修器），以及素材/字幕与现有 assets、caption 体系的对齐。当日不开发（用户明示）。
+13. **手动剪辑页面（Editor 精修）**——🔄 **两段式拍板（用户 2026-10-26）**：第一段**轻改 ✅ 2026-10-26 实现**（见 P9 行：单镜字段编辑回写 shots.json 走局部重跑，口播漂移硬钳制）；**第二段「重剪」未启动**——成片/段落多轨时间轴（片段拖动、裁剪、拆分、撤销、右侧属性面板、渲染导出；参考源 ① `D:\AI-Anime-main` `/editor`：DragState 拖拽状态机、0.1s 网格、`commitTimeline` 统一写入+400ms 防抖撤销栈、右缘 10px resize 手柄、滚轮劫持横滚、预览文字拖拽改归一化坐标 ② Canva 编辑器 UX `https://www.canva.cn/design/DAHY0Um0vZM/aAiTSfnx1nOsDXo6MMEQLQ/edit`）。**立项时先定**：与轻改段的分工边界（字段级 vs 秒级）、成片结果与 shots.json 的对账方式（脱钩导出 vs 编辑单持久化）、素材/字幕与现有 assets、caption 体系的对齐。
 
 ## 维护备忘
 

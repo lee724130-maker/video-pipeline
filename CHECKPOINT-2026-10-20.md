@@ -396,3 +396,30 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - 留样克隆音色是**机械测试音色**（TTS 声切片），用户要「自己的声音」需自录 10~20s 干净人声在面板重複（删除旧的即可）。
 - `qwen-audio-3.1-tts-flash` 原生 rate 对克隆音色的效果未单测（01 的 atempo 残差校正链天然兜住语速）。
 - 剩余清单：远期 13 Editor 精修页（立项两选项待拍板）→ 技术侧 `item-color-code`（new 档）→ 用户实测反馈（素材库/货架/生图/克隆面板攒一批）。
+
+## P9 · Editor 精修页 · 轻改（2026-10-26，远期 13 两段式第一段，冒烟 34/34 全绿）
+
+### 立项拍板
+
+- 用户 10-26 拍板**两段式**：先轻改（字段编辑回写 shots.json 走局部重跑，与聊天框/重跑面板同源）→ 用一阵子若真需要帧级剪辑再立项重剪（独立成片精修器）。重剪段的参考源与立项待定项已固化进 ROADMAP 远期 13。
+
+### 施工与设计要点
+
+- **页面**：`web/public/editor.html` 单文件（同 index 设计令牌）+ server 路由 `GET /editor`；首页头部 ✂ 链接；任务下拉载入、`#任务名` 深链、载入有未保存改动先 confirm。逐镜卡片：type 下拉 6 型互切（切换重渲该卡，字段值保留）、narration 字数计、asset/media 从任务 `assets/` 下拉选用、items 逐行可增删——**string 与 `{t,d}` 双行卡按原形态往返**（行内双输入格：描述格空=string，填了=对象），tags 一格一行；diff 计数徽标；保存后 `/api/status` 1.5s 轮询进度。
+- **白名单单一出处**：`chat-rules.cjs` 新增 `SHOT_EDIT`（字段→校验函数，与 SHOTS_PATCH 同打法）+ `TYPE_WL`（server 回传给页面做下拉，加类型一处生效）；字段全集 = 现存 5 任务 union 扫描 + `skills/script.md` schema 对账（含 `n` 与 `id` 两种身份键——splitter 产 `n`、手写产 `id`，都认）。
+- **边界服务端硬守**（`POST /api/editor/shots`）：运行中/排队 409（防写入与流水线读取打架）→ 镜数 1~60 且与原值相等（不增删）→ `id/n` 按位锁死、原无的不许新增 → 未知字段 400 / 值校验 400 → 类型必填早拦（keyword 缺 keyword、split 缺 media 或 items|note、title/end 缺 title——03/06 的雷提前）→ 素材文件名穿越与表外字符 400、**文件不存在 404**（02/03 的错提前到保存前）→ `fs.copyFileSync(shots.json → shots.json.bak)` 覆盖备份（= 上次保存前状态）→ 写盘 → `body.rerun` 时走 `startRerun` 排队。
+- **口播漂移双向判定 `narrationDrift(dir, shots)`**：与 01 `buildNarration` 同式拼接，对 **任务根** `narration.txt`（02/03 读的同一处）；① 保存响应用它给建议 from（动口播=1、未动=2，省一次配音）② `startRerun` 内**硬钳制** `from = min(from, 1)`——任何路径（编辑页/聊天/rerun 面板/手改文件）只要口播 ≠ 已配音文本就强制含 01，堵死「旧音频对新词」（P6 画幅钳制同款哲学：宁钳不赌）。
+
+### 冒烟 34/34（p9-editor-smoke.cjs 留存）+ 施工中修两 bug + 排一颗环境雷
+
+- B 页面读取 5：`/editor` 200、现役任务分镜 5 镜/6 类型/无漂移、坏名 400、未知 404。
+- C 负例 15（**零写入**——结束字节级核验 `shots.json` 未动、无 `.bak` 残留）：镜数增减、改 n、凭空加 id、未知字段、非法 type、空口播、keyword/split/title 类型必填、素材 404、路径穿越、空数组、非数组、未知任务。
+- D 正例 14：口播改动 save-only → `drift:true from:1` + `.bak`=原始；再改 heading 保存并重跑 → **漂移硬钳 `rerun.from=1`**；**运行中再保存 → 409**；重跑完成（真实全链）→ 成片 mtime 更新、漂移归零；同步后 save-only → `from:2`（免配音判定成立）；三连编辑全落盘、`.bak`=上次保存前（含①②无③）；E 清理零残留、deck-demo 原样。
+- **bug①**：`narrationDrift` 路径写成 `audio/narration.txt`——01 实写**任务根**（02/03 同），致现役任务恒漂移；**bug②**：保存响应用改动前 `orig` 判漂移（改动前必然同步=判寂寞），须比改后 `list`。两 bug 都是冒烟抓的——E2E 断言的价值。
+- **环境雷（坑档）**：本机 Node v22.23.2 `fs.cpSync` 撞**中文父路径**必崩 `0xC0000409`（fail-fast，JS catch 接不住，表现=进程无征兆退出码 -1073740791）——对照实验：ASCII TEMP 路径同结构 OK、中文路径同结构必崩、库内手写 `copyFileSync` 递归全过。**规矩**：本项目内复制目录一律手写 `copyDir`（readdir+mkdir+copyFileSync），禁 `fs.cpSync`/`fs.cp`；排查手法（预打印二分 + ASCII/中文对照）留档。全库 grep 确认生产代码零 `cpSync` 使用（libraryAdd 等均 copyFileSync），只有冒烟脚本用过、已换。
+- 服务：8787 已带 P9 代码重启（`/editor` 路由 + 漂移钳制）；`p9-static.cjs` 静态体检 8 项另存可复跑。
+
+### 遗留与下一步（P9 后）
+
+- 轻改边界**未做**（有意）：镜头增删/排序/拖动、任务级参数（画幅/平台/风格在控制台重跑面板改，编辑页只读展示并指路）。
+- 下一个按清单：技术侧 `item-color-code`（new 档）立项施工 → 跑「插入重跑 QC」完整闭环；或直接等用户对 P8/P9 上手反馈再调。

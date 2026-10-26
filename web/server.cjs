@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS, readCloneVoices, writeCloneVoices, deriveCloneTarget } = require('../pipeline/lib/common.cjs');
-const { parseNeed, SHOTS_PATCH } = require('./chat-rules.cjs');
+const { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL } = require('./chat-rules.cjs');
 const { qwenParse } = require('./chat-qwen.cjs');
 const { splitter } = require('./splitter.cjs');
 
@@ -289,6 +289,15 @@ function llmOnNow() {
 
 // —— 共享重跑引擎（P3-4 抽取）：/api/rerun 与聊天框同用 ——
 // 校验（白名单 SHOTS_PATCH，宁 fail 勿兜底）→ 落盘 shots/config 补丁 → 排队跑。返回 {error} 或 {ok:true, from}
+// 口播漂移检测（P9）：与 01 buildNarration 同式拼接，对 01 写的 audio/narration.txt——
+// 两边不一致 = shots 的口播比音频新（Editor 改过没重配音，或 01 从没跑过）
+function narrationDrift(dir, shots) {
+  const want = ((shots && shots.shots) || []).map((s) => String((s || {}).narration || '').trim().replace(/\s+/g, ' ')).join('');
+  const nt = path.join(dir, 'narration.txt'); // 01 写的是任务根目录（与 02/03 读取同处）
+  const prev = fs.existsSync(nt) ? fs.readFileSync(nt, 'utf8').replace(/\s+/g, ' ').trim() : '';
+  return want !== prev;
+}
+
 function startRerun(name, dir, from, patch, config, resetConfig) {
   const sj = path.join(dir, 'shots.json');
   if (!fs.existsSync(sj)) return { error: '任务不存在' };
@@ -306,6 +315,8 @@ function startRerun(name, dir, from, patch, config, resetConfig) {
     shots[k] = patch[k];
   }
   if (patch.platform) { delete shots.width; delete shots.height; }
+  // 口播漂移硬钳制：口播 ≠ 上次配音 → from 必须含 01（拿旧音频对新词会把 02 时间轴带沟里；与 P6 画幅钳制同款）
+  if (narrationDrift(dir, shots)) from = Math.min(from, 1);
   writeJson(sj, shots);
   // config 补丁：深合并进任务级 config.overrides.json（经 PIPELINE_CONFIG_OVERRIDES 让全步骤生效）；resetConfig 清空
   const ovPath = path.join(dir, 'config.overrides.json');
@@ -513,6 +524,82 @@ const server = http.createServer(async (req, res) => {
       const r = startRerun(name, path.join(OUTPUT, name), Number(body.from) || 3, body.shots, body.config, body.resetConfig);
       if (r.error) return json(res, r.error === '任务不存在' ? 404 : 400, { error: r.error });
       return json(res, 200, { ok: true, name, from: r.from });
+    }
+
+    // —— Editor 轻改（P9，两段式第一段）：读任务分镜 → 单镜字段编辑 → 回写 shots.json 走局部重跑 ——
+    // 边界：不增删镜头、不动 id/n、不排序（重剪归第二段另立项）；建议 from 与漂移判定同一出处 narrationDrift
+    if (p === '/api/editor/shots' && req.method === 'GET') {
+      const name = String(u.searchParams.get('name') || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, name);
+      const sj = path.join(dir, 'shots.json');
+      if (!fs.existsSync(sj)) return json(res, 404, { error: '任务不存在或没有 shots.json' });
+      const ad = path.join(dir, 'assets');
+      const assets = fs.existsSync(ad) ? fs.readdirSync(ad).filter((f) => fs.statSync(path.join(ad, f)).isFile()).sort() : [];
+      const shots = readJson(sj) || {};
+      return json(res, 200, {
+        name, shots, assets, types: TYPE_WL,
+        fields: Object.keys(SHOT_EDIT),
+        narrationDrift: narrationDrift(dir, shots),
+        busy: !!(state.running || state.queue.length),
+      });
+    }
+    if (p === '/api/editor/shots' && req.method === 'POST') {
+      if (state.running || state.queue.length) return json(res, 409, { error: '有任务正在跑/排队——等它完成再保存（避免写入与流水线读取打架）' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const name = String(body.name || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, name);
+      const sj = path.join(dir, 'shots.json');
+      if (!fs.existsSync(sj)) return json(res, 404, { error: '任务不存在' });
+      const orig = readJson(sj) || {};
+      const origList = Array.isArray(orig.shots) ? orig.shots : [];
+      const list = body.shots;
+      if (!Array.isArray(list) || list.length < 1 || list.length > 60) return json(res, 400, { error: 'shots 须为 1~60 镜数组' });
+      if (list.length !== origList.length) return json(res, 400, { error: `轻改不增删镜头（原 ${origList.length} 镜 → 传入 ${list.length} 镜）——结构调整属「重剪」段或手改 shots.json` });
+      const ad = path.join(dir, 'assets');
+      for (let i = 0; i < list.length; i++) {
+        const s = list[i], o = origList[i] || {}, idx = `第 ${i + 1} 镜`;
+        if (!s || typeof s !== 'object' || Array.isArray(s)) return json(res, 400, { error: `${idx} 不是对象` });
+        // 身份字段按位锁死（id/n 不可改、原任务没有的不许新增）
+        for (const k of ['id', 'n']) {
+          if (k in o && s[k] !== o[k]) return json(res, 400, { error: `${idx} 的 ${k} 不可改（原 ${JSON.stringify(o[k])} → ${JSON.stringify(s[k])}）` });
+          if (!(k in o) && k in s) return json(res, 400, { error: `${idx} 不应新增 ${k} 字段（原任务没有）` });
+        }
+        // 字段白名单 + 值校验（宁 fail 勿兜底）
+        for (const k of Object.keys(s)) {
+          if (k === 'id' || k === 'n') continue;
+          if (!SHOT_EDIT[k]) return json(res, 400, { error: `${idx} 不支持的字段: ${k}（可改: ${Object.keys(SHOT_EDIT).join(' / ')}）` });
+          if (!SHOT_EDIT[k](s[k])) return json(res, 400, { error: `${idx} 字段值非法: ${k}=${JSON.stringify(s[k]).slice(0, 100)}` });
+        }
+        // 类型必填（03/06 会炸的坑提前到保存前；口径 skills/script.md）
+        if ((s.type === 'keyword') && !(s.keyword || '').trim()) return json(res, 400, { error: `${idx} keyword 型必须填 keyword` });
+        if (s.type === 'split') {
+          if (!(s.media || '').trim()) return json(res, 400, { error: `${idx} split 型必须选 media（分栏配图）` });
+          if (!(Array.isArray(s.items) && s.items.length) && !(s.note || '').trim()) return json(res, 400, { error: `${idx} split 型需要 items 或 note 至少一项` });
+        }
+        if ((s.type === 'title' || s.type === 'end') && !(s.title || '').trim()) return json(res, 400, { error: `${idx} ${s.type} 型必须填 title` });
+        // 素材文件早校验（02/03 的报错提前到花钱/排队前）
+        for (const k of ['media', 'asset']) {
+          const v = String(s[k] || '');
+          if (v) {
+            if (v.includes('..') || /[/\\:*?"<>|]/.test(v)) return json(res, 400, { error: `${idx} ${k} 文件名非法: ${v}` });
+            if (!fs.existsSync(path.join(ad, v))) return json(res, 404, { error: `${idx} ${k} 指向的素材不存在: assets/${v}（先在控制台素材区传入）` });
+          }
+        }
+      }
+      const drift = narrationDrift(dir, { ...orig, shots: list }); // 漂移要比「改后」的口播，拿 orig 比等于永远同步
+      const from = drift ? 1 : 2;
+      fs.copyFileSync(sj, sj + '.bak'); // 备份 = 本次保存前状态
+      writeJson(sj, { ...orig, shots: list });
+      log('07-web', `Editor 保存 ${name}：${list.length} 镜 · 口播${drift ? '有漂移 → 建议 from 1' : '未动 → 建议 from 2'}${body.rerun ? '' : '（未重跑）'}`);
+      let rerun = null;
+      if (body.rerun) {
+        const r = startRerun(name, dir, from, {}, null, false);
+        if (r.error) return json(res, 400, { error: `已保存，但重跑未排上: ${r.error}` });
+        rerun = { from: r.from };
+      }
+      return json(res, 200, { ok: true, narrationDrift: drift, from, rerun, backup: 'shots.json.bak' });
     }
 
     // —— 技术库货架（P3-3）：techniques/*.json 每技术一配方；坏文件不藏、以 error 态直示 ——
@@ -752,6 +839,11 @@ const server = http.createServer(async (req, res) => {
     // —— 页面 ——
     if (p === '/' || p === '/index.html') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'index.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      return res.end(html);
+    }
+    if (p === '/editor') {
+      const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'editor.html'), 'utf8');
       res.writeHead(200, { 'Content-Type': MIME['.html'] });
       return res.end(html);
     }
