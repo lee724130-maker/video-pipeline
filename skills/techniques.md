@@ -55,7 +55,7 @@
 
 | 面 | 能力（config/shots 键） |
 |---|---|
-| 画面 | `sceneStyle` classic/deck/paper 纸感浅色 · `width/height` 画幅 · `platform` 平台规格（douyin/shipinhao/xiaohongshu/bilibili → 查 config.platforms 出画幅+时长档）· 分镜 type 含 **split 左文右图分栏**（media 引 assets 样机图）· 背景图轮播+缓推 · **图片素材镜头缓推/缓拉**（奇偶交替，`background.kenBurns:false` 关）· **`cornerMark.*` 品牌角标**（src/pos/width/opacity，每镜+片尾常驻）· deck 锚点动效 |
+| 画面 | `sceneStyle` classic/deck/paper 纸感浅色 · `width/height` 画幅 · `platform` 平台规格（douyin/shipinhao/xiaohongshu/bilibili → 查 config.platforms 出画幅+时长档）· 分镜 type 含 **split 左文右图分栏**（media 引 assets 样机图）· 背景图轮播+缓推 · **图片素材镜头缓推/缓拉**（奇偶交替，`background.kenBurns:false` 关）· **`cornerMark.*` 品牌角标**（src/pos/width/opacity，每镜+片尾常驻）· **`itemColorCode.*` 枚举条目色标**（bullet/keyword 镜按序循环身份色，整场 --accent 换色+标题色 chip+底部圆点进度轨，`colors` 1~12 个 #RRGGBB，deck 不叠轨）· deck 锚点动效 |
 | 封面 | `coverStyle` tech/bold/magazine |
 | 字幕 | `captions` 开关 · `karaoke` 逐词高亮 · `captionSize` 字号 · **`captionStyle` outline 描边白字\|bar 黑底实底条** · `keywordSize/HoldSec` 关键词大字 · `captionMarginV` |
 | 声音 | `voice` 音色 · `targetCharsPerSec` 语速 · `bgm.*` 音量/淡入淡出/闪避/卡点 · **`bgm.outroPitchSemitones/Sec` 收尾降调** · **`bgm.outroEcho/outroEchoSec/outroEchoWet` 收尾延迟回声** · `loudness.*` 响度标准化 |

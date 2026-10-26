@@ -14,6 +14,13 @@ function assTime(sec) {
   return `${h}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 }
 
+// #RRGGBB → ASS 行内覆盖色（枚举条目色标 P10）：ASS 是 BGR 序 → &H00BBGGRR
+function assColour(hex) {
+  const m = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(String(hex));
+  if (!m) return '';
+  return `&H00${m[3]}${m[2]}${m[1]}`.toUpperCase();
+}
+
 function buildAss(timeline) {
   const c = cfg.compose;
   const karaoke = c.karaoke !== false; // 默认开：逐字高亮（实测 libass：Secondary=起始色，Primary=随进度填充色）
@@ -83,9 +90,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       const st = k.start;
       const en = Math.min(st + hold, timeline.duration);
       if (en - st < 0.4) continue;
+      // 枚举条目色标（P10）：词所属镜的 accent → 行内 \1c 逐条换色；无 accent 字段输出与旧版逐字节一致
+      const acc = assColour(k.accent);
       events.push(
         `Dialogue: 1,${assTime(st)},${assTime(en)},Kw,,0,0,0,,` +
-        `{\\an5\\pos(${cx},${cy})\\fad(60,250)\\fscx175\\fscy175\\t(0,170,\\fscx100\\fscy100)}${esc(k.text)}`,
+        `{${acc ? `\\1c${acc}&` : ''}\\an5\\pos(${cx},${cy})\\fad(60,250)\\fscx175\\fscy175\\t(0,170,\\fscx100\\fscy100)}${esc(k.text)}`,
       );
     }
   }

@@ -55,6 +55,12 @@
 |---|---|
 | P9 Editor 轻改 ✅ | 远期 13 立项拍板（用户 10-26 选**两段式**：先轻改后重剪）→ 第一段完工：独立页 `/editor`（单文件 `web/public/editor.html`，与控制台同设计语言；首页头部 ✂ 链接、任务深链 `#任务名`、载入守未保存 confirm）。**单镜字段编辑**：口播/类型（6 型白名单下拉互切）/素材 asset 与分栏 media（任务 assets/ 下拉选用）/items 逐行可增删（string 与 `{t,d}` 双行卡**原形态往返**）/title/subtitle/kicker/heading/quote/keyword/note/index/nav/tags；`SHOT_EDIT` 白名单进 `chat-rules.cjs`（与 SHOTS_PATCH 同表打法，字段全集扫自现存 5 任务+script.md schema）。**边界服务端硬守**：镜数不增删、`id/n` 按位锁死、未知字段 400、keyword/split/title/end 类型必填早拦、素材文件名穿越/不存在早拦（02/03 的错提前到保存前）；**每次保存前 `shots.json.bak` 覆盖备份**（= 上次保存前状态）。**口播漂移双向判定**（`narrationDrift`，对 01 写的任务根 `narration.txt`，与 02/03 同处）：保存响应给建议 from（动口播=1 / 未动=2），`startRerun` 里**硬钳制**——口播 ≠ 已配音文本一律钳到第 1 步（P6 画幅钳制同款，堵死「改口播不重配音拿旧音频对新词」的沟）。保存与重跑全走共享引擎（运行中 409，与 rerun/聊天同源）；页面带 diff 计数、字数计、重跑轮询（`/api/status`）。冒烟 **34/34**：页面读取 5 + 负例 15（零写入字节级核验）+ 正例 14（口播改动建议 from1 / 重跑漂移钳到 1 / 同步后建议 from2 / 运行中 409 / 真实全链重跑成片重建漂移归零 / 三连编辑落盘 / .bak 两代语义 / 清理零残留）。**施工中修两 bug**：① narrationDrift 路径写错 `audio/` 下（01 实写任务根）② 保存响应拿改动前 `orig` 判漂移（永远同步，应比改后 `list`）。**排一颗环境雷**：本机 Node 22.23.2 `fs.cpSync` 撞**中文父路径**必崩 0xC0000409（ASCII 路径对照 OK、手写 copyDir 全过；库内全用 `copyFileSync` 不受影响，探针复制改手写）——见 CHECKPOINT 坑档 |
 
+## ✅ P10 · 枚举条目色标（2026-10-26，技术库 new 档转正）
+
+| 冲刺 | 内容 |
+|---|---|
+| P10 枚举条目色标 ✅ | 技术库 `item-color-code` 转正（出处 抖音@Ludi modal_id=7698358547440094502）：`config.itemColorCode`（`enabled` 缺省 false / `colors` 1~12 个 #RRGGBB / `track` 缺省 true）——bullet/keyword 镜按出场序循环身份色，**accent 单一出处在 02**（写进 timeline.shots、keywords 随镜带 accent，03/05 只渲染不各自推导；title/transition/end/split 零字段）；03 纯 CSS 零模板改动：整场重绑 `--accent`（bar/hi/关键词渐变端点全跟色）+ 标题色 chip 伪元素 + 底部圆点进度轨（唯一激活位 + `--cc-dur` 按镜时长填充，**deck 自带章节导航条上色不叠轨**，outro/封面不注入）；05 关键词大字行内 `\1c` BGR 覆盖（无 accent 输出与旧版逐字节一致）；色表空/超量/非法 hex 02 白名单 fail。配方卡 implemented（insert from=2 + config 开关），货架按钮解禁、聊天点名同一份补丁。冒烟 **27/27**：静态 8 + 坏色值/空表宁 fail 2 + **插入重跑 QC 闭环** 11（货架 insert → `/api/rerun` 全链 → 循环上色/关键词随镜色/chip+圆点轨/subs.ass 行内 BGR/成片重建/QC 无 FAIL）+ 清补丁回归 2 + deck 不叠轨 2；探针备忘：存量任务 keywords 多空（keyword 带空格对不上口播即跳过，历史行为非回归），冒烟副本挂确定性关键词补丁 |
+
 ## ⬜ 远期（可选方向，看需求再启动）
 
 9. ~~**素材库接入**——免版权 BGM/图片/视频片段的本地缓存库（用户仍可自带文件优先）~~ ✅ 2026-10-23 实现（见 P7 行）

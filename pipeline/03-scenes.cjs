@@ -99,6 +99,29 @@ function cornerMarkHtml(task) {
   return `<img class="corner-mark cm-${cm.pos}" src="${rel}" style="--cm-w:${cm.width}px;--cm-op:${cm.opacity}">`;
 }
 
+// —— 枚举条目色标（P10，technique item-color-code）——
+// accent 单一出处在 02（写进 timeline），此处只渲染：整场重绑 --accent（bar/hi/关键词渐变端点
+// 全部自动跟色，= 源片「同一颜色贯穿」）+ 标题旁色 chip 伪元素 + 底部圆点进度轨。
+// deck 自带章节导航条（同域功能，同位叠轨必打架）→ 上色但不铺轨。纯 CSS 零模板改动
+const CC_TRACK_CSS = `.cc-track{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-bottom) * .5);display:flex;align-items:center;gap:calc(14px * var(--k));padding:calc(10px * var(--k)) calc(22px * var(--k));border-radius:999px;background:rgba(10,14,22,.55)}
+.cc-track i{width:calc(11px * var(--k));height:calc(11px * var(--k));border-radius:50%;background:rgba(255,255,255,.25)}
+.cc-track i.on{background:var(--acc);box-shadow:0 0 calc(12px * var(--k)) var(--acc)}
+.cc-track .cc-fill{position:absolute;left:0;bottom:0;height:calc(3px * var(--k));border-radius:999px;background:var(--acc);animation:ccFill var(--cc-dur,4s) linear forwards}
+@keyframes ccFill{from{width:0}to{width:100%}}`;
+function ccInject(shot, sceneStyle) {
+  const acc = String(shot.accent || '');
+  if (!/^#[0-9a-fA-F]{6}$/.test(acc)) return ''; // 无色标或脏值都不注入（02 已 fail-fast 过，此处兜手改 timeline）
+  if (shot.type !== 'bullet' && shot.type !== 'keyword') return '';
+  const trackOn = (cfg.itemColorCode || {}).track !== false && sceneStyle !== 'deck';
+  const total = Math.max(1, Number(shot.ccTotal) || 1);
+  const no = Math.min(Math.max(1, Number(shot.ccNo) || 1), total);
+  const dots = Array.from({ length: total }, (_, i) => `<i class="${i + 1 === no ? 'on' : ''}"></i>`).join('');
+  const track = trackOn
+    ? `<div class="cc-track">${dots}<span class="cc-fill" style="--cc-dur:${Number(shot.dur || 4).toFixed(2)}s"></span></div>\n    `
+    : '';
+  return `<style>:root{--accent:${acc};--acc:${acc}}.stage .heading::before{content:'';display:inline-block;width:.42em;height:.42em;border-radius:.12em;background:var(--acc);margin-right:.34em;vertical-align:.12em}${trackOn ? CC_TRACK_CSS : ''}</style>\n    ` + track;
+}
+
 function itemTime(shot, timeline, itemText, i, n) {
   // 用该镜头口播原文建立可检索串（只保留有效字），保留到原文的索引映射
   const narration = shot.narrationRaw || '';
@@ -272,6 +295,8 @@ function main() {
     const layer = bgLayer(bgs, shot.index, shot.dur);
     if (layer) html = html.replace(/<div class="stage[^"]*">/, (m) => `${m}\n    ${layer}`);
     if (cmHtml) html = html.replace(/<div class="stage[^"]*">/, (m) => `${m}\n    ${cmHtml}`);
+    const ccHtml = ccInject(shot, sceneStyle);
+    if (ccHtml) html = html.replace(/<div class="stage[^"]*">/, (m) => `${m}\n    ${ccHtml}`);
     const sceneData = JSON.stringify({ duration: shot.dur, fps: timeline.fps, id: shot.id });
     const inject = navHtml(activeIdx) + `<script>window.__SCENE__ = ${sceneData};</script>\n  <script>${runtime}</script>`;
     if (!html.includes('<!--__RUNTIME__-->')) fail(`模板 ${shot.type}.html 缺 <!--__RUNTIME__--> 占位`);

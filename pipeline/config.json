@@ -79,6 +79,11 @@
     }
   },
   "sceneStyle": "classic",
+  "itemColorCode": {
+    "enabled": false,
+    "colors": ["#34D399", "#38BDF8", "#FBBF24", "#F87171", "#A78BFA", "#F472B6"],
+    "track": true
+  },
   "cornerMark": {
     "src": "",
     "pos": "br",

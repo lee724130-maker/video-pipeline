@@ -352,13 +352,35 @@ function main() {
 
   shotList.forEach((s) => { if (s.dur < 1.2) warn('02', `镜头 ${s.id} 只有 ${s.dur}s，偏短`); });
 
+  // 枚举条目色标（P10，technique item-color-code）：bullet/keyword 镜按序循环分配身份色——
+  // accent/ccNo/ccTotal 落 timeline 是单一出处：03 渲染色 chip+底部进度轨、05 给关键词大字行内换色
+  // 都吃这里，禁 03/05 各自推导（两处规则漂移=同片两套色）。缺省关 → 零字段零回归；
+  // 开则色值白名单 fail——静默吞坏色会渲出色块垃圾（宁 fail 勿兜底）
+  const icc = cfg.itemColorCode || {};
+  if (icc.enabled) {
+    const colors = Array.isArray(icc.colors) ? icc.colors : [];
+    if (colors.length < 1 || colors.length > 12) fail(`itemColorCode.colors 须为 1~12 色数组（现 ${colors.length} 个）`);
+    for (const c of colors) {
+      if (!/^#[0-9a-fA-F]{6}$/.test(String(c))) fail(`itemColorCode.colors 非法色值: ${c}（须 #RRGGBB，如 #38BDF8）`);
+    }
+    const parts = shotList.filter((s) => s.type === 'bullet' || s.type === 'keyword');
+    parts.forEach((s, ci) => {
+      s.accent = String(colors[ci % colors.length]);
+      s.ccNo = ci + 1;
+      s.ccTotal = parts.length;
+    });
+    if (parts.length) log('02', `枚举条目色标：${parts.length} 镜参与（bullet/keyword 循环）· ${colors.length} 色环${icc.track === false ? ' · 进度轨关' : ''}`);
+    else warn('02', 'itemColorCode 已启用但没有 bullet/keyword 镜——无镜可着色');
+  }
+
   const captions = buildCaptions(chars, starts, ends, cfg.compose.captionMaxChars);
 
   // 关键词砸字：shots.json 每镜可选 keyword，在口播稿里定位原始下标 → 首字说话时刻
   const keywords = [];
   {
     let cursor = 0;
-    for (const s of shots.shots) {
+    for (let si = 0; si < shots.shots.length; si++) {
+      const s = shots.shots[si];
       const text = String(s.narration || '').trim();
       const np = text ? narration.indexOf(text, cursor) : -1;
       const from = np >= 0 ? np : cursor;
@@ -374,6 +396,8 @@ function main() {
             at,
             start: Number(starts[at].toFixed(3)),
             spokenEnd: Number(ends[last].toFixed(3)),
+            // 枚举条目色标：该词所属镜的 accent 随行（05 行内 \1c 换色；无色标配置则不带字段）
+            ...(shotList[si].accent ? { accent: shotList[si].accent } : {}),
           });
         } else warn('02', `keyword「${kw}」不在镜头 ${s.n || ''} 的口播稿内，跳过砸字`);
       }

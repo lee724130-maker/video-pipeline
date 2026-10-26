@@ -423,3 +423,21 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 
 - 轻改边界**未做**（有意）：镜头增删/排序/拖动、任务级参数（画幅/平台/风格在控制台重跑面板改，编辑页只读展示并指路）。
 - 下一个按清单：技术侧 `item-color-code`（new 档）立项施工 → 跑「插入重跑 QC」完整闭环；或直接等用户对 P8/P9 上手反馈再调。
+
+## P10 · 枚举条目色标 item-color-code（2026-10-26，技术库 new 档转正，冒烟 27/27 全绿）
+
+### 立项与设计
+
+- 出处：抖音@Ludi modal_id=7698358547440094502《Vibe知识大赏丨别再管所有弹出来的东西都叫"弹窗"了》——No.1~No.5 每条专属色贯穿色 chip + 字幕关键词 + 底部时间轴圆点。P7 拆解时定档 new（keywordColour 当时为 config 级全局单色），本次施工转正。
+- **accent 单一出处在 02**：`config.itemColorCode`（`enabled` 缺省 false / `colors` 1~12 个 #RRGGBB / `track` 缺省 true）启用时，bullet/keyword 镜按出场序循环分配身份色——`accent/ccNo/ccTotal` 写进 timeline.shots，关键词 entries 随镜带 accent；03/05 只渲染不各自推导（两处规则漂移 = 同片两套色）。title/transition/end/split 不参与、零字段。
+- **03 纯 CSS 零模板改动**：`ccInject` 注入 `:root{--accent;--acc}` 整场重绑（bar/hi/关键词渐变端点全部自动跟色 = 源片「同一颜色贯穿」）+ 标题旁色 chip 伪元素 `.heading::before` + 底部圆点进度轨（n 圆点唯一激活位 + `--cc-dur` 按镜时长填充动画，位置 `safe-bottom*0.5` 不压字幕不进平台 UI 区）；**deck 自带章节导航条 → 上色但不叠轨**；outro/封面不注入。accent 另有正则守卫（手改 timeline 脏值不注入）。
+- **05 行内换色**：`assColour` #RRGGBB→`&H00BBGGRR`，关键词 Dialogue 头插 `{\1c&H..&}`——无 accent 字段时输出与旧版逐字节一致（captions 关闭时 HTML 侧渐变端点已跟色，天然兜底）。
+- **负例宁 fail**：色表空/超 12/非法 hex（如 `red`）→ 02 停带精确报错（静默吞坏色会渲出色块垃圾）。
+- 配方卡转 implemented：`insert { from: 2, config: { itemColorCode: { enabled: true } } }`，货架按钮解禁、聊天点名「枚举条目色标」命中同一份补丁；关效果 = 重跑面板清空配置补丁。
+
+### 冒烟 27/27（p10-icc-smoke.cjs 留存）+ 一条探针备忘
+
+- A 静态 8 + B 负例 2（坏色值/空表 02 直跑零计费 fail）+ C 插入重跑 QC 闭环 11：货架 insert → `/api/rerun from=2` 全链（0.9 分钟）→ 参与镜循环上色+ccNo/ccTotal、非参与镜零字段、关键词随镜色、chip+圆点轨+唯一激活位、非参与镜场景零注入、subs.ass 行内 BGR 正确（`#34D399→&H0099D334`）、成片重建、QC 无 FAIL；C-回归 2：清空补丁后 02+03 复跑零残留；D deck 2：上色但无轨。
+- **探针备忘（非回归）**：存量任务 `timeline.keywords` 多为空——shots.json 的 keyword 字段（如「全程 0 元」带空格）在口播里 indexOf 不到即静默跳过，历史行为；冒烟探针改为副本上挂确定性关键词补丁（bullet 镜口播前 4 字）保证正例可测。
+- 首轮冒烟 C6/C9 抓出探针选偏（关键词挂非参与镜），修探针选择与守卫后全绿——断言链再次证明价值。
+- 服务：8787 带 P10 代码重启（config.json 新段）。
