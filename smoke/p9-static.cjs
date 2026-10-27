@@ -34,8 +34,12 @@ jsCheck(idxm[1], 'index-inline');
 console.log('  ✓ index.html 链接 + 内联 JS OK');
 
 const srv = fs.readFileSync(path.join(ROOT, 'web/server.cjs'), 'utf8');
-for (const s of ["'/api/editor/shots'", "'/editor'", 'narrationDrift', 'SHOT_EDIT[k]', 'shots.json.bak', 'copyFileSync(sj, sj + \'.bak\')']) {
+for (const s of ["'/api/editor/shots'", "'/editor'", 'narrationDrift', 'SHOT_EDIT[fk]', 'shots.json.bak', 'copyFileSync(sj, sj + \'.bak\')', 'EDIT_TASK_FIELDS', 'structural', 'narrationSeg']) {
   if (!srv.includes(s)) throw new Error('server 缺: ' + s);
+}
+const t01 = fs.readFileSync(path.join(ROOT, 'pipeline/01-tts.cjs'), 'utf8');
+for (const s of ['narrationSeg.json', 'buildNarration']) {
+  if (!t01.includes(s)) throw new Error('01-tts 缺: ' + s);
 }
 const cr = require(path.join(ROOT, 'web/chat-rules.cjs'));
 if (!cr.SHOT_EDIT || !cr.TYPE_WL) throw new Error('chat-rules 导出缺');

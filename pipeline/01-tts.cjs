@@ -7,7 +7,10 @@ const cfg = loadConfig();
 
 function buildNarration(shots) {
   // 每镜口播按顺序拼成整条配音文本；镜头边界由 02 用时间戳反推
-  return shots.map((s) => (s.narration || '').trim().replace(/\s+/g, ' ')).join('');
+  // P11：seg[] 同步返回逐镜口播段（归一同式），01 落 audio/narrationSeg.json 供漂移判定逐镜比对——
+  // 整串拼接对「换序不换字」免疫（12 连 = 21 连），盲区由 seg 序列堵
+  const seg = shots.map((s) => (s.narration || '').trim().replace(/\s+/g, ' '));
+  return { text: seg.join(''), seg };
 }
 
 function main() {
@@ -26,12 +29,15 @@ function main() {
     const c = voiceCfg[p] || {};
     return Number(c.tempo !== undefined ? c.tempo : (voiceCfg.tempo || 1));
   };
-  const narration = buildNarration(shots.shots);
+  const nar = buildNarration(shots.shots);
+  const narration = nar.text;
   if (!narration) fail('shots.json 里 narration 全为空');
   fs.writeFileSync(path.join(task, 'narration.txt'), narration, 'utf8');
   log('01', `口播稿 ${narration.length} 字`);
 
   ensureDir(path.join(task, 'audio'));
+  // P11：逐镜口播段清单先落盘（漂移判定逐镜比对的依据；写失败不拦配音主路）
+  try { writeJson(path.join(task, 'audio', 'narrationSeg.json'), { seg: nar.seg, at: new Date().toISOString() }); } catch { /* 非关键产物 */ }
   const mp3 = path.join(task, 'audio', 'voice.mp3');
   const words = path.join(task, 'audio', 'words.json');
   [mp3, words].forEach((f) => fs.existsSync(f) && fs.unlinkSync(f));

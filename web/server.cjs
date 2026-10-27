@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS, readCloneVoices, writeCloneVoices, deriveCloneTarget } = require('../pipeline/lib/common.cjs');
-const { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL } = require('./chat-rules.cjs');
+const { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL, EDIT_TASK_FIELDS } = require('./chat-rules.cjs');
 const { qwenParse } = require('./chat-qwen.cjs');
 const { splitter } = require('./splitter.cjs');
 
@@ -289,11 +289,18 @@ function llmOnNow() {
 
 // —— 共享重跑引擎（P3-4 抽取）：/api/rerun 与聊天框同用 ——
 // 校验（白名单 SHOTS_PATCH，宁 fail 勿兜底）→ 落盘 shots/config 补丁 → 排队跑。返回 {error} 或 {ok:true, from}
-// 口播漂移检测（P9）：与 01 buildNarration 同式拼接，对 01 写的 audio/narration.txt——
-// 两边不一致 = shots 的口播比音频新（Editor 改过没重配音，或 01 从没跑过）
+// 口播漂移检测（P9 整串式 → P11 逐镜式）：与 01 buildNarration 同归一逐镜比对 audio/narrationSeg.json——
+// 整串拼接对「换序不换字/增删后拼回同文」免疫，这类结构变更同样要重配音，盲区由 seg 序列堵。
+// 旧任务（P11 前配的音，无 seg 清单）回退整串对 narration.txt 的旧口径。
 function narrationDrift(dir, shots) {
-  const want = ((shots && shots.shots) || []).map((s) => String((s || {}).narration || '').trim().replace(/\s+/g, ' ')).join('');
+  const list = ((shots && shots.shots) || []).map((s) => String((s || {}).narration || '').trim().replace(/\s+/g, ' '));
+  const segDoc = readJson(path.join(dir, 'audio', 'narrationSeg.json'));
+  if (segDoc && Array.isArray(segDoc.seg)) {
+    const prev = segDoc.seg.map((x) => String(x || '').replace(/\s+/g, ' ')); // 落盘前已 trim 归一，这里只压空白防口径漂移
+    return prev.length !== list.length || prev.some((x, i) => x !== list[i]);
+  }
   const nt = path.join(dir, 'narration.txt'); // 01 写的是任务根目录（与 02/03 读取同处）
+  const want = list.join('');
   const prev = fs.existsSync(nt) ? fs.readFileSync(nt, 'utf8').replace(/\s+/g, ' ').trim() : '';
   return want !== prev;
 }
@@ -526,8 +533,10 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, name, from: r.from });
     }
 
-    // —— Editor 轻改（P9，两段式第一段）：读任务分镜 → 单镜字段编辑 → 回写 shots.json 走局部重跑 ——
-    // 边界：不增删镜头、不动 id/n、不排序（重剪归第二段另立项）；建议 from 与漂移判定同一出处 narrationDrift
+    // —— Editor 精修（P9 轻改 → P11 结构版）：字段编辑 + 镜头增删/排序 + 任务级参数 → 回写 shots.json 走局部重跑 ——
+    // 结构调整以身份键（id 或 n，与 02 的 s.id||序号 口径兼容）匹配：保留镜的键必须原样且在原清单内、不重复；
+    // 新镜不给键（id 型文档服务端补发 s9X+，n 型文档按新位置重排）；结构变化=口播切分重排 → 硬钳 from=1。
+    // 建议 from 与漂移判定同一出处 narrationDrift（P11 起逐镜比对，换序/增删不再被整串拼接盲区放过）
     if (p === '/api/editor/shots' && req.method === 'GET') {
       const name = String(u.searchParams.get('name') || '').trim();
       if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
@@ -537,9 +546,11 @@ const server = http.createServer(async (req, res) => {
       const ad = path.join(dir, 'assets');
       const assets = fs.existsSync(ad) ? fs.readdirSync(ad).filter((f) => fs.statSync(path.join(ad, f)).isFile()).sort() : [];
       const shots = readJson(sj) || {};
+      const sl = Array.isArray(shots.shots) ? shots.shots : [];
       return json(res, 200, {
-        name, shots, assets, types: TYPE_WL,
-        fields: Object.keys(SHOT_EDIT),
+        name, shots, assets, types: TYPE_WL, fields: Object.keys(SHOT_EDIT),
+        taskFields: EDIT_TASK_FIELDS, platforms: Object.keys(loadConfig().platforms || {}),
+        tailOnlyDel: !sl.some((s) => s && ('id' in s || 'n' in s)), // 无键文档只能删尾部（见 POST 守卫）
         narrationDrift: narrationDrift(dir, shots),
         busy: !!(state.running || state.queue.length),
       });
@@ -556,21 +567,28 @@ const server = http.createServer(async (req, res) => {
       const origList = Array.isArray(orig.shots) ? orig.shots : [];
       const list = body.shots;
       if (!Array.isArray(list) || list.length < 1 || list.length > 60) return json(res, 400, { error: 'shots 须为 1~60 镜数组' });
-      if (list.length !== origList.length) return json(res, 400, { error: `轻改不增删镜头（原 ${origList.length} 镜 → 传入 ${list.length} 镜）——结构调整属「重剪」段或手改 shots.json` });
+      // —— 身份键匹配（P11 结构守卫）：原文档用 id 还是 n，一查即定 ——
+      const keyOf = (s) => (s && 'id' in s ? s.id : (s && 'n' in s ? s.n : null));
+      const idStyle = origList.some((s) => s && 'id' in s);
+      const nStyle = !idStyle && origList.some((s) => s && 'n' in s);
+      const origPool = new Set(origList.map(keyOf).filter((k) => k !== null));
+      const seen = new Set();
       const ad = path.join(dir, 'assets');
       for (let i = 0; i < list.length; i++) {
-        const s = list[i], o = origList[i] || {}, idx = `第 ${i + 1} 镜`;
+        const s = list[i], idx = `第 ${i + 1} 镜`;
         if (!s || typeof s !== 'object' || Array.isArray(s)) return json(res, 400, { error: `${idx} 不是对象` });
-        // 身份字段按位锁死（id/n 不可改、原任务没有的不许新增）
-        for (const k of ['id', 'n']) {
-          if (k in o && s[k] !== o[k]) return json(res, 400, { error: `${idx} 的 ${k} 不可改（原 ${JSON.stringify(o[k])} → ${JSON.stringify(s[k])}）` });
-          if (!(k in o) && k in s) return json(res, 400, { error: `${idx} 不应新增 ${k} 字段（原任务没有）` });
+        if (s._new === true) { delete s.id; delete s.n; } // 客户端标记的新镜：不带身份、不参与匹配
+        const k = keyOf(s);
+        if (k !== null) {
+          if (!origPool.has(k)) return json(res, 400, { error: `${idx} 的 id/n=${JSON.stringify(k)} 不在原任务里（保留镜须带原身份键，新镜不要自造键）` });
+          if (seen.has(k)) return json(res, 400, { error: `${idx} 身份键 ${JSON.stringify(k)} 重复（一镜一键）` });
+          seen.add(k);
         }
-        // 字段白名单 + 值校验（宁 fail 勿兜底）
-        for (const k of Object.keys(s)) {
-          if (k === 'id' || k === 'n') continue;
-          if (!SHOT_EDIT[k]) return json(res, 400, { error: `${idx} 不支持的字段: ${k}（可改: ${Object.keys(SHOT_EDIT).join(' / ')}）` });
-          if (!SHOT_EDIT[k](s[k])) return json(res, 400, { error: `${idx} 字段值非法: ${k}=${JSON.stringify(s[k]).slice(0, 100)}` });
+        // 字段白名单 + 值校验（宁 fail 勿兜底）；id/n 是身份键不走 SHOT_EDIT
+        for (const fk of Object.keys(s)) {
+          if (fk === 'id' || fk === 'n' || fk === '_new') continue;
+          if (!SHOT_EDIT[fk]) return json(res, 400, { error: `${idx} 不支持的字段: ${fk}（可改: ${Object.keys(SHOT_EDIT).join(' / ')}）` });
+          if (!SHOT_EDIT[fk](s[fk])) return json(res, 400, { error: `${idx} 字段值非法: ${fk}=${JSON.stringify(s[fk]).slice(0, 100)}` });
         }
         // 类型必填（03/06 会炸的坑提前到保存前；口径 skills/script.md）
         if ((s.type === 'keyword') && !(s.keyword || '').trim()) return json(res, 400, { error: `${idx} keyword 型必须填 keyword` });
@@ -580,26 +598,89 @@ const server = http.createServer(async (req, res) => {
         }
         if ((s.type === 'title' || s.type === 'end') && !(s.title || '').trim()) return json(res, 400, { error: `${idx} ${s.type} 型必须填 title` });
         // 素材文件早校验（02/03 的报错提前到花钱/排队前）
-        for (const k of ['media', 'asset']) {
-          const v = String(s[k] || '');
+        for (const fk of ['media', 'asset']) {
+          const v = String(s[fk] || '');
           if (v) {
-            if (v.includes('..') || /[/\\:*?"<>|]/.test(v)) return json(res, 400, { error: `${idx} ${k} 文件名非法: ${v}` });
-            if (!fs.existsSync(path.join(ad, v))) return json(res, 404, { error: `${idx} ${k} 指向的素材不存在: assets/${v}（先在控制台素材区传入）` });
+            if (v.includes('..') || /[/\\:*?"<>|]/.test(v)) return json(res, 400, { error: `${idx} ${fk} 文件名非法: ${v}` });
+            if (!fs.existsSync(path.join(ad, v))) return json(res, 404, { error: `${idx} ${fk} 指向的素材不存在: assets/${v}（先在控制台素材区传入）` });
           }
         }
       }
-      const drift = narrationDrift(dir, { ...orig, shots: list }); // 漂移要比「改后」的口播，拿 orig 比等于永远同步
-      const from = drift ? 1 : 2;
+      // 至少保留一张标题卡（首句大字的版式承重墙；删光了 03 的 title 版式就没了）
+      if (!list.some((s) => s.type === 'title')) return json(res, 400, { error: '删镜头后至少要留一张标题卡（title 型）' });
+      // 身份键归位：n 型按新位置重排（01 注释/编号语义=n 在序列中的位序）；id 型新镜服务端补发 s9X+ 不与 02 兜底序号撞
+      // （三条分支统一先剥 _new 运输标记——不许泄漏进 shots.json）
+      let finalList = list.map((s) => { if ('_new' in s) { const { _new, ...rest } = s; return rest; } return s; });
+      if (nStyle) finalList = finalList.map((s, i) => ({ ...s, n: i + 1 }));
+      else if (idStyle) {
+        const used = new Set(list.map(keyOf).filter((x) => typeof x === 'string'));
+        let next = 91;
+        finalList = finalList.map((s) => {
+          if ('id' in s) return s;
+          while (used.has(`s${next}`)) next++;
+          const id = `s${next}`; used.add(id); next++;
+          return { ...s, id };
+        });
+      }
+      // 结构变化判定 → 音频切分必须重做，钳 from=1。
+      // 必须用「重排/补发前的身份序列」比原序——n 型重排会把换序信息抹掉（[1,3,2]→[1,2,3] 看似没动）
+      const hasNew = list.some((s) => s && s._new === true);
+      const keptLen = list.filter((s) => s && s._new !== true).length;
+      let structural;
+      if (idStyle || nStyle) {
+        const identSeq = list.map((s) => (s && s._new === true ? null : keyOf(s)));
+        structural = keptLen !== origList.length || hasNew || identSeq.some((k, i) => k !== keyOf(origList[i]));
+      } else {
+        structural = keptLen !== origList.length || hasNew;
+      }
+      // 无键文档（id/n 皆无，splitter 产物）按位匹配：保留镜（非 _new）必须与原前缀逐位对位，
+      // 即「只能删尾部 + 任意位置插新镜」——「删中间 + 补尾」与「原序」在按位语义下不可分，宁拦不猜
+      if (!idStyle && !nStyle) {
+        const keptIdx = list.map((s, i) => (s && s._new === true ? -1 : i)).filter((i) => i >= 0);
+        const shrinking = keptIdx.length !== origList.length;
+        if (keptIdx.some((li, ki) => ki >= origList.length || list[li].narration !== origList[ki].narration)) {
+          return json(res, 400, { error: shrinking
+            ? '该任务分镜无身份键：删镜时不允许同时换序（保留镜须与原第 1..N 镜逐位对位，即只能删尾部）。要完整结构操作，可给 shots.json 各镜手动补 id 字段升级为有键文档'
+            : '该任务分镜无身份键：不删镜时不允许换序（保留镜须逐位对位）。要重排镜头，可给 shots.json 各镜手动补 id 字段升级为有键文档' });
+        }
+      }
+      // 任务级参数补丁（P11）：白名单子集 + 与 SHOTS_PATCH 同套值校验；platform 与 width/height 二选一
+      const taskPatch = body.task && typeof body.task === 'object' ? body.task : null;
+      let taskChanged = false;
+      if (taskPatch) {
+        for (const k of Object.keys(taskPatch)) {
+          if (!EDIT_TASK_FIELDS.includes(k)) return json(res, 400, { error: `任务级参数不支持: ${k}（可改: ${EDIT_TASK_FIELDS.join(' / ')}；音色/语速请走控制台重跑面板）` });
+          if (taskPatch[k] !== null && !SHOTS_PATCH[k](taskPatch[k])) return json(res, 400, { error: `任务级参数值非法: ${k}=${JSON.stringify(taskPatch[k])}（null=清除该参数）` });
+          if (orig[k] !== taskPatch[k]) taskChanged = true;
+        }
+        if (taskPatch.platform != null && (taskPatch.width != null || taskPatch.height != null)) return json(res, 400, { error: 'platform 与 width/height 只能二选一（平台规格自带画幅）' });
+      }
+      const merged = { ...orig, shots: finalList };
+      if (taskPatch) {
+        for (const k of Object.keys(taskPatch)) {
+          if (taskPatch[k] === null) delete merged[k]; // null=清除（回全局默认）
+          else merged[k] = taskPatch[k];
+        }
+        if ('platform' in taskPatch) { delete merged.width; delete merged.height; } // 平台是画幅单一出处（P6 同口径）：选了/清了平台都清掉显式画幅
+        else if (taskPatch.width != null || taskPatch.height != null) delete merged.platform;
+      }
+      const drift = narrationDrift(dir, merged); // 漂移要比「改后 + 打补丁后」的口播，拿 orig 比等于永远同步
+      // 钳 1 双条件：文本漂移，或结构变更（无键文档按位匹配有歧义——即便整串拼回旧序也绝不免配音）
+      let from = drift || structural ? 1 : 2;
+      if (taskChanged) {
+        // 任务级参数受影响最早步骤：画幅/平台=02、风格/字幕开关=03/05 → 保守取 2 与现 from 的较小
+        from = Math.min(from, 2);
+      }
       fs.copyFileSync(sj, sj + '.bak'); // 备份 = 本次保存前状态
-      writeJson(sj, { ...orig, shots: list });
-      log('07-web', `Editor 保存 ${name}：${list.length} 镜 · 口播${drift ? '有漂移 → 建议 from 1' : '未动 → 建议 from 2'}${body.rerun ? '' : '（未重跑）'}`);
+      writeJson(sj, merged);
+      log('07-web', `Editor 保存 ${name}：${finalList.length} 镜${structural ? '（结构变更：增删/排序）' : ''}${taskChanged ? '（任务级参数已改）' : ''} · 口播${drift ? '有漂移 → from 1' : '未动 → from 2'}${body.rerun ? '' : '（未重跑）'}`);
       let rerun = null;
       if (body.rerun) {
         const r = startRerun(name, dir, from, {}, null, false);
         if (r.error) return json(res, 400, { error: `已保存，但重跑未排上: ${r.error}` });
         rerun = { from: r.from };
       }
-      return json(res, 200, { ok: true, narrationDrift: drift, from, rerun, backup: 'shots.json.bak' });
+      return json(res, 200, { ok: true, narrationDrift: drift, structural, from, rerun, backup: 'shots.json.bak', doc: merged });
     }
 
     // —— 技术库货架（P3-3）：techniques/*.json 每技术一配方；坏文件不藏、以 error 态直示 ——

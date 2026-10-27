@@ -35,7 +35,7 @@ function assertAllowedBase(p, what) {
  *  name 可传裸后缀（editor_e2e）或全名（_probe_editor_e2e），落盘统一 _probe_ 前缀。 */
 function probeDir(name) {
   const full = /^_probe_[A-Za-z0-9_-]+$/.test(name) ? name
-    : (/^[A-Za-z0-9_-]+$/.test(name) ? '_probe_' + name : null);
+    : (/^[A-Za-z0-9_-]+$/.test(name) ? '_probe_' + name.replace(/^_+/, '') : null);
   if (!full) {
     throw new Error(`[guard] 探针名须为 _probe_ 前缀全名或裸后缀 [A-Za-z0-9_-]+，收到：${name}`);
   }

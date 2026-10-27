@@ -13,7 +13,7 @@ console.log('  ✓ 1 乱码判定');
 
 // 2) probeDir：合规名可建可删；坏名/越界必拦
 const d = lib.probeDir('_selftest');
-assert(fs.existsSync(d) && d.includes('_probe__selftest'));
+assert(fs.existsSync(d) && d.endsWith('_probe_selftest'), '前导下划线并入单一前缀');
 const dFull = lib.probeDir('_probe_selftestfull');
 assert(fs.existsSync(dFull) && dFull.endsWith('_probe_selftestfull'));
 fs.rmSync(d, { recursive: true, force: true });

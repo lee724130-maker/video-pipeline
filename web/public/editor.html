@@ -51,6 +51,9 @@
   .savebar { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
   .savebar label { margin:0; display:flex; align-items:center; gap:7px; font-size:13px; }
   .savebar input[type=checkbox] { accent-color:var(--accent); width:15px; height:15px; }
+  .sc-ops { display:flex; gap:6px; margin-left:auto; }
+  .sc-ops button { font-size:12px; padding:4px 9px; }
+  .sc-ops button.danger:hover { border-color:var(--err); color:#f87171; }
   #saveMsg { flex:1; min-width:200px; }
   #runStat { font-size:13px; margin-top:10px; color:var(--dim); line-height:1.7; }
   #runStat.ok { color:var(--ok); } #runStat.err { color:var(--err); }
@@ -60,8 +63,8 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Editor 精修 <span class="tag">轻改 · 回写 shots.json 走局部重跑（两段式第一段）</span></h1>
-  <div class="sub">改口播 / 换素材 / 调字段 → 保存并重跑。口播没动就不重新配音（省额度，只到第 2 步）；口播动了硬钳到第 1 步（旧音频对不上新词，宁钳不赌）。轻改边界：<b>不增删镜头、不动顺序</b>——拖动裁剪拆分属「重剪」段，另行立项。每次保存前自动备份 <code>shots.json.bak</code>。<a href="/">← 回控制台</a></div>
+  <h1>Editor 精修 <span class="tag">字段 + 结构 + 任务参数 · 回写 shots.json 走局部重跑（两段式第一段 · P11 结构版）</span></h1>
+  <div class="sub">改口播 / 换素材 / 调字段 / <b>增删镜头、上下移排序</b> / 直改任务级参数（发布规格、风格、字幕开关）→ 保存并重跑。口播逐镜比对：任何一镜文本变了、镜头增删换序，都硬钳到第 1 步重新配音（旧音频对不上新词，宁钳不赌）；只动画面字段免配音。每次保存前自动备份 <code>shots.json.bak</code>；结构调整会整体重写 <code>shots.json</code>（回档用备份）。秒级拖动裁剪时间轴属「重剪」段，另行立项。<a href="/">← 回控制台</a></div>
 
   <div class="card">
     <h2>① 选任务</h2>
@@ -72,9 +75,29 @@
     <div id="taskInfo"></div>
   </div>
 
+  <div class="card" id="paramCard" style="display:none">
+    <h2>② 任务参数 <span class="badge" id="paramChg" style="display:none">已改</span></h2>
+    <div class="row">
+      <div><label>发布规格（平台组，选后画幅失效）</label>
+        <select id="tPlatform"><option value="">（不改动）</option><option value="__none">不用平台规格（用自定义画幅）</option></select></div>
+      <div><label>画幅（自定义组）</label>
+        <select id="tAspect"><option value="">（不改动）</option><option value="__keep">保持现有画幅</option><option value="1080x1920">竖屏 1080×1920</option><option value="1920x1080">横屏 1920×1080</option><option value="1080x1080">方形 1080×1080</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>场景风格</label>
+        <select id="tScene"><option value="">（不改动）</option><option value="classic">classic 经典暗底</option><option value="deck">deck 演示风</option><option value="paper">paper 纸感浅色</option></select></div>
+      <div><label>封面风格</label>
+        <select id="tCover"><option value="">（不改动）</option><option value="tech">tech 暗色科技</option><option value="bold">bold 高对比大字</option><option value="magazine">magazine 杂志留白</option></select></div>
+      <div><label>烧录字幕</label>
+        <select id="tCaps"><option value="">（不改动）</option><option value="on">开</option><option value="off">关</option></select></div>
+    </div>
+    <div class="dim" style="margin-top:6px">平台/画幅变更从第 2 步重跑（时间轴随画幅重建）；风格/字幕变更同样含 02 保守档。音色与语速请走控制台「局部重跑」面板。</div>
+  </div>
+
   <div class="card" id="editCard" style="display:none">
-    <h2>② 镜头编辑 <span class="badge" id="diffCount" style="display:none"></span></h2>
+    <h2>③ 镜头编辑 <span class="badge" id="diffCount" style="display:none"></span></h2>
     <div id="shotList"></div>
+    <div style="margin:2px 0 14px"><button class="mini" id="addShotBtn">＋ 末尾加一镜</button></div>
     <div class="savebar">
       <label><input type="checkbox" id="doRerun" checked> 保存后自动重跑</label>
       <button class="primary" id="saveBtn" onclick="save()">保存</button>
@@ -97,7 +120,31 @@ async function j(url, opt) {
 const TYPE_LABELS = { title:'标题卡', bullet:'要点卡', split:'左文右图', keyword:'砸字', transition:'章节转场', end:'收尾卡' };
 let cur = null;        // { name, shots:{...}, assets, types, ... }
 let dirty = [];        // 每镜是否已改
+let taskDef = null;    // 载入时的任务级参数快照（保存时只提交差量）
 let pollT = null;
+
+function paramPatch() {          // 任务参数差量 → /api/editor/shots body.task（无改动 = null；null 值 = 清除）
+  if (!taskDef) return null;
+  const p = {};
+  const pv = $('tPlatform').value, av = $('tAspect').value;
+  if (pv === '__none') {
+    if (taskDef.platform) { p.platform = null; if (!taskDef.width || !taskDef.height) { p.width = 1080; p.height = 1920; } }
+  } else if (pv) {
+    if (pv !== taskDef.platform) p.platform = pv; // 平台自带画幅（服务端会清 width/height）
+  } else if (av) {
+    if (av === '__keep') { if (!taskDef.platform && (taskDef.width !== 1080 || taskDef.height !== 1920)) { p.width = 1080; p.height = 1920; } }
+    else {
+      const [w, h] = av.split('x').map(Number);
+      if (!taskDef.platform && (taskDef.width !== w || taskDef.height !== h)) { p.width = w; p.height = h; }
+    }
+  }
+  const sv = $('tScene').value, cv = $('tCover').value, tv = $('tCaps').value;
+  if (sv && sv !== taskDef.sceneStyle) p.sceneStyle = sv;
+  if (cv && cv !== taskDef.coverStyle) p.coverStyle = cv;
+  if (tv && (tv === 'on') !== taskDef.captions) p.captions = tv === 'on';
+  return Object.keys(p).length ? p : null;
+}
+function paramDirty() { return !!paramPatch(); }
 
 async function init() {
   try {
@@ -114,11 +161,19 @@ async function init() {
 async function load() {
   const name = $('task').value;
   if (!name) return;
-  if (cur && cur.name === name && dirty.some(Boolean) && !confirm('有未保存改动，重新载入会丢弃。继续？')) return;
+  if (cur && cur.name === name && (dirty.some(Boolean) || paramDirty()) && !confirm('有未保存改动，重新载入会丢弃。继续？')) return;
   try {
     cur = await j('/api/editor/shots?name=' + encodeURIComponent(name));
     history.replaceState(null, '', '#' + encodeURIComponent(name));
     dirty = cur.shots.shots.map(() => false);
+    taskDef = {
+      platform: cur.shots.platform || '', width: cur.shots.width || 0, height: cur.shots.height || 0,
+      sceneStyle: cur.shots.sceneStyle || 'classic', coverStyle: cur.shots.coverStyle || 'tech',
+      captions: cur.shots.captions !== false,
+    };
+    const pf = $('tPlatform');
+    pf.innerHTML = '<option value="">（不改动）</option><option value="__none">不用平台规格（用自定义画幅）</option>'
+      + (cur.platforms || []).map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
     render();
     $('saveMsg').textContent = '';
     if (cur.busy) startPoll('载入时已有任务在跑');
@@ -133,10 +188,13 @@ function render() {
     + (s.targetCharsPerSec ? `<span class="badge">语速 ${s.targetCharsPerSec} 字/秒</span>` : '')
     + (cur.narrationDrift ? '<span class="badge warn">口播相对音频有漂移（上次配音后改过）</span>' : '')
     + (cur.busy ? '<span class="badge warn">任务运行中——保存需等它完成</span>' : '')
-    + `<div class="dim">画幅/平台/风格等任务级参数在控制台「局部重跑」面板改；这里只管镜头字段。素材文件（asset / media）从任务 assets/ 选用，先在控制台传入。</div>`;
+    + (cur.tailOnlyDel ? '<span class="badge warn">分镜无身份键：删镜只能删尾部（先下移到位）</span>' : '')
+    + `<div class="dim">任务级参数在下方「② 任务参数」直改；音色/语速请走控制台「局部重跑」面板。素材文件（asset / media）从任务 assets/ 选用，先在控制台传入。</div>`;
   $('shotList').innerHTML = s.shots.map((sh, i) => cardHTML(sh, i)).join('');
   s.shots.forEach((sh, i) => { if (dirty[i]) $shotCard(i)?.classList.add('chg'); });
   $('editCard').style.display = '';
+  $('paramCard').style.display = '';
+  $('paramChg').style.display = paramDirty() ? '' : 'none';
   updateDiff();
 }
 function $shotCard(i) { return $('shotList').querySelector(`[data-card="${i}"]`); }
@@ -199,8 +257,15 @@ function cardHTML(sh, i) {
     <div class="row"><div><label>章节编号 index（如 02）</label><input type="text" data-i="${i}" data-k="index" value="${esc(sh.index || '')}"></div>
     <div><label>章节名 heading</label><input type="text" data-i="${i}" data-k="heading" value="${esc(sh.heading || '')}"></div>
     <div><label>导航标签 nav</label><input type="text" data-i="${i}" data-k="nav" value="${esc(sh.nav || '')}"></div></div>`;
+  const tail = cur && cur.tailOnlyDel;
+  const ops = `<span class="sc-ops">
+      <button class="mini" data-op="up:${i}" ${i === 0 ? 'disabled' : ''} title="上移">↑</button>
+      <button class="mini" data-op="down:${i}" ${i === cur.shots.shots.length - 1 ? 'disabled' : ''} title="下移">↓</button>
+      <button class="mini" data-op="ins:${i}" title="在本镜后插入新镜">＋插</button>
+      <button class="mini danger" data-op="del:${i}" ${cur.shots.shots.length <= 1 ? 'disabled' : ''} title="${tail ? '无身份键任务只能删尾部镜（先下移到位再删）' : '删除本镜'}"${tail && i !== cur.shots.shots.length - 1 && !sh._new ? ' data-tailmid="1"' : ''}>✕删</button>
+    </span>`;
   return `<div class="shotcard" data-card="${i}">
-    <div class="sc-head"><span class="badge">#${i + 1}</span><span class="badge">${esc(TYPE_LABELS[t] || t)}</span><span class="dim">${esc(idn)}</span><span class="chgmark">● 已改</span></div>
+    <div class="sc-head"><span class="badge">#${i + 1}</span><span class="badge">${esc(TYPE_LABELS[t] || t)}</span><span class="dim">${esc(idn)}</span><span class="chgmark">● 已改</span>${ops}</div>
     <label>口播 narration <span class="cnt" data-cnt="${i}">${String(sh.narration || '').length} 字</span></label>
     <textarea rows="2" data-i="${i}" data-k="narration">${esc(sh.narration || '')}</textarea>
     <div class="row">
@@ -259,8 +324,39 @@ $('shotList').addEventListener('click', (e) => {
     const [i, jj] = b.dataset.delj.split(':').map(Number);
     cur.shots.shots[i].items.splice(jj, 1);
     markDirty(i); renderItems(i);
+  } else if (b.dataset.op) {
+    const [op, si] = b.dataset.op.split(':');
+    const i = +si, list = cur.shots.shots;
+    const move = (from, to) => { const t = list.splice(from, 1)[0]; list.splice(to, 0, t); const td = dirty.splice(from, 1)[0]; dirty.splice(to, 0, td); };
+    if (op === 'up' && i > 0) { move(i, i - 1); render(); }
+    else if (op === 'down' && i < list.length - 1) { move(i, i + 1); render(); }
+    else if (op === 'ins') {
+      if (list.length >= 60) { flash('镜头数已达上限 60', true); return; }
+      list.splice(i + 1, 0, { _new: true, type: 'bullet', narration: '', heading: '新要点卡', items: ['要点一'] });
+      dirty.splice(i + 1, 0, true); render();
+      flash('已插入新镜（填口播后保存生效）');
+    } else if (op === 'del') {
+      if (b.dataset.tailmid) { flash('该任务分镜无身份键：先用 ↓ 把待删镜移到末尾再删', true); return; }
+      if (list.length <= 1) { flash('至少留一镜', true); return; }
+      if (!confirm(`确认删除第 ${i + 1} 镜？（保存后才写入；回档用 shots.json.bak）`)) return;
+      list.splice(i, 1); dirty.splice(i, 1); render();
+    }
   }
 });
+$('addShotBtn').addEventListener('click', () => {
+  const list = cur.shots.shots;
+  if (list.length >= 60) { flash('镜头数已达上限 60', true); return; }
+  list.push({ _new: true, type: 'bullet', narration: '', heading: '新要点卡', items: ['要点一'] });
+  dirty.push(true); render();
+  flash('已在末尾加一镜（填口播后保存生效）');
+});
+['tPlatform', 'tAspect', 'tScene', 'tCover', 'tCaps'].forEach((id) => $(id).addEventListener('change', () => {
+  // 平台与自定义画幅二选一的界面联动：选了一边，另一边回「不改动」
+  if (id === 'tPlatform' && $('tPlatform').value === '__none') $('tAspect').value = $('tAspect').value || '__keep';
+  else if (id === 'tPlatform' && $('tPlatform').value) $('tAspect').value = '';
+  else if (id === 'tAspect' && $('tAspect').value) $('tPlatform').value = '';
+  $('paramChg').style.display = paramDirty() ? '' : 'none';
+}));
 function flash(msg, isErr) {
   $('saveMsg').innerHTML = `<span class="${isErr ? 'err' : 'okmsg'}">${esc(msg)}</span>`;
 }
@@ -273,20 +369,25 @@ async function save() {
   try {
     const r = await j('/api/editor/shots', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: cur.name, shots: cur.shots.shots, rerun }),
+      body: JSON.stringify({ name: cur.name, shots: cur.shots.shots, task: paramPatch(), rerun }),
     });
-    const driftNote = r.narrationDrift ? '口播相对音频有漂移' : '口播未动';
+    if (r.doc) {                 // 用服务端终稿回显（补发的 id / 重排的 n / 剥离的 _new）
+      cur.shots = r.doc;
+      dirty = r.doc.shots.map(() => false);
+      taskDef = {
+        platform: r.doc.platform || '', width: r.doc.width || 0, height: r.doc.height || 0,
+        sceneStyle: r.doc.sceneStyle || 'classic', coverStyle: r.doc.coverStyle || 'tech',
+        captions: r.doc.captions !== false,
+      };
+      ['tPlatform', 'tAspect', 'tScene', 'tCover', 'tCaps'].forEach((id) => { $(id).value = ''; });
+      render();
+    }
+    const driftNote = r.structural ? '结构调整（已重排编号）' : (r.narrationDrift ? '口播相对音频有漂移' : '口播未动');
     if (r.rerun) {
-      flash(`✓ 已保存（${driftNote}）· 备份 shots.json.bak · 已排队从第 ${r.rerun.from} 步重跑${r.narrationDrift ? '（含重新配音）' : '（免重新配音）'}`);
-      dirty = cur.shots.shots.map(() => false);
-      cur.shots.shots.forEach((_, i) => $shotCard(i)?.classList.remove('chg'));
-      updateDiff();
+      flash(`✓ 已保存（${driftNote}）· 备份 shots.json.bak · 已排队从第 ${r.rerun.from} 步重跑${r.rerun.from === 1 ? '（含重新配音）' : '（免重新配音）'}`);
       startPoll('刚保存，开始重跑');
     } else {
       flash(`✓ 已保存（${driftNote} · 建议 from ${r.from}）· 备份 shots.json.bak · 未重跑`);
-      dirty = cur.shots.shots.map(() => false);
-      cur.shots.shots.forEach((_, i) => $shotCard(i)?.classList.remove('chg'));
-      updateDiff();
     }
   } catch (e) { flash('✗ ' + e.message, true); }
   $('saveBtn').disabled = false;

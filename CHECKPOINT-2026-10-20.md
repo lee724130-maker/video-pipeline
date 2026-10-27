@@ -441,3 +441,31 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - **探针备忘（非回归）**：存量任务 `timeline.keywords` 多为空——shots.json 的 keyword 字段（如「全程 0 元」带空格）在口播里 indexOf 不到即静默跳过，历史行为；冒烟探针改为副本上挂确定性关键词补丁（bullet 镜口播前 4 字）保证正例可测。
 - 首轮冒烟 C6/C9 抓出探针选偏（关键词挂非参与镜），修探针选择与守卫后全绿——断言链再次证明价值。
 - 服务：8787 带 P10 代码重启（config.json 新段）。
+
+# 2026-10-27 —— P0 工程卫生 + P11 Editor 结构版 + P12 重剪立项提案
+
+## 桌面乱码目录事故二次复盘（用户报障，已清除）
+
+- 桌面再现 `鍓緫搴旂敤\output\_probe_editor_e2e` 空壳（P9 冒烟窗口 16:10:25 出生）。字节级核验：「剪辑应用」UTF-8 按 cp936 解码 = 该目录名逐字节一致（0x87 落 GBK 未定义→私有区 U+E047）；肇事=PS 侧一次内联中文 mkdir，项目代码无责（库内脚本全 UTF-8 硬编码）。零数据，已送回收站。
+- **收口为代码**（不再只靠口头规矩）：`smoke/lib.cjs` 三守卫（ROOT `__dirname` 派生 / `probeDir` 命名+越界双拦 / `sweepProbes` 枚举清扫）+ `guard-sentinel.cjs` 哨兵（私有区字符+乱码词表判定，`--trash-empty` 仅零文件空树自动回收站，PS 传参纯 ASCII 拆 `[char]0xXXXX`）。
+
+## P0 · 冒烟脚本归档（提交 e71492e）
+
+- p6~p10 全部冒烟/诊断脚本从 `%TEMP%\opencode`（重启即丢）寻回入库 `smoke/`（25 文件），ROOT 全部改围栏库派生，临时产物挪 `%TEMP%\smoke\`，P8 样本夹具进 `smoke/fixtures/`；`smoke/README.md` 立三条规矩+重放前置+计费提示（P7-2 生图 1 张、P8 复刻按次——重放注意）。
+
+## P11 · Editor 结构版（远期 13 第一段升级：轻改 → 字段+结构+任务参数）
+
+- **动因**：P9 有意边界（不增删/不排序/任务参数只读）是 ROADMAP 明示的补齐候选；且排查发现**整串拼接漂移判定有盲区**——镜头换序不换字、增删后拼回同文，`narrationDrift` 全看不见（`1+2` 连起来 = `2+1` 连起来）。
+- **漂移升级逐镜比对**：01 `buildNarration` 同步返回 seg[] 并落 `audio/narrationSeg.json`（写失败不拦主路）；server `narrationDrift` 有 seg 清单按序列逐镜比，无 seg（旧任务）回退整串旧口径。**结构变更（增删/排序）独立判定，钳 1 双条件 `drift||structural`**——即便无键文档新镜口播恰好拼回旧序列也不免配音。
+- **结构守卫（身份键三分）**：原文档 id 型/n 型/无键型一查即定。有键：保留镜身份键必须在原池内且不重复，新镜靠 `_new` 运输标记（服务端剥离、不泄漏落盘）；n 型保存时按新位置重排、id 型新镜补发 `s9X+`（避开 02 兜底 `s01..` 撞名）。**structural 必须拿「重排前」身份序列比原序**——n 型重排会把换序信息抹掉（[1,3,2]→[1,2,3] 看似没动），这个坑是冒烟 F1 抓的。无键：不删镜不许换序、删镜只能删尾部（保留镜须与原前缀逐位对位，「删中间+补尾」与「原序」不可分，宁拦不猜，报错指引手补 id 升级为有键）。
+- **任务级参数直改**：`EDIT_TASK_FIELDS`（chat-rules 新导出，SHOTS_PATCH 子集：sceneStyle/coverStyle/captions/platform/width/height，值校验同表；音色/语速不放开）；null=清除语义；platform 与 width/height 二选一（P6 口径：platform 在场就清显式画幅）。GET 回传 `platforms`/`taskFields`/`tailOnlyDel`，POST 回传终稿 `doc`（客户端免重载回显补发身份键）。
+- **前端**（editor.html）：镜头卡 ↑↓/＋插/✕删（无键文档删中间按钮带提示）、末尾加镜、② 任务参数卡（平台/画幅联动二选一、风格/封面/字幕，差量提交 `paramPatch()`，成功用响应 doc 回显重置快照）；保存/载入 confirm 计入参数差量。
+- **冒烟 P11 35/35**（p11-editor-v2-smoke.cjs 入库）：A 静态 4 + B 无键守卫 6 + C 负例 7（零写入字节核验）+ D 新镜/参数 4 + F legacy 换序真实重跑链 6（structural 钳 1 → 01 落 seg → 归零 → 再换序 drift 逐镜抓）+ G 插镜真实重跑链 6（seg=镜数/n 连排/字段编辑 from2 免配音）+ H 清场 2。**P9 回归 36/36**（两条边界断言按 P11 语义更新：捏造键拒「不在原任务里」、删尾镜转合法正例 C2）、P10 27/27、P6 全 PASS、p9-static 过、lib-selftest 5/5、哨兵干净。
+- **冒烟抓的自身 bug 三枚**：`probeDir('_x')` 拼出双下划线 `_probe__x`（改前导下划线并入单一前缀）；冒烟 B 段「挪尾再删」期望写错（无键换序本质该拦，改期望+细化两分支文案）；`_new` 泄漏落盘（三分支统一剥离）。E2E 断言链第三轮证明价值。
+- **环境操作留档**：8787 换代码必重启（server 常驻模块缓存）；bash 里 `$_` 会被吃（PS 命令写 .ps1 文件跑）；`taskkill /PID` 需 `MSYS_NO_PATHCONV=1`；杀错实例跑了半轮废冒烟——**先 `netstat 端口→PID→CreationDate` 对齐再跑**。
+- 计费口径：本轮全部 dashscope 免费额度 TTS（4 条全链重跑），零复刻零生图。
+- 服务：8787 带 P11 全量代码运行中（structural 修复后终态）。
+
+## P12 · 重剪段立项提案（ROADMAP 新节，等用户拍板）
+
+- 三待定项推荐案成文：① 分工=语义(P11/shots.json) vs 时间轴(重剪/edit.json)二分，编辑单从 timeline.json 一键导入、不做双向同步；② 对账=脱钩导出+编辑单持久化（参考 AI-Anime `editor_projects` 四件套）；③ 素材字幕对齐=clip 引用镜级产物（segments/<id>.mp4、voice.mp3 按镜窗口 trim），字幕推荐一期出词级表（02 拆件落 wordTimings.json，08 裁窗生成 ASS），渲染=05 泛化抽件。附 MVP 范围与 4~6 天工程量拆分。

@@ -180,4 +180,8 @@ const SHOT_EDIT = {
   asset: (v) => v === '' || sMax(120)(v),
 };
 
-module.exports = { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL };
+// —— Editor 任务级参数（P11）：编辑页直改的 shots.json 根字段白名单（SHOTS_PATCH 子集，值校验同表）——
+// 音色/语速不放开（涉及配音通道细节，走控制台重跑面板）；platform 与 width/height 二选一由 server 守
+const EDIT_TASK_FIELDS = ['sceneStyle', 'coverStyle', 'captions', 'platform', 'width', 'height'];
+
+module.exports = { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL, EDIT_TASK_FIELDS };

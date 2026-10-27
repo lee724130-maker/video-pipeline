@@ -66,14 +66,13 @@ function copyDir(src, dst) {
   const clone = () => JSON.parse(JSON.stringify(origList));
   const postShots = (shots, rerun) => post(BASE + '/api/editor/shots', { name: '_probe_editor_e2e', shots, rerun: !!rerun });
   {
-    let l = clone(); l.pop();
-    ok('镜数减少 400', (await postShots(l)).status === 400);
+    let l = clone();
     l = clone(); l.push({ ...origList[0] });
-    ok('镜数增加 400', (await postShots(l)).status === 400);
+    ok('重复身份键（copy 首镜不加 _new）400', (await postShots(l)).j.error?.includes('重复'), (await postShots(l)).j.error);
     l = clone(); l[0].n = 99;
-    ok('改 n 400', (await postShots(l)).j.error?.includes('不可改'), (await postShots(l)).j.error);
+    ok('改 n 400（P11：捏造身份键拒）', (await postShots(l)).j.error?.includes('不在原任务里'), (await postShots(l)).j.error);
     l = clone(); l[0].id = 's01';
-    ok('凭空加 id 400', (await postShots(l)).j.error?.includes('不应新增'), '');
+    ok('凭空加 id 400（P11：捏造身份键拒）', (await postShots(l)).j.error?.includes('不在原任务里'), '');
     l = clone(); l[1].foo = 1;
     ok('未知字段 400', (await postShots(l)).j.error?.includes('不支持的字段'), '');
     l = clone(); l[1].type = 'nope';
@@ -95,6 +94,20 @@ function copyDir(src, dst) {
     ok('未知任务 404', unknown.status === 404, String(unknown.status));
     ok('负例后 shots.json 字节未动', fs.readFileSync(SJ, 'utf8') === origBytes);
     ok('负例后无 .bak 残留', !fs.existsSync(SJ + '.bak'));
+  }
+  // ===== C2 P11 结构正/负例（写盘类，跑完还原）=====
+  {
+    const noTitle = clone().map((s) => ({ ...s, type: s.type === 'title' ? 'bullet' : s.type }));
+    const r1 = await postShots(noTitle);
+    ok('灭光标题卡 400', r1.status === 400 && r1.j.error?.includes('标题卡'), r1.j.error);
+    const tailDel = clone(); tailDel.pop();
+    const r2 = await postShots(tailDel);
+    const saved = shotsOf();
+    ok('删尾镜 200 + structural + from 钳 1 + n 重排连续', r2.status === 200 && r2.j.structural === true && r2.j.from === 1
+      && saved.shots.length === tailDel.length && saved.shots.every((s, i) => s.n === i + 1), JSON.stringify({ s: r2.status, st: r2.j.structural, f: r2.j.from, e: r2.j.error }));
+    fs.writeFileSync(SJ, origBytes, 'utf8'); // 还原探针（.bak 一并清掉，D1 重新建立「保存前=原始」语义）
+    try { fs.unlinkSync(SJ + '.bak'); } catch {}
+    ok('探针已还原原始字节', fs.readFileSync(SJ, 'utf8') === origBytes);
   }
 
   // ===== D 正例 E2E =====
