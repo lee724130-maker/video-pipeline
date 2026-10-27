@@ -547,10 +547,24 @@ const server = http.createServer(async (req, res) => {
       const assets = fs.existsSync(ad) ? fs.readdirSync(ad).filter((f) => fs.statSync(path.join(ad, f)).isFile()).sort() : [];
       const shots = readJson(sj) || {};
       const sl = Array.isArray(shots.shots) ? shots.shots : [];
+      // 时长表（时间轴页按镜头宽）：timeline.json 按 id 对齐，对不上按位序兜；无/坏文件 = null（等宽渲染）
+      const tl = readJson(path.join(dir, 'timeline.json')) || {};
+      let durs = null, tlTotal = 0;
+      if (Array.isArray(tl.shots) && tl.shots.length === sl.length) {
+        const byId = new Map(tl.shots.map((t) => [String(t.id), t]));
+        durs = sl.map((s, i) => {
+          const t = (('id' in s && byId.get(String(s.id))) || ('n' in s && byId.get(`s${String(s.n).padStart(2, '0')}`)) || tl.shots[i]);
+          const d = Number(t && t.dur) || 0;
+          tlTotal += d;
+          return d || null;
+        });
+        if (durs.some((d) => !d)) durs = null;
+      }
       return json(res, 200, {
         name, shots, assets, types: TYPE_WL, fields: Object.keys(SHOT_EDIT),
         taskFields: EDIT_TASK_FIELDS, platforms: Object.keys(loadConfig().platforms || {}),
         tailOnlyDel: !sl.some((s) => s && ('id' in s || 'n' in s)), // 无键文档只能删尾部（见 POST 守卫）
+        durations: durs, total: durs ? tlTotal : 0,
         narrationDrift: narrationDrift(dir, shots),
         busy: !!(state.running || state.queue.length),
       });
@@ -572,6 +586,11 @@ const server = http.createServer(async (req, res) => {
       const idStyle = origList.some((s) => s && 'id' in s);
       const nStyle = !idStyle && origList.some((s) => s && 'n' in s);
       const origPool = new Set(origList.map(keyOf).filter((k) => k !== null));
+      // —— 升级模式（时间轴页「补发 id」向导）：原无键 → 每镜配全新唯一 id，镜序/口播逐位不动 ——
+      // 只在「不增删、不换序、不改口播」时放行自造 id（否则仍走下面 origPool 拒），把身份体系从无键升到有键
+      const nz = (x) => String(x || '').trim().replace(/\s+/g, ' ');
+      const upgrading = !idStyle && !nStyle && list.length === origList.length && list.every((s) => s && s._new !== true && typeof s.id === 'string' && s.id)
+        && list.every((s, i) => nz(s.narration) === nz(origList[i].narration)) && !('n' in (list[0] || {}));
       const seen = new Set();
       const ad = path.join(dir, 'assets');
       for (let i = 0; i < list.length; i++) {
@@ -580,7 +599,7 @@ const server = http.createServer(async (req, res) => {
         if (s._new === true) { delete s.id; delete s.n; } // 客户端标记的新镜：不带身份、不参与匹配
         const k = keyOf(s);
         if (k !== null) {
-          if (!origPool.has(k)) return json(res, 400, { error: `${idx} 的 id/n=${JSON.stringify(k)} 不在原任务里（保留镜须带原身份键，新镜不要自造键）` });
+          if (!origPool.has(k) && !(upgrading && typeof k === 'string')) return json(res, 400, { error: `${idx} 的 id/n=${JSON.stringify(k)} 不在原任务里（保留镜须带原身份键，新镜不要自造键）` });
           if (seen.has(k)) return json(res, 400, { error: `${idx} 身份键 ${JSON.stringify(k)} 重复（一镜一键）` });
           seen.add(k);
         }
@@ -667,20 +686,21 @@ const server = http.createServer(async (req, res) => {
       const drift = narrationDrift(dir, merged); // 漂移要比「改后 + 打补丁后」的口播，拿 orig 比等于永远同步
       // 钳 1 双条件：文本漂移，或结构变更（无键文档按位匹配有歧义——即便整串拼回旧序也绝不免配音）
       let from = drift || structural ? 1 : 2;
+      if (upgrading) from = Math.min(from, 2); // 升级补 id：至少重编译把 id 烘进 timeline.json（免重配音）
       if (taskChanged) {
         // 任务级参数受影响最早步骤：画幅/平台=02、风格/字幕开关=03/05 → 保守取 2 与现 from 的较小
         from = Math.min(from, 2);
       }
       fs.copyFileSync(sj, sj + '.bak'); // 备份 = 本次保存前状态
       writeJson(sj, merged);
-      log('07-web', `Editor 保存 ${name}：${finalList.length} 镜${structural ? '（结构变更：增删/排序）' : ''}${taskChanged ? '（任务级参数已改）' : ''} · 口播${drift ? '有漂移 → from 1' : '未动 → from 2'}${body.rerun ? '' : '（未重跑）'}`);
+      log('07-web', `Editor 保存 ${name}：${finalList.length} 镜${upgrading ? '（补 id 升级）' : structural ? '（结构变更：增删/排序）' : ''}${taskChanged ? '（任务级参数已改）' : ''} · 口播${drift ? '有漂移 → from 1' : '未动 → from 2'}${body.rerun ? '' : '（未重跑）'}`);
       let rerun = null;
       if (body.rerun) {
         const r = startRerun(name, dir, from, {}, null, false);
         if (r.error) return json(res, 400, { error: `已保存，但重跑未排上: ${r.error}` });
         rerun = { from: r.from };
       }
-      return json(res, 200, { ok: true, narrationDrift: drift, structural, from, rerun, backup: 'shots.json.bak', doc: merged });
+      return json(res, 200, { ok: true, narrationDrift: drift, structural, upgraded: upgrading, from, rerun, backup: 'shots.json.bak', doc: merged });
     }
 
     // —— 技术库货架（P3-3）：techniques/*.json 每技术一配方；坏文件不藏、以 error 态直示 ——
@@ -925,6 +945,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/editor') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'editor.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      return res.end(html);
+    }
+    if (p === '/timeline') {
+      const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'timeline.html'), 'utf8');
       res.writeHead(200, { 'Content-Type': MIME['.html'] });
       return res.end(html);
     }

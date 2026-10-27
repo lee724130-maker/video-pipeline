@@ -469,3 +469,14 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 ## P12 · 重剪段立项提案（ROADMAP 新节，等用户拍板）
 
 - 三待定项推荐案成文：① 分工=语义(P11/shots.json) vs 时间轴(重剪/edit.json)二分，编辑单从 timeline.json 一键导入、不做双向同步；② 对账=脱钩导出+编辑单持久化（参考 AI-Anime `editor_projects` 四件套）；③ 素材字幕对齐=clip 引用镜级产物（segments/<id>.mp4、voice.mp3 按镜窗口 trim），字幕推荐一期出词级表（02 拆件落 wordTimings.json，08 裁窗生成 ASS），渲染=05 泛化抽件。附 MVP 范围与 4~6 天工程量拆分。
+
+## P13 · 时间轴排序页（2026-10-27，用户「按流程布局」诉求的第一刀，冒烟 19/19）
+
+- **动因**：用户实测 P11 卡片流后反馈「挺多不顺手」，要「按流程排列、一步一确认、最后总结页确认出片」。全页面大改造体量大且撞 P12 重剪段（待拍板），先切一刀**最小可用的排序页** `/timeline` 解最痛的「拖一决定先后」，布局大改与出片确认流向 P12 一并设计。
+- **页面**（`web/public/timeline.html` 单文件，同 index/editor 设计令牌）：三轨「口播/画面/字幕」按 `timeline.json` 真实时长等比铺镜 + 秒刻度尺（pps≥14 每 5s 一格否则 10s）；拖动换序=指针跟手 + 落点竖线 caret（口播主轨可拖，画面/字幕轨只读预览）；单击选中→检查器改高频字段（narration/type/nav/heading/kicker/title/keyword/asset，items/双行/分栏仍指回精修页）；快照式撤销栈（整表 JSON.stringify 压栈，60 深，Ctrl+Z/Ctrl+Shift+Z）；缩放滑条；保存走 P11 同源 `/api/editor/shots`。入口首页头部 + 精修页顶双链。
+- **GET 契约扩展**：`/api/editor/shots` 回 `durations[]`+`total`——timeline.shots 按 `s.id` 建表，n 型经 `s{NN}` 反查，失配按位序兜；镜数不符/无文件/含 0 → 整体降级 `null`（页面等宽渲染，不半截）。
+- **无键文档排序 = server upgrading 通道**（本轮最大设计）：网页 splitter 建的任务无 id/n，P11 守卫「不删镜不许换序」直接拦死排序。页面识别 `tailOnlyDel` 给「一键补发 id」向导；server 放行条件收紧到**原无键 ∧ 每镜带全新唯一 string id ∧ 镜数不变 ∧ 逐位口播不变 ∧ 无 _new ∧ list[0] 无 n**，满足才认升级（否则自造 id 仍走 origPool 拒）。升级 `from = min(from,2)`——**只重编译不重配音**（02 把 id 烘进 timeline.json 与场景文件名；voice/words 复用），响应带 `upgraded` 标。升级后 GET `tailOnlyDel=false`，回归正常有键排序。
+- **冒烟 19/19**（p13-timeline-smoke.cjs）：A 静态 4 + B durations 契约 2 + C n 型换序 4（含**全同镜像**探针：四镜口播逐字相同，换序后整串完全相等 → 断言 drift=false 但 structural=true 仍钳 1，坐实 P11 structural 独立判定的必要性）+ D 无键升级流 7（剥键 tailOnlyDel 验 → 无键换序 400 → 补 s91 升级 200/from2/upgraded → 真实 02→06 重跑完成 → 落盘带 id 无 _new → 升级后换序放行）+ E deck-demo 零副作用 + F sweepProbes 清场。**P11 回归 35/35、P9 回归复跑**确认 upgrading 未伤及既有换序/参数/漂移路径。
+- **踩坑**：① timeline.html 内联 JS 里模板串嵌套（clip 头部 `${...}` 内又写模板串）→ 抽 `keyLabel()` 函数拆平，并把内层降为字符串拼接；② 升级最初被 P11 origPool 拦（`s91 不在原任务里`）——正是升级通道要解决的，测试暴露后补 upgrading 分支；③ 升级最初误期望 from1+seg 落盘——厘清「补 id 不改口播/顺序」应 from2 免配音、02 不写 seg，改测断言与文档口径一致。
+- 计费：D 段一次真实 02→06 重跑（免费额度、无 TTS/无生图）。服务：8787 带 upgrading+durations 运行中。
+- **下一步**：待用户上手 `/timeline` 反馈交互手感；整站「流程分步 + 确认门 + 总结页」大布局连同 P12 重剪段时间轴一并设计（避免两套时间轴各画各的）。

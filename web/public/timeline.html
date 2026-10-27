@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>时间轴排序 · 零成本视频流水线</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0B0E14; --panel:#12161f; --line:#232a38; --fg:#F5F7FA; --dim:#9AA3B2; --accent:#08B6DD; --accent-2:#7C3AED; --ok:#22c55e; --err:#ef4444; --warn:#f59e0b; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:"Microsoft YaHei","PingFang SC",sans-serif; min-height:100vh; }
+  .wrap { max-width:1280px; margin:0 auto; padding:24px 24px 80px; }
+  h1 { font-size:24px; margin-bottom:4px; }
+  h1 .tag { font-size:13px; color:var(--accent); font-weight:400; margin-left:10px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:18px; line-height:1.7; }
+  a { color:var(--accent); text-decoration:none; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px; margin-bottom:16px; }
+  label { display:block; font-size:12px; color:var(--dim); margin:8px 0 4px; }
+  input[type=text], textarea, select {
+    width:100%; background:#0d111a; color:var(--fg); border:1px solid var(--line);
+    border-radius:8px; padding:7px 9px; font-size:13px; font-family:inherit; outline:none;
+  }
+  input:focus, textarea:focus, select:focus { border-color:var(--accent); }
+  textarea { min-height:56px; resize:vertical; line-height:1.6; }
+  button.primary { border:none; border-radius:10px; padding:10px 26px; background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#fff; font-size:14px; font-weight:700; cursor:pointer; }
+  button.primary:disabled { opacity:.45; cursor:not-allowed; }
+  button.mini { border:1px solid var(--line); background:#161b26; color:var(--fg); border-radius:8px; padding:5px 11px; cursor:pointer; font-size:13px; white-space:nowrap; }
+  button.mini:hover { border-color:var(--accent); }
+  button.mini:disabled { opacity:.4; cursor:not-allowed; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; background:#1b2433; color:var(--dim); margin-right:6px; }
+  .badge.warn { background:rgba(245,158,11,.14); color:var(--warn); }
+  .badge.err { background:rgba(239,68,68,.14); color:#f87171; }
+  .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
+  .row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+  .row > .grow { flex:1; min-width:180px; }
+  #msg { font-size:13px; }
+  #msg.err { color:var(--err); } #msg.ok { color:var(--ok); } #msg.dim { color:var(--dim); }
+  .tlwrap { overflow-x:auto; padding-bottom:6px; }
+  .tlbody { position:relative; min-width:100%; }
+  .ruler { position:relative; height:18px; border-bottom:1px dashed var(--line); margin-bottom:4px; }
+  .tick { position:absolute; top:2px; font-size:10px; color:var(--dim); border-left:1px solid var(--line); padding-left:3px; height:14px; line-height:14px; }
+  .track { display:flex; gap:0; margin-bottom:8px; }
+  .tracklab { position:sticky; left:0; z-index:3; width:52px; flex:0 0 52px; font-size:11px; color:var(--dim); display:flex; align-items:center; background:linear-gradient(90deg, var(--panel) 70%, transparent); }
+  .clips { display:flex; flex:1; gap:4px; }
+  .clip { position:relative; border:1px solid var(--line); border-radius:9px; background:#0d111a; padding:6px 8px 14px; cursor:grab; user-select:none; touch-action:none; min-width:44px; overflow:hidden; }
+  .clip:hover { border-color:var(--accent); }
+  .clip.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .clip.chg::after { content:'●'; position:absolute; right:6px; top:3px; color:var(--accent-2); font-size:10px; }
+  .clip .no { font-size:10px; color:var(--dim); }
+  .clip .ty { display:inline-block; font-size:10px; padding:0 6px; border-radius:8px; margin:2px 0; }
+  .ty.title{background:rgba(8,182,221,.16);color:#4cc9ec}.ty.bullet{background:rgba(124,58,237,.18);color:#b794f6}
+  .ty.split{background:rgba(34,197,94,.15);color:#5fd08a}.ty.keyword{background:rgba(245,158,11,.16);color:#fbbf24}
+  .ty.transition{background:rgba(154,163,178,.15);color:#aab4c5}.ty.end{background:rgba(239,68,68,.14);color:#f87171}
+  .clip .txt { font-size:11px; color:var(--fg); line-height:1.45; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; word-break:break-all; }
+  .clip .dur { position:absolute; left:8px; bottom:2px; font-size:9px; color:var(--dim); }
+  .clip.ghost { opacity:.35; }
+  .dropcaret { position:absolute; top:0; bottom:0; width:3px; background:var(--accent); border-radius:2px; z-index:5; display:none; }
+  .inspector .grp { margin-bottom:2px; }
+  .insp-2col { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
+  .kbd { font-size:11px; color:var(--dim); }
+  .kbd b { color:var(--fg); font-weight:600; }
+  #banner { display:none; border-color:rgba(245,158,11,.5); }
+  #playhead { position:absolute; top:0; bottom:0; width:2px; background:rgba(239,68,68,.7); display:none; z-index:4; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>时间轴排序 <span class="tag">拖一拖定先后 · 保存即重排 shots.json（P13）</span></h1>
+  <div class="sub">按真实配音时长铺镜，拖动换序、点选改口播。任何换序或口播改动都会从第 1 步重配音（宁钳不赌）；只动画面字段免配音。字段级精修（换类型/素材/要点）请去
+    <a href="/editor">✂ Editor 精修页</a>；成品时间轴级裁剪（秒级 in/out）属「重剪」段（P12 提案）。</div>
+
+  <div class="card">
+    <div class="row">
+      <div class="grow"><label>任务</label><select id="task"></select></div>
+      <div><button class="mini" id="loadBtn" onclick="load()">载入时间轴</button></div>
+      <div class="grow" id="stat" style="align-self:flex-end;min-height:32px;display:flex;align-items:center;flex-wrap:wrap;gap:4px"></div>
+    </div>
+  </div>
+
+  <div class="card" id="banner">
+    <span class="badge warn">无身份键</span> <span id="bannerTxt"></span>
+    <button class="mini" id="upBtn" style="margin-left:10px" onclick="upgradeKeys()">一键补发 id（升级）</button>
+  </div>
+
+  <div class="card" id="tlCard" style="display:none">
+    <div class="row" style="margin-bottom:8px">
+      <div><button class="mini" id="undoBtn" onclick="undo()">↶ 撤销</button> <button class="mini" id="redoBtn" onclick="redo()">↷ 重做</button></div>
+      <div class="grow"><label style="display:inline;margin-right:8px">缩放</label><input type="range" id="zoom" min="4" max="24" value="10" style="width:160px;accent-color:var(--accent)" oninput="render()"></div>
+      <div class="kbd"><b>Ctrl+Z</b> 撤销 · <b>Ctrl+Shift+Z</b> 重做 · 拖动夹片换序 · 单击选中</div>
+    </div>
+    <div class="tlwrap"><div class="tlbody" id="tlbody"></div></div>
+  </div>
+
+  <div class="card inspector" id="insp" style="display:none">
+    <h2 style="font-size:15px;margin-bottom:6px" id="inspTitle"></h2>
+    <div class="grp"><label>口播 narration <span id="nCnt" style="float:right"></span></label><textarea id="fNarration" rows="3"></textarea></div>
+    <div class="insp-2col">
+      <div class="grp"><label>类型 type</label><select id="fType"></select></div>
+      <div class="grp"><label>导航标签 nav</label><input type="text" id="fNav"></div>
+      <div class="grp"><label>小标题 heading</label><input type="text" id="fHeading"></div>
+      <div class="grp"><label>徽标 kicker</label><input type="text" id="fKicker"></div>
+      <div class="grp"><label>标题 title</label><input type="text" id="fTitle"></div>
+      <div class="grp"><label>关键词 keyword</label><input type="text" id="fKeyword"></div>
+    </div>
+    <div class="grp"><label>素材 asset（空 = 生成场景；文件先在控制台传入 assets/）</label><select id="fAsset"></select></div>
+    <div class="dim" style="margin-top:6px">要点 items / 双行卡 / 分栏 media 等更多字段请去 <a href="/editor">✂ 精修页</a>；改完这里记得回来保存。</div>
+  </div>
+
+  <div class="card" id="saveCard" style="display:none">
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:7px;margin:0"><input type="checkbox" id="doRerun" checked style="accent-color:var(--accent)"> 保存后自动重跑</label>
+      <button class="primary" id="saveBtn" onclick="save()">保存并重排</button>
+      <span id="msg" class="dim">未载入任务</span>
+    </div>
+    <div id="runStat" class="dim" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+async function j(url, opt) { const r = await fetch(url, opt); const t = await r.json().catch(() => ({})); if (!r.ok) throw new Error(t.error || ('HTTP ' + r.status)); return t; }
+
+const TYPE_LABELS = { title:'标题卡', bullet:'要点卡', split:'左文右图', keyword:'砸字', transition:'章节转场', end:'收尾卡' };
+let cur = null;          // GET /api/editor/shots 响应
+let shots = [];          // 工作副本（含 n/id，随拖拽换序）
+let origKeySig = '';     // 载入时的身份序列（判定结构变更）
+let loadedNarr = [];     // 载入时逐镜面播文本（判口播动没动）
+let sel = -1;            // 选中镜下标
+let hist = [], future = [];   // 撤销/重做栈（整表快照）
+let pollT = null;
+
+const keyOf = (s) => ('id' in s ? String(s.id) : ('n' in s ? 'n' + s.n : ''));
+const sigOf = (list) => list.map(keyOf).join('|');
+function snapshot() { hist.push(JSON.stringify(shots)); if (hist.length > 60) hist.shift(); future.length = 0; }
+function undo() {
+  if (!hist.length) return;
+  future.push(JSON.stringify(shots));
+  shots = JSON.parse(hist.pop());
+  sel = Math.min(sel, shots.length - 1);
+  renderAll();
+}
+function redo() {
+  if (!future.length) return;
+  hist.push(JSON.stringify(shots));
+  shots = JSON.parse(future.pop());
+  sel = Math.min(sel, shots.length - 1);
+  renderAll();
+}
+window.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') { e.preventDefault(); undo(); }
+  else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+});
+
+async function init() {
+  try {
+    const tasks = await j('/api/tasks');
+    $('task').innerHTML = tasks.length ? tasks.map((t) => `<option value="${esc(t.name)}">${esc(t.name)}</option>`).join('') : '<option value="">（还没有任务）</option>';
+    const hash = decodeURIComponent(location.hash.slice(1));
+    if (hash && tasks.some((t) => t.name === hash)) $('task').value = hash;
+  } catch (e) { flash(e.message, true); }
+}
+
+async function load() {
+  const name = $('task').value;
+  if (!name) return;
+  if (cur && cur.name === name && dirtyAny() && !confirm('有未保存改动，重新载入会丢弃。继续？')) return;
+  try {
+    cur = await j('/api/editor/shots?name=' + encodeURIComponent(name));
+    shots = JSON.parse(JSON.stringify(cur.shots.shots));
+    origKeySig = sigOf(shots);
+    loadedNarr = shots.map((s) => norm(s.narration));
+    hist = []; future = []; sel = 0;
+    history.replaceState(null, '', '#' + encodeURIComponent(name));
+    renderAll();
+    flash(cur.busy ? '已有任务在跑，保存需等它完成' : `已载入 ${shots.length} 镜`, cur.busy);
+  } catch (e) { flash(e.message, true); }
+}
+const norm = (x) => String(x || '').trim().replace(/\s+/g, ' ');
+function narrChanged() { return shots.length !== loadedNarr.length || shots.some((s, i) => norm(s.narration) !== loadedNarr[i]); }
+function reordered() { return sigOf(shots) !== origKeySig || shots.length !== loadedNarr.length; }
+function dirtyAny() { return reordered() || narrChanged() || inspDirty(); }
+function inspDirty() {
+  if (!cur) return false;
+  const a = cur.shots.shots.map((s) => JSON.stringify(s)).sort().join('|');
+  const b = shots.map((s) => JSON.stringify(s)).sort().join('|');
+  return a !== b;
+}
+
+function widths() {
+  const pps = Number($('zoom').value);
+  const durs = cur && cur.durations;
+  if (durs) return durs.map((d) => Math.max(46, d * pps));
+  const w = Math.max(90, pps * 10);
+  return shots.map(() => w);
+}
+function typeOf(s) { return s.type && TYPE_LABELS[s.type] ? s.type : 'bullet'; }
+
+function renderAll() {
+  $('tlCard').style.display = cur ? '' : 'none';
+  $('saveCard').style.display = cur ? '' : 'none';
+  $('insp').style.display = cur && sel >= 0 ? '' : 'none';
+  $('banner').style.display = cur && cur.tailOnlyDel ? '' : 'none';
+  if (cur && cur.tailOnlyDel) $('bannerTxt').textContent = '该任务分镜无身份键，拖拽排序会被服务端拦下。点右边按钮给每镜补发 id（只加键不动内容，保存一次即升级），之后就能随意排序。';
+  renderStat(); render(); renderInspector();
+}
+function renderStat() {
+  if (!cur) return;
+  const total = cur.durations ? cur.durations.reduce((a, b) => a + b, 0) : 0;
+  const tags = [
+    `<span class="badge">${shots.length} 镜</span>`,
+    total ? `<span class="badge">全片 ${total.toFixed(1)}s${reordered() ? '（新顺序）' : ''}</span>` : '<span class="badge">时长未出片（等宽显示）</span>',
+    cur.narrationDrift ? '<span class="badge err">口播相对音频有漂移</span>' : '',
+    reordered() ? '<span class="badge warn">已换序/增删 → 保存后必重配音</span>' : '',
+    narrChanged() ? '<span class="badge warn">口播有改动 → 保存后必重配音</span>' : '',
+    cur.busy ? '<span class="badge warn">任务运行中</span>' : '',
+  ].join('');
+  $('stat').innerHTML = tags;
+  $('undoBtn').disabled = !hist.length;
+  $('redoBtn').disabled = !future.length;
+}
+function render() {
+  if (!cur) return;
+  const ws = widths();
+  const W = ws.reduce((a, b) => a + b + 4, 0) + 56;
+  const total = cur.durations ? cur.durations.reduce((a, b) => a + b, 0) : 0;
+  const pps = Number($('zoom').value);
+  let ticks = '';
+  if (total) {
+    const step = pps >= 14 ? 5 : 10;
+    for (let t = 0, x = 0; t <= total + 0.01; t += step) { ticks += `<span class="tick" style="left:${56 + x}px">${t.toFixed(0)}s</span>`; x += step * pps + 4; }
+  }
+  const keyLabel = (s) => {
+    const k = keyOf(s);
+    return k ? ' · ' + esc(k.startsWith('n') ? 'n' + s.n : s.id) : '';
+  };
+  const clipHTML = (s, i, lab) => {
+    const chg = lab ? '' : (norm(s.narration) !== (loadedNarr[i] ?? '\u0000') ? ' chg' : '');
+    return `<div class="clip${i === sel && !lab ? ' sel' : ''}${chg}" data-ci="${i}" style="width:${ws[i]}px">
+      ${lab ? '' : '<span class="no">#' + (i + 1) + keyLabel(s) + '</span>'}
+      <div class="ty ty-${typeOf(s)}">${lab || esc(TYPE_LABELS[typeOf(s)] || s.type)}</div>
+      <div class="txt">${esc(lab === '字幕' ? clipCaption(s) : (lab === '画面' ? (s.asset ? '📎 ' + s.asset : (s.title || s.heading || s.keyword || s.note || s.quote || '')) : (s.narration || '（无口播）')))}</div>
+      ${cur.durations && !lab ? `<span class="dur">${(cur.durations[i] || 0).toFixed(1)}s</span>` : ''}
+    </div>`;
+  };
+  $('tlbody').innerHTML =
+    `<div class="ruler">${ticks}</div>
+     <div class="track"><span class="tracklab">口播</span><div class="clips" id="trackMain">${shots.map((s, i) => clipHTML(s, i, '')).join('')}</div></div>
+     <div class="track"><span class="tracklab">画面</span><div class="clips">${shots.map((s, i) => clipHTML(s, i, '画面')).join('')}</div></div>
+     <div class="track"><span class="tracklab">字幕</span><div class="clips">${shots.map((s, i) => clipHTML(s, i, '字幕')).join('')}</div></div>
+     <div class="dropcaret" id="caret"></div>`;
+  bindDrag();
+  renderStat();
+}
+function clipCaption(s) {
+  if (s.type === 'title') return s.title || s.subtitle || '';
+  if (s.type === 'keyword') return s.keyword || '';
+  if (Array.isArray(s.items) && s.items.length) return s.items.map((it) => (it && it.t) ? it.t : it).join(' / ');
+  return s.note || s.quote || s.title || '';
+}
+
+// —— 拖拽（口播主轨，指针跟手 + 落点竖线） ——
+let drag = null;
+function bindDrag() {
+  const main = $('trackMain');
+  main.querySelectorAll('.clip').forEach((el) => {
+    el.addEventListener('pointerdown', (e) => {
+      if (cur.tailOnlyDel) { flash('无键任务先点上方「一键补发 id」升级再排序', true); return; }
+      e.preventDefault();
+      const i = +el.dataset.ci;
+      const rect = el.getBoundingClientRect();
+      drag = { i, el, grabOff: e.clientX - rect.left, x0: e.clientX, moved: false };
+      el.setPointerCapture(e.pointerId);
+      el.style.cursor = 'grabbing';
+    });
+  });
+  main.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    if (Math.abs(e.clientX - drag.x0) > 4) drag.moved = true;
+    if (!drag.moved) return;
+    drag.el.classList.add('ghost');
+    const kids = [...main.querySelectorAll('.clip')];
+    const host = main.getBoundingClientRect();
+    const x = e.clientX - host.left;
+    let target = kids.length; // 默认最右
+    for (let k = 0; k < kids.length; k++) {
+      const r = kids[k].getBoundingClientRect();
+      if (e.clientX < r.left + r.width / 2) { target = k; break; }
+    }
+    drag.target = target;
+    const caret = $('caret'), bodyL = $('tlbody').getBoundingClientRect();
+    let cx;
+    if (target >= kids.length) { const last = kids[kids.length - 1].getBoundingClientRect(); cx = last.right - bodyL.left + 2; }
+    else cx = kids[target].getBoundingClientRect().left - bodyL.left - 2;
+    caret.style.left = cx + 'px'; caret.style.display = 'block';
+  });
+  main.addEventListener('pointerup', () => {
+    if (!drag) return;
+    $('caret').style.display = 'none';
+    drag.el.classList.remove('ghost'); drag.el.style.cursor = 'grab';
+    if (drag.moved && drag.target != null && drag.target !== drag.i) {
+      snapshot();
+      const [it] = shots.splice(drag.i, 1);
+      let t = drag.target; if (t > drag.i) t--;
+      shots.splice(t, 0, it);
+      sel = t;
+      renderAll();
+      flash('已换序（保存后从第 1 步重配音）');
+    } else if (!drag.moved) {
+      sel = drag.i; renderAll();
+    }
+    drag = null;
+  });
+}
+
+// —— 检查器（选中镜字段编辑，改动即入快照/出快照在失焦） ——
+function renderInspector() {
+  if (!cur || sel < 0 || !shots[sel]) { $('insp').style.display = 'none'; return; }
+  const s = shots[sel];
+  $('insp').style.display = '';
+  $('inspTitle').textContent = `第 ${sel + 1} 镜 · ${TYPE_LABELS[typeOf(s)] || s.type}`;
+  $('fNarration').value = s.narration || '';
+  $('nCnt').textContent = (s.narration || '').length + ' 字';
+  $('fType').innerHTML = cur.types.map((x) => `<option value="${x}" ${x === s.type ? 'selected' : ''}>${esc(TYPE_LABELS[x] || x)}</option>`).join('');
+  $('fNav').value = s.nav || ''; $('fHeading').value = s.heading || ''; $('fKicker').value = s.kicker || '';
+  $('fTitle').value = s.title || ''; $('fKeyword').value = s.keyword || '';
+  $('fAsset').innerHTML = `<option value="">（无·生成场景）</option>` + (cur.assets || []).map((f) => `<option value="${esc(f)}" ${f === s.asset ? 'selected' : ''}>${esc(f)}</option>`).join('');
+}
+const FIELD_MAP = { fNarration: 'narration', fNav: 'nav', fHeading: 'heading', fKicker: 'kicker', fTitle: 'title', fKeyword: 'keyword', fAsset: 'asset' };
+Object.keys(FIELD_MAP).forEach((id) => {
+  let before = null;
+  $(id).addEventListener('focus', () => { before = JSON.stringify(shots); });
+  $(id).addEventListener('blur', () => {
+    const k = FIELD_MAP[id];
+    const v = $(id).value;
+    const s = shots[sel]; if (!s) { before = null; return; }
+    if ((s[k] || '') !== v) {
+      if (before) { hist.push(before); if (hist.length > 60) hist.shift(); future.length = 0; }
+      if (v) s[k] = v; else delete s[k];
+      render(); renderStat();
+    }
+    before = null;
+  });
+});
+$('fNarration').addEventListener('input', () => {
+  const s = shots[sel]; if (!s) return;
+  s.narration = $('fNarration').value;
+  $('nCnt').textContent = $('fNarration').value.length + ' 字';
+  render(); renderStat();
+});
+$('fType').addEventListener('change', () => { snapshot(); shots[sel].type = $('fType').value; render(); renderStat(); renderInspector(); });
+
+// —— 保存 ——
+async function upgradeKeys() {
+  // 给无键文档每镜补发 s91..（客户端预分配，走服务端 id 型通道）；升级即重跑一次，让 seg/时长与新键对齐
+  if (!cur || !cur.tailOnlyDel) return;
+  try {
+    const l = shots.map((s, i) => ({ id: 's' + (91 + i), ...s }));
+    snapshot();
+    await j('/api/editor/shots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cur.name, shots: l, rerun: true }) });
+    flash('✓ 已补发 id 升级并重跑（内容未动，只为解锁排序）');
+    startPoll();
+  } catch (e) { flash('升级失败：' + e.message, true); }
+}
+async function save() {
+  if (!cur) return;
+  const structural = reordered() || inspStructural();
+  $('saveBtn').disabled = true;
+  flash('保存并排队重跑…');
+  try {
+    const r = await j('/api/editor/shots', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: cur.name, shots, rerun: $('doRerun').checked }),
+    });
+    if (r.doc) { cur.shots = r.doc; shots = JSON.parse(JSON.stringify(r.doc.shots)); origKeySig = sigOf(shots); loadedNarr = shots.map((s) => norm(s.narration)); hist = []; future = []; }
+    const note = r.rerun ? `✓ 已保存 · 从第 ${r.rerun.from} 步重跑${r.rerun.from === 1 ? '（含重新配音）' : '（免重新配音）'}`
+      : `✓ 已保存 · 建议 from ${r.from}${r.structural || structural ? '（结构调整）' : ''}`;
+    flash(note);
+    renderAll();
+    if (r.rerun) startPoll();
+  } catch (e) { flash('✗ ' + e.message, true); }
+  $('saveBtn').disabled = false;
+}
+function inspStructural() { return false; }
+function startPoll() {
+  const el = $('runStat'); el.textContent = '轮询中…';
+  if (pollT) return;
+  pollT = setInterval(async () => {
+    try {
+      const s = await j('/api/status');
+      if (s.running) el.textContent = `⏳ 运行中：第 ${s.step}/6 ${s.stepName}${s.task ? ' · ' + s.task : ''} — <a href="/" target="_blank">控制台看日志</a>`;
+      else if (s.queue && s.queue.length) el.textContent = '⏳ 排队中…';
+      else { clearInterval(pollT); pollT = null; el.innerHTML = '✓ 重跑完成 — <a href="/" target="_blank">回控制台预览成片</a>'; load(); }
+    } catch { }
+  }, 1500);
+}
+function flash(msg, isErr) { $('msg').textContent = msg; $('msg').className = isErr ? 'err' : 'dim'; }
+
+init();
+</script>
+</body>
+</html>
