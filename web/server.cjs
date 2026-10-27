@@ -240,14 +240,14 @@ function runStep(taskDir, step) {
   });
 }
 
-async function runPipeline(taskDir, from = 1) {
+async function runPipeline(taskDir, from = 1, to = 6) {
   state.running = true;
   state.ok = null;
   state.at = Date.now();
   try {
-    if (from > 1) push(`局部重跑：从第 ${from} 步起（复用此前产物）`);
+    if (from > 1) push(`局部重跑：从第 ${from} 步起（复用此前产物）${to < 6 ? ` 至第 ${to} 步` : ''}`);
     for (const step of STEPS) {
-      if (step.n < from) continue;
+      if (step.n < from || step.n > to) continue;
       const ok = await runStep(taskDir, step);
       if (!ok) {
         state.ok = false;
@@ -275,7 +275,7 @@ async function pumpQueue() {
     if (state.queue.length || item.batchTotal > 1) {
       push(`══ 变体 ${item.batchIndex}/${item.batchTotal}：${item.name} ══`);
     }
-    await runPipeline(item.dir, item.from || 1);
+    await runPipeline(item.dir, item.from || 1, item.to || 6);
     state.done.push({ name: item.name, ok: state.ok });
   }
 }
@@ -305,7 +305,7 @@ function narrationDrift(dir, shots) {
   return want !== prev;
 }
 
-function startRerun(name, dir, from, patch, config, resetConfig) {
+function startRerun(name, dir, from, patch, config, resetConfig, to = 6) {
   const sj = path.join(dir, 'shots.json');
   if (!fs.existsSync(sj)) return { error: '任务不存在' };
   if (!Number.isInteger(from) || from < 1 || from > 6) return { error: 'from 必须是 1~6' };
@@ -333,7 +333,7 @@ function startRerun(name, dir, from, patch, config, resetConfig) {
   state.lines = [];
   state.done = [];
   state.task = name;
-  state.queue.push({ name, dir, from, batchTotal: 1 });
+  state.queue.push({ name, dir, from, to: Math.max(to, from), batchTotal: 1 });
   pumpQueue(); // 异步跑，进度走 /api/status 轮询
   return { ok: true, from };
 }
@@ -406,6 +406,8 @@ const server = http.createServer(async (req, res) => {
         defaultVoice: (cfg.voice?.dashscope || {}).voice || 'loongstella_v3.1',
         defaultRate: Number((cfg.voice?.dashscope || {}).targetCharsPerSec || 7.2),
         running: state.running,
+        platforms: Object.entries(cfg.platforms || {}).map(([id, v]) => ({ id, label: v.label || id, width: v.width, height: v.height })),
+        sizes: [{ w: 1080, h: 1920, label: '竖屏 9:16' }, { w: 1920, h: 1080, label: '横屏 16:9' }, { w: 1080, h: 1080, label: '方形 1:1' }],
         imagegen: { enabled: igSt.enabled, model: igSt.model, size: igSt.size, where: igSt.where },
         clone: {
           enabled: cSt.enabled, targetModel: cSt.targetModel, where: cSt.where,
@@ -437,6 +439,33 @@ const server = http.createServer(async (req, res) => {
         };
       }).sort((a, b) => b.mt - a.mt);
       return json(res, 200, tasks);
+    }
+    if (p === '/api/stepstatus' && req.method === 'GET') {
+      const name = String(u.searchParams.get('name') || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, name);
+      if (!fs.existsSync(path.join(dir, 'shots.json'))) return json(res, 404, { error: '任务不存在' });
+      const ex = (...s) => fs.existsSync(path.join(dir, ...s));
+      const count = (sub) => { try { return fs.readdirSync(path.join(dir, sub)).length; } catch { return 0; } };
+      const meta = readJson(path.join(dir, 'audio', 'meta.json')) || {};
+      const tl = readJson(path.join(dir, 'timeline.json')) || {};
+      const qcTxt = ex('qc-report.txt') ? fs.readFileSync(path.join(dir, 'qc-report.txt'), 'utf8') : '';
+      let qc = null;
+      if (qcTxt) {
+        const mm = /(\d+)\s*\/\s*(\d+)[^\n]*通过/.exec(qcTxt); // 「——— 18/18 机械项通过」汇总行
+        const failCount = (qcTxt.match(/^\s*✗/gm) || []).length;
+        qc = { done: true, pass: mm ? +mm[1] : null, total: mm ? +mm[2] : null, failCount, ok: failCount === 0 && (!mm || +mm[1] === +mm[2]) };
+      }
+      return json(res, 200, {
+        name,
+        voice: { ok: ex('audio', 'voice.mp3'), duration: meta.duration || 0, provider: meta.provider || '', charsPerSec: meta.charsPerSec || 0, clone: !!(meta.voice && meta.voice.clone) },
+        timeline: { ok: ex('timeline.json'), shots: Array.isArray(tl.shots) ? tl.shots.length : 0, total: Array.isArray(tl.shots) ? tl.shots.reduce((a, s) => a + (Number(s.dur) || 0), 0) : 0 },
+        scenes: { ok: count('scenes') > 0, count: count('scenes') },
+        segments: { ok: count('segments') > 0, count: count('segments'), cover: ex('封面.png') },
+        video: { ok: ex('成片.mp4'), mtime: ex('成片.mp4') ? fs.statSync(path.join(dir, '成片.mp4')).mtimeMs : 0 },
+        qc,
+        drift: narrationDrift(dir, readJson(path.join(dir, 'shots.json')) || {}),
+      });
     }
     if (p === '/api/create' && req.method === 'POST') {
       if (state.running || state.queue.length) return json(res, 409, { error: '有任务正在跑/排队，等它完成' });
@@ -511,7 +540,13 @@ const server = http.createServer(async (req, res) => {
         } else if (bgmLibSrc) {
           libBgmInto(bgmLibSrc, path.join(dir, 'assets')); // 素材库 BGM（P7-1）：复制为 assets/bgm.<ext>
         }
-        written.push({ name: v.name, dir });
+        written.push({ name: v.name, dir, shots: v.shots });
+      }
+      if (body.draft) {
+        // 向导草稿：只落 shots.json + 素材，不进队列、不配音（零花费），回传分镜供确认
+        const w = written[0];
+        log('07-web', `向导草稿 ${w.name} · ${w.shots.length} 镜（未出片，待确认）`);
+        return json(res, 200, { ok: true, draft: true, name: w.name, shotCount: w.shots.length, shots: w.shots, platform, sceneStyle, coverStyle });
       }
       log('07-web', `${written.length > 1 ? `批量变体 ${written.length} 条` : '新任务'} ${written.map((w) => w.name).join('、')} · ${split.shots.length} 镜 · 音色 ${written.length && body.voice || cfg.voice?.dashscope?.voice || ''}${body.rate ? ` · ${body.rate} 字/秒` : ''}`);
       state.lines = [];
@@ -528,7 +563,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       const name = String(body.name || '').trim();
       if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
-      const r = startRerun(name, path.join(OUTPUT, name), Number(body.from) || 3, body.shots, body.config, body.resetConfig);
+      const r = startRerun(name, path.join(OUTPUT, name), Number(body.from) || 3, body.shots, body.config, body.resetConfig, body.to != null ? Math.min(6, Math.max(1, Number(body.to) || 6)) : 6);
       if (r.error) return json(res, r.error === '任务不存在' ? 404 : 400, { error: r.error });
       return json(res, 200, { ok: true, name, from: r.from });
     }
@@ -950,6 +985,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/timeline') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'timeline.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      return res.end(html);
+    }
+    if (p === '/wizard') {
+      const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'wizard.html'), 'utf8');
       res.writeHead(200, { 'Content-Type': MIME['.html'] });
       return res.end(html);
     }

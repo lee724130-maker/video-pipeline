@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>流程向导 · 零成本视频流水线</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0B0E14; --panel:#12161f; --line:#232a38; --fg:#F5F7FA; --dim:#9AA3B2; --accent:#08B6DD; --accent-2:#7C3AED; --ok:#22c55e; --err:#ef4444; --warn:#f59e0b; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:"Microsoft YaHei","PingFang SC",sans-serif; min-height:100vh; }
+  .wrap { max-width:980px; margin:0 auto; padding:26px 22px 90px; }
+  h1 { font-size:24px; margin-bottom:4px; }
+  h1 .tag { font-size:13px; color:var(--accent); font-weight:400; margin-left:10px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:18px; line-height:1.7; }
+  a { color:var(--accent); text-decoration:none; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; }
+  label { display:block; font-size:12px; color:var(--dim); margin:8px 0 4px; }
+  textarea, input[type=text], select { width:100%; background:#0d111a; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; font-family:inherit; outline:none; }
+  textarea:focus, input:focus, select:focus { border-color:var(--accent); }
+  textarea { min-height:96px; resize:vertical; line-height:1.6; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; } .row > div { flex:1; min-width:150px; }
+  @media (max-width:680px){ .row { flex-direction:column; } }
+  button { font-family:inherit; }
+  button.primary { border:none; border-radius:10px; padding:11px 26px; background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
+  button.primary:disabled { opacity:.45; cursor:not-allowed; }
+  button.ghost { border:1px solid var(--line); background:#161b26; color:var(--fg); border-radius:9px; padding:8px 15px; cursor:pointer; font-size:13px; }
+  button.ghost:hover { border-color:var(--accent); }
+  button.ghost:disabled { opacity:.4; cursor:not-allowed; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; background:#1b2433; color:var(--dim); margin:0 4px 4px 0; }
+  .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
+  .badge.warn { background:rgba(245,158,11,.15); color:var(--warn); }
+  .badge.err { background:rgba(239,68,68,.15); color:#f87171; }
+  /* stepper */
+  .steps { display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap; }
+  .node { flex:1; min-width:120px; display:flex; align-items:center; gap:9px; padding:11px 12px; border:1px solid var(--line); border-radius:11px; background:#0d111a; color:var(--dim); font-size:13px; }
+  .node .dot { width:22px; height:22px; flex:0 0 22px; border-radius:50%; background:#232a38; color:var(--fg); font-size:12px; display:flex; align-items:center; justify-content:center; }
+  .node.active { border-color:var(--accent); color:var(--fg); }
+  .node.active .dot { background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#fff; }
+  .node.done { color:var(--ok); cursor:pointer; }
+  .node.done .dot { background:rgba(34,197,94,.2); color:var(--ok); }
+  .stage { display:none; } .stage.on { display:block; }
+  .shotrow { display:flex; gap:10px; align-items:flex-start; padding:9px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+  .shotrow:last-child { border-bottom:none; }
+  .shotrow .idx { flex:0 0 26px; color:var(--dim); text-align:right; }
+  .shotrow .ty { flex:0 0 66px; }
+  .shotrow .tx { flex:1; color:var(--fg); line-height:1.5; }
+  .ty { display:inline-block; font-size:10px; padding:1px 7px; border-radius:8px; }
+  .ty.title{background:rgba(8,182,221,.16);color:#4cc9ec}.ty.bullet{background:rgba(124,58,237,.18);color:#b794f6}
+  .ty.split{background:rgba(34,197,94,.15);color:#5fd08a}.ty.keyword{background:rgba(245,158,11,.16);color:#fbbf24}
+  .ty.transition{background:rgba(154,163,178,.15);color:#aab4c5}.ty.end{background:rgba(239,68,68,.14);color:#f87171}
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; margin-top:8px; }
+  .grid img, .grid video { width:100%; border-radius:8px; border:1px solid var(--line); background:#000; display:block; }
+  .grid .cap { font-size:11px; color:var(--dim); margin-top:3px; }
+  .foot { display:flex; gap:12px; align-items:center; margin-top:16px; flex-wrap:wrap; }
+  .foot .spacer { flex:1; }
+  .msg { font-size:13px; } .msg.err{color:var(--err)} .msg.ok{color:var(--ok)} .msg.dim{color:var(--dim)}
+  audio, video { width:100%; margin-top:8px; }
+  .bar { height:6px; border-radius:4px; background:#232a38; overflow:hidden; margin:8px 0; display:none; }
+  .bar > i { display:block; height:100%; width:30%; background:linear-gradient(90deg,var(--accent),var(--accent-2)); animation:run 1.1s infinite; }
+  @keyframes run { 0%{transform:translateX(-100%)} 100%{transform:translateX(340%)} }
+  #log { font-size:11px; color:var(--dim); max-height:120px; overflow:auto; white-space:pre-wrap; line-height:1.5; margin-top:8px; display:none; background:#0a0d13; border:1px solid var(--line); border-radius:8px; padding:8px; }
+  .sumgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px 20px; margin:6px 0; }
+  .sumgrid div { font-size:14px; padding:6px 0; border-bottom:1px dashed var(--line); }
+  .sumgrid b { color:var(--dim); font-weight:400; margin-right:8px; }
+  .resume { display:flex; gap:10px; align-items:flex-end; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>流程向导 <span class="tag">一步一确认 · 先审后跑 · 零成本</span></h1>
+  <div class="sub">按流程把「一句话 → 成片」拆成 5 个可确认的关口：<b>分镜 → 配音 → 画面 → 总结 → 出片</b>。每一步做完先给你看效果，点「确认」才跑下一步（配音/渲染都是本地免费额度，绝不替你在没确认时偷跑）。要精细改分镜去 <a href="/editor">✂ 精修页</a>，拖镜序去 <a href="/timeline">⇉ 时间轴页</a>。<a href="/">← 回控制台</a></div>
+
+  <div class="card">
+    <div class="resume">
+      <div style="flex:1"><label>新需求直接往下走；或载入已有任务从半途继续</label><select id="resumeTask"><option value="">（新建一条）</option></select></div>
+      <div style="flex:0 0 auto"><button class="ghost" onclick="resume()">载入</button></div>
+    </div>
+  </div>
+
+  <div class="steps" id="steps"></div>
+
+  <!-- ① 分镜 -->
+  <div class="stage card" data-stage="1">
+    <div class="foot" style="margin:0 0 6px;padding:0;border:none"><h2 style="font-size:16px">① 说需求 · 生成分镜</h2></div>
+    <label>口播文案（一段话即可，系统按句自动拆分镜：首句标题卡 / 含逗号要点卡 / 末句收尾卡）</label>
+    <textarea id="text" placeholder="例如：新手做 AI 短剧最容易踩的 3 个坑。第一，一上来就追求电影级画质……"></textarea>
+    <div class="row">
+      <div><label>发布规格</label><select id="spec"></select></div>
+      <div><label>音色</label><select id="voice"></select></div>
+      <div><label>语速 <span id="rateVal"></span></label><input type="range" id="rate" min="4" max="10" step="0.2" oninput="rateLbl()"></div>
+    </div>
+    <div class="row">
+      <div><label>场景风格</label><select id="scene"><option value="classic">classic 经典暗底</option><option value="deck">deck 演示风</option><option value="paper">paper 纸感浅色</option></select></div>
+      <div><label>封面风格</label><select id="cover"><option value="tech">tech 暗色科技</option><option value="bold">bold 高对比大字</option><option value="magazine">magazine 杂志留白</option></select></div>
+      <div><label>字幕</label><select id="caps"><option value="on">烧录字幕</option><option value="off">纯画面+旁白</option></select></div>
+    </div>
+    <div class="foot">
+      <button class="primary" id="genBtn" onclick="genStoryboard()">生成分镜草稿</button>
+      <span class="spacer"></span><span id="msg1" class="msg dim">草稿零花费，只拆镜不配音</span>
+    </div>
+  </div>
+
+  <!-- ② 分镜预览/确认 -->
+  <div class="stage card" data-stage="2">
+    <h2 style="font-size:16px;margin-bottom:4px">② 确认分镜</h2>
+    <div id="sbMeta" class="dim" style="font-size:12px;margin-bottom:6px"></div>
+    <div id="sbList"></div>
+    <div class="foot">
+      <button class="ghost" onclick="backTo(1)">← 改需求</button>
+      <button class="ghost" onclick="loc('/editor')">去精修页微调字段</button>
+      <span class="spacer"></span>
+      <button class="primary" onclick="confirmStoryboard()">确认分镜，去配音 →</button>
+    </div>
+  </div>
+
+  <!-- ③ 配音 -->
+  <div class="stage card" data-stage="3">
+    <h2 style="font-size:16px;margin-bottom:4px">③ 配音（本地免费）</h2>
+    <div id="voiceSum" class="dim" style="font-size:13px"></div>
+    <div id="voiceBox" style="display:none"><audio id="audio" controls></audio></div>
+    <div class="bar" id="bar3"><i></i></div><div id="log" ></div>
+    <div class="foot">
+      <button class="ghost" onclick="backTo(2)">← 回分镜</button>
+      <button class="primary" id="run3" onclick="doVoice()">生成配音</button>
+      <span class="spacer"></span>
+      <button class="primary" id="next3" style="display:none" onclick="go(4)">确认试听，去画面 →</button>
+    </div>
+  </div>
+
+  <!-- ④ 画面 -->
+  <div class="stage card" data-stage="4">
+    <h2 style="font-size:16px;margin-bottom:4px">④ 画面与镜头</h2>
+    <div id="sceneSum" class="dim" style="font-size:13px"></div>
+    <div class="bar" id="bar4"><i></i></div>
+    <div id="sceneBox" style="display:none">
+      <label style="margin-top:10px">封面</label><div id="coverBox" class="grid"></div>
+      <label style="margin-top:12px">镜头片段（点击可放大预览）</label><div id="segBox" class="grid"></div>
+    </div>
+    <div class="foot">
+      <button class="ghost" onclick="backTo(3)">← 回配音</button>
+      <button class="primary" id="run4" onclick="doScenes()">渲染画面</button>
+      <button class="ghost" id="tlLink" style="display:none" onclick="loc('/timeline')">⇉ 拖镜序</button>
+      <span class="spacer"></span>
+      <button class="primary" id="next4" style="display:none" onclick="toSummary()">确认画面，去总结 →</button>
+    </div>
+  </div>
+
+  <!-- ⑤ 总结 -->
+  <div class="stage card" data-stage="5">
+    <h2 style="font-size:16px;margin-bottom:6px">⑤ 出片前总结 · 确认无误再合成</h2>
+    <div class="sumgrid" id="sumGrid"></div>
+    <div id="sumWarn"></div>
+    <div class="foot">
+      <button class="ghost" onclick="backTo(4)">← 回画面</button>
+      <span class="spacer"></span>
+      <button class="primary" id="run5" onclick="doCompose()">确认无误，出片看效果 🎬</button>
+    </div>
+  </div>
+
+  <!-- ⑥ 成片 -->
+  <div class="stage card" data-stage="6">
+    <h2 style="font-size:16px;margin-bottom:6px" id="doneTitle">🎉 成片完成</h2>
+    <div id="qcSum" style="margin-bottom:8px"></div>
+    <div id="finalBox"></div>
+    <div class="bar" id="bar6"><i></i></div>
+    <div class="foot">
+      <button class="ghost" onclick="backTo(5)">← 回总结</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="dlBtn" onclick="dl()">下载成片</button>
+      <button class="primary" onclick="restart()">再做一个 →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+async function j(url, opt){ const r = await fetch(url, opt); const t = await r.json().catch(() => ({})); if (!r.ok) throw new Error(t.error || ('HTTP ' + r.status)); return t; }
+function loc(path){ if (!task) { alert('先生成分镜草稿'); return; } location.href = path + '#' + encodeURIComponent(task); }
+function fileUrl(name, rel){ return '/file/' + encodeURIComponent(name) + '/' + rel.split('/').map(encodeURIComponent).join('/') + '?t=' + Date.now(); }
+
+const STEPS = [
+  { n:1, t:'分镜', s:'说需求' },
+  { n:2, t:'确认', s:'审分镜' },
+  { n:3, t:'配音', s:'试听' },
+  { n:4, t:'画面', s:'看镜头' },
+  { n:5, t:'总结', s:'核对' },
+  { n:6, t:'成片', s:'下载' },
+];
+let meta = null, task = null, ss = null, stage = 1, story = [];
+
+function renderSteps(){
+  $('steps').innerHTML = STEPS.map((x) => {
+    const cls = x.n === stage ? 'active' : (x.n < stage ? 'done' : '');
+    const clickable = x.n < stage;
+    return '<div class="node ' + cls + '" ' + (clickable ? 'onclick="backTo(' + x.n + ')"' : '') + '><span class="dot">' + (x.n < stage ? '✓' : x.n) + '</span><span>' + esc(x.t) + '<br><span style="font-size:11px">' + esc(x.s) + '</span></span></div>';
+  }).join('');
+  document.querySelectorAll('.stage').forEach((el) => el.classList.toggle('on', +el.dataset.stage === stage));
+}
+function go(n){ stage = n; if (n === 5 && ss) showSummary(); renderSteps(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function backTo(n){ go(n); }
+async function toSummary(){ await refreshSS(); stage = 5; showSummary(); renderSteps(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+async function init(){
+  try {
+    meta = await j('/api/meta');
+    const spec = $('spec');
+    spec.innerHTML = '<optgroup label="平台规格">' + (meta.platforms || []).map((pt) => '<option value="plat:' + esc(pt.id) + '">' + esc(pt.label) + ' · ' + pt.width + '×' + pt.height + '</option>').join('') + '</optgroup><optgroup label="自定义画幅">' + (meta.sizes || []).map((sz) => '<option value="size:' + sz.w + 'x' + sz.h + '">' + esc(sz.label) + ' ' + sz.w + '×' + sz.h + '</option>').join('') + '</optgroup>';
+    $('voice').innerHTML = (meta.voices || []).map((v) => '<option value="' + esc(v.id) + '">' + esc(v.name) + '</option>').join('');
+    if (meta.defaultVoice) $('voice').value = meta.defaultVoice;
+    $('rate').value = meta.defaultRate || 7.2; rateLbl();
+    const tasks = await j('/api/tasks');
+    $('resumeTask').innerHTML = '<option value="">（新建一条）</option>' + tasks.map((t) => '<option value="' + esc(t.name) + '">' + esc(t.name) + '</option>').join('');
+  } catch (e){ alert('初始化失败：' + e.message); }
+  renderSteps();
+}
+function rateLbl(){ $('rateVal').textContent = (+$('rate').value).toFixed(1) + ' 字/秒'; }
+
+async function genStoryboard(){
+  const text = $('text').value.trim();
+  if (!text) { m1('先写一句需求', true); return; }
+  const spec = $('spec').value;
+  const body = { text, draft: true, voice: $('voice').value, rate: +$('rate').value, sceneStyle: $('scene').value, coverStyle: $('cover').value, captions: $('caps').value === 'on' };
+  if (spec.startsWith('plat:')) body.platform = spec.slice(5);
+  else if (spec.startsWith('size:')) { const [w, h] = spec.slice(5).split('x').map(Number); body.width = w; body.height = h; }
+  $('genBtn').disabled = true; m1('拆解分镜中…');
+  try {
+    const r = await j('/api/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    task = r.name; story = r.shots || [];
+    renderStoryboard();
+    m1('已生成草稿（未配音）', false);
+    go(2);
+  } catch (e){ m1('✗ ' + e.message, true); }
+  $('genBtn').disabled = false;
+}
+function renderStoryboard(){
+  $('sbMeta').innerHTML = '任务 <b>' + esc(task) + '</b> · ' + story.length + ' 镜 · 口播合计 ' + story.reduce((a, s) => a + String(s.narration || '').trim().length, 0) + ' 字（时长待配音后由真实语音反推）';
+  $('sbList').innerHTML = story.map((s, i) => {
+    const ty = s.type || 'bullet';
+    const head = s.title || s.heading || s.keyword || s.note || s.quote || '';
+    return '<div class="shotrow"><span class="idx">' + (i + 1) + '</span><span class="ty ty-' + esc(ty) + '">' + esc(ty) + '</span><span class="tx">' + (head ? '<b>' + esc(head) + '</b>　' : '') + esc(s.narration || '') + (s.asset ? '　<span class="badge">📎 ' + esc(s.asset) + '</span>' : '') + '</span></div>';
+  }).join('');
+}
+async function confirmStoryboard(){ await refreshSS(); go(3); }
+
+async function refreshSS(){ if (!task) return; try { ss = await j('/api/stepstatus?name=' + encodeURIComponent(task)); } catch (e){ ss = null; } }
+
+// —— 通用：跑一段管线并轮询 ——
+async function runRange(from, to, barId, btn, done){
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '跑第 ' + from + (to > from ? '–' + to : '') + ' 步…';
+  $(barId).style.display = 'block'; $('log').style.display = 'block'; $('log').textContent = '';
+  try {
+    const r = await j('/api/rerun', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: task, from, to }) });
+    await poll((s) => { $('log').textContent = (s.lines || []).slice(-8).join('\n'); });
+    await refreshSS();
+    done && done();
+  } catch (e){ m('✗ ' + e.message, true); }
+  $(barId).style.display = 'none'; btn.disabled = false; btn.textContent = old;
+}
+function poll(onTick){
+  return new Promise((resolve) => {
+    const t = setInterval(async () => {
+      try {
+        const s = await j('/api/status');
+        onTick && onTick(s);
+        if (!s.running && !(s.queue && s.queue.length)) { clearInterval(t); setTimeout(resolve, 400); }
+      } catch { /* 抖动继续 */ }
+    }, 1200);
+  });
+}
+async function doVoice(){
+  await runRange(1, 1, 'bar3', $('run3'), () => {
+    if (ss && ss.voice && ss.voice.ok) {
+      $('voiceBox').style.display = '';
+      $('audio').src = fileUrl(task, 'audio/voice.mp3');
+      $('voiceSum').innerHTML = '<span class="badge ok">配音完成</span> 时长 ' + (ss.voice.duration || 0).toFixed(1) + 's · ' + esc(ss.voice.provider) + (ss.voice.clone ? ' · 克隆音色' : '') + ' · ' + (ss.voice.charsPerSec || 0) + ' 字/秒';
+      $('next3').style.display = '';
+    } else $('voiceSum').innerHTML = '<span class="badge err">配音未完成，看日志</span>';
+  });
+}
+async function doScenes(){
+  await runRange(2, 4, 'bar4', $('run4'), () => {
+    if (ss && ss.segments && ss.segments.ok) {
+      $('sceneBox').style.display = '';
+      $('sceneSum').innerHTML = '<span class="badge ok">画面渲染完成</span> ' + (ss.timeline.shots || 0) + ' 镜 · 全片 ' + (ss.timeline.total || 0).toFixed(1) + 's · ' + ss.segments.count + ' 片段';
+      $('coverBox').innerHTML = ss.segments.cover ? '<div><img src="' + fileUrl(task, '封面.png') + '"><div class="cap">封面.png</div></div>' : '';
+      const segs = story.map((s, i) => ({ id: s.id || ('s' + String(i + 1).padStart(2, '0')), ty: s.type || 'bullet' }));
+      $('segBox').innerHTML = segs.map((g) => '<div><video controls preload="metadata" src="' + fileUrl(task, 'segments/' + encodeURIComponent(g.id) + '.mp4') + '"></video><div class="cap">' + esc(g.id) + ' · ' + esc(g.ty) + '</div></div>').join('');
+      $('tlLink').style.display = ''; $('next4').style.display = '';
+    } else $('sceneSum').innerHTML = '<span class="badge err">画面未完成，看日志</span>';
+  });
+}
+function showSummary(){
+  const dur = ss && ss.timeline ? ss.timeline.total : 0;
+  const plat = $('spec').value;
+  $('sumGrid').innerHTML = [
+    ['任务', esc(task)],
+    ['镜数', (story.length) + ' 镜'],
+    ['全片时长', dur.toFixed(1) + 's'],
+    ['配音', ss && ss.voice ? (ss.voice.duration || 0).toFixed(1) + 's · ' + esc(ss.voice.provider) : '—'],
+    ['发布规格', esc(document.getElementById('spec').selectedOptions[0] ? document.getElementById('spec').selectedOptions[0].text : plat)],
+    ['场景/封面', $('scene').value + ' / ' + $('cover').value],
+    ['字幕', $('caps').value === 'on' ? '烧录' : '关闭（纯画面+旁白）'],
+    ['画面片段', ss && ss.segments ? ss.segments.count + ' 个' + (ss.segments.cover ? ' + 封面' : '') : '—'],
+  ].map((r) => '<div><b>' + esc(r[0]) + '</b>' + r[1] + '</div>').join('');
+  $('sumWarn').innerHTML = (ss && ss.drift) ? '<div class="badge warn">分镜口播相对音频有改动，出片会自动重配音</div>' : '<div class="badge ok">口径一致，出片只合成不重配音</div>';
+}
+async function doCompose(){
+  go(6); $('doneTitle').textContent = '⏳ 合成中…'; $('finalBox').innerHTML = ''; $('qcSum').innerHTML = '';
+  await runRange(5, 6, 'bar6', $('run5'), async () => {
+    await refreshSS();
+    if (ss && ss.video && ss.video.ok) {
+      $('doneTitle').textContent = '🎉 成片完成';
+      const qc = ss.qc;
+      $('qcSum').innerHTML = qc ? ('<span class="badge ' + (qc.ok ? 'ok' : 'warn') + '">QC ' + (qc.pass ?? '?') + '/' + (qc.total ?? '?') + ' 通过</span>' + (qc.failCount ? '<span class="badge err">' + qc.failCount + ' 项未过</span>' : '')) : '';
+      $('finalBox').innerHTML = '<video controls src="' + fileUrl(task, '成片.mp4') + '"></video>';
+    } else { $('doneTitle').textContent = '✗ 合成未完成'; $('finalBox').innerHTML = '<div class="msg err">看上方日志定位（常见：网络/磁盘/素材缺失）</div>'; }
+  });
+}
+function dl(){ if (task) { const a = document.createElement('a'); a.href = fileUrl(task, '成片.mp4'); a.download = task + '-成片.mp4'; a.click(); } }
+function restart(){ task = null; ss = null; story = []; $('text').value = ''; $('voiceBox').style.display = 'none'; $('sceneBox').style.display = 'none'; $('next3').style.display = 'none'; $('next4').style.display = 'none'; $('tlLink').style.display = 'none'; go(1); }
+
+function resume(){
+  const name = $('resumeTask').value;
+  if (!name) { task = null; return; }
+  task = name;
+  j('/api/editor/shots?name=' + encodeURIComponent(name)).then((g) => {
+    story = g.shots.shots || [];
+    if (g.shots.sceneStyle) $('scene').value = g.shots.sceneStyle;
+    if (g.shots.coverStyle) $('cover').value = g.shots.coverStyle;
+    if (g.shots.captions === false) $('caps').value = 'off';
+    renderStoryboard();
+    refreshSS().then(() => {
+      if (ss && ss.video && ss.video.ok) go(6);
+      else if (ss && ss.segments && ss.segments.ok) go(5);
+      else if (ss && ss.voice && ss.voice.ok) go(4);
+      else go(3);
+    });
+  }).catch((e) => alert('载入失败：' + e.message));
+}
+function m(msg, isErr){ const el = $('msg1'); if (el) { el.textContent = msg; el.className = 'msg ' + (isErr ? 'err' : 'dim'); } }
+function m1(msg, isErr){ m(msg, isErr); }
+
+init();
+</script>
+</body>
+</html>

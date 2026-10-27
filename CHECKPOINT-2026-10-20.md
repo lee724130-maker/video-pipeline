@@ -480,3 +480,13 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - **踩坑**：① timeline.html 内联 JS 里模板串嵌套（clip 头部 `${...}` 内又写模板串）→ 抽 `keyLabel()` 函数拆平，并把内层降为字符串拼接；② 升级最初被 P11 origPool 拦（`s91 不在原任务里`）——正是升级通道要解决的，测试暴露后补 upgrading 分支；③ 升级最初误期望 from1+seg 落盘——厘清「补 id 不改口播/顺序」应 from2 免配音、02 不写 seg，改测断言与文档口径一致。
 - 计费：D 段一次真实 02→06 重跑（免费额度、无 TTS/无生图）。服务：8787 带 upgrading+durations 运行中。
 - **下一步**：待用户上手 `/timeline` 反馈交互手感；整站「流程分步 + 确认门 + 总结页」大布局连同 P12 重剪段时间轴一并设计（避免两套时间轴各画各的）。
+
+## P14 · 流程向导（2026-10-27，用户「按流程分步确认 + 总结页再出片」整站改造，冒烟 27/27）
+
+- **动因升级**：用户上手后反馈 P11 卡片流「挺多不顺手」，明确要「每步做完点确认再进下一步、最后总结页确认无误才出片看效果」。这是**编排流**诉求（先审后跑），与 P12 重剪段（秒级时间轴）**正交**——本刀做向导，时间轴级裁剪仍归 P12，不动那个决定。
+- **向导页**（`web/public/wizard.html` 单文件）：6 关口 stepper ①说需求→生成分镜草稿 ②确认分镜（跳精修/时间轴微调）③生成配音+试听 ④渲染画面+封面/片段网格预览 ⑤出片前总结核对 ⑥成片+QC+下载。**每关都是确认门**，`runRange(from,to)` 只跑本关对应步、点确认才进下一关，绝不替用户偷跑下游（配音/渲染虽免费但耗时，先审后跑是核心体验）。顶部「载入已有任务」按 stepstatus 跳到对应关续跑。
+- **server 三原语**：① **有界运行** `runPipeline(taskDir,from,to=6)` 循环加 `|| step.n>to` 跳过，`pumpQueue` 透传 `item.to||6`，`startRerun(...,to=6)` 且 `to=Math.max(to,from)` 防倒挂，`/api/rerun` 收 `body.to`（钳 1~6）。② **草稿创建** `/api/create {draft:true}`：`written.push({...,shots})` 后若 draft 直接 return（不进 state.queue、不 pumpQueue、零花费），回传 shots 供分镜确认；`if (body.rate>0)` 等既有校验/素材落盘全复用。③ **步骤状态** `/api/stepstatus?name=`：`ex()/count()` 探 voice.mp3/timeline.json/scenes/segments/封面.png/成片.mp4/qc-report.txt 存在性 + meta 时长/字秒/provider/clone + drift（复用 narrationDrift）+ qc 汇总；`/api/meta` 补 platforms[]（label/width/height 取自 config 单一出处）+ sizes[]，向导动态建发布规格下拉。
+- **冒烟 27/27**（p14-wizard-smoke.cjs）：A 静态 6（含 runPipeline 有界签名/queue 透传/draft 分支源码断言 + 三页入口）· B 草稿 4（**落 shots.json 但无 voice.mp3**、stepstatus voice.ok=false、drift=true 从未配音）· C 有界配音 5（**run 1→1 后 timeline/segments/video 仍 false——to=1 不越界**；seg 落盘 drift 归零）· D 有界画面 4（run 2→4 后 video 仍 false、qc=null）· E 有界出片 4（run 5→6 后 video.ok + qc 18/18 failCount0 + 成片 >100KB）· F 清场 2。P11 35/35 + P9 36/36 + P13 19/19 回归全绿（`startRerun` 新签名向后兼容，旧调用 `to` 缺省 6 行为不变）。
+- **踩坑**：① qc 汇总正则 `\s*(?:项)?通过` 吃不下「18/18 **机械**项通过」的「机械」二字 → 放宽 `[^\n]*通过`（先用既有任务秒验再重跑全链）；② wizard.html 内联 JS 吸取 P13 教训全程字符串拼接无嵌套模板串，一次过语法门；③ 服务重启 curl 撞就绪竞态拿空 body → 改 `for` 探 `/api/status` 200 再发。
+- 计费：向导 E2E 一轮真实免费额度 TTS + 本地渲染合成（零复刻零生图）。服务：8787 带三原语运行中。
+- **下一步**：待用户上手 `/wizard` 反馈关口划分/文案/交互；P12 重剪段（秒级 in/out 时间轴）四拍板项仍等确认；若向导手感 OK，可考虑把控制台一键流与向导合并成「快/稳」双模式入口。
