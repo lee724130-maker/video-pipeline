@@ -978,6 +978,11 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': MIME['.html'] });
       return res.end(html);
     }
+    if (p === '/console') {
+      const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'console.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      return res.end(html);
+    }
     if (p === '/editor') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'editor.html'), 'utf8');
       res.writeHead(200, { 'Content-Type': MIME['.html'] });

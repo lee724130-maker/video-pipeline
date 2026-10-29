@@ -76,7 +76,7 @@
 <body>
 <div class="wrap">
   <h1>流程向导 <span class="tag">一步一页 · 做完点下一步</span></h1>
-  <div class="sub">每一步都是独立一页，这页的事做完才能翻页（没做完会被拦在原地提示原因）。<a href="/">← 回控制台</a> · <a href="/editor">✂ 精修页</a> · <a href="/timeline">⇉ 时间轴</a></div>
+  <div class="sub">每一步都是独立一页，这页的事做完才能翻页（没做完会被拦在原地提示原因）。<a href="/">← 入口</a> · <a href="/console">⚡ 控制台</a> · <a href="/editor">✂ 精修页</a> · <a href="/timeline">⇉ 时间轴</a></div>
 
   <div class="steps" id="steps"></div>
 
@@ -181,7 +181,7 @@ function esc(s){ return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;
 async function j(url, opt){ const r = await fetch(url, opt); const t = await r.json().catch(() => ({})); if (!r.ok) throw new Error(t.error || ('HTTP ' + r.status)); return t; }
 function fileUrl(name, rel){ return '/file/' + encodeURIComponent(name) + '/' + rel.split('/').map(encodeURIComponent).join('/') + '?t=' + Date.now(); }
 function loc(path){ if (!task) { msg('先在第 1 页生成草稿（或载入已有任务）', true); return; } location.href = path + '#' + encodeURIComponent(task); }
-function backConsole(){ location.href = '/'; }
+function backConsole(){ location.href = '/console'; }
 
 const PAGES = [
   { n:1, t:'需求' }, { n:2, t:'分镜' }, { n:3, t:'配音' }, { n:4, t:'画面' },

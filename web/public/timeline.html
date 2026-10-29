@@ -389,9 +389,9 @@ function startPoll() {
   pollT = setInterval(async () => {
     try {
       const s = await j('/api/status');
-      if (s.running) el.textContent = `⏳ 运行中：第 ${s.step}/6 ${s.stepName}${s.task ? ' · ' + s.task : ''} — <a href="/" target="_blank">控制台看日志</a>`;
+      if (s.running) el.textContent = `⏳ 运行中：第 ${s.step}/6 ${s.stepName}${s.task ? ' · ' + s.task : ''} — <a href="/console" target="_blank">控制台看日志</a>`;
       else if (s.queue && s.queue.length) el.textContent = '⏳ 排队中…';
-      else { clearInterval(pollT); pollT = null; el.innerHTML = '✓ 重跑完成 — <a href="/" target="_blank">回控制台预览成片</a>'; load(); }
+      else { clearInterval(pollT); pollT = null; el.innerHTML = '✓ 重跑完成 — <a href="/console" target="_blank">回控制台预览成片</a>'; load(); }
     } catch { }
   }, 1500);
 }

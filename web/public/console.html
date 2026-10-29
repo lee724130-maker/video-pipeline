@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>零成本视频流水线 · 本地控制台</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#0B0E14; --panel:#12161f; --line:#232a38; --fg:#F5F7FA; --dim:#9AA3B2; --accent:#08B6DD; --accent-2:#7C3AED; --ok:#22c55e; --err:#ef4444; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--fg); font-family:"Microsoft YaHei","PingFang SC",sans-serif; min-height:100vh; }
+  .wrap { max-width:1240px; margin:0 auto; padding:32px 24px 80px; }
+  h1 { font-size:26px; margin-bottom:6px; }
+  h1 .tag { font-size:13px; color:var(--accent); font-weight:400; margin-left:10px; }
+  .sub { color:var(--dim); font-size:14px; margin-bottom:28px; }
+  .grid { display:grid; grid-template-columns: 440px 1fr; gap:24px; align-items:start; }
+  @media (max-width:960px){ .grid{grid-template-columns:1fr;} }
+  .rightcol { display:flex; flex-direction:column; gap:24px; }
+  .shelf { grid-column:1 / -1; }
+  .techgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
+  .techgrid > .sub { grid-column:1/-1; }
+  .cathead { grid-column:1/-1; display:flex; align-items:baseline; gap:8px; margin-top:8px; padding-bottom:5px; border-bottom:1px solid var(--line); }
+  .cathead b { font-size:14px; }
+  .cathead span { font-size:11px; color:#8a94a3; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .card h2 { font-size:16px; margin-bottom:16px; color:var(--fg); }
+  label { display:block; font-size:13px; color:var(--dim); margin:14px 0 6px; }
+  textarea, input[type=text], select {
+    width:100%; background:#0d111a; color:var(--fg); border:1px solid var(--line);
+    border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit; outline:none;
+  }
+  textarea:focus, input:focus, select:focus { border-color:var(--accent); }
+  textarea { min-height:130px; resize:vertical; line-height:1.7; }
+  .row { display:flex; gap:12px; } .row > * { flex:1; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .rate-val { color:var(--accent); font-weight:700; }
+  .files { border:1px dashed var(--line); border-radius:8px; padding:10px; font-size:13px; color:var(--dim); cursor:pointer; }
+  .files:hover { border-color:var(--accent); }
+  .thumbs { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .thumbs img { height:56px; border-radius:6px; border:1px solid var(--line); }
+  button.primary {
+    width:100%; margin-top:22px; padding:14px; border:none; border-radius:10px;
+    background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#fff;
+    font-size:16px; font-weight:700; cursor:pointer;
+  }
+  button.primary:disabled { opacity:.45; cursor:not-allowed; }
+  .steps { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+  .step { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--dim); }
+  .step .dot { width:10px; height:10px; border-radius:50%; background:var(--line); flex:none; }
+  .step.active { color:var(--fg); } .step.active .dot { background:var(--accent); animation:pulse 1s infinite; }
+  .step.done { color:var(--ok); } .step.done .dot { background:var(--ok); }
+  @keyframes pulse { 50% { opacity:.35 } }
+  pre.log { background:#0d111a; border:1px solid var(--line); border-radius:8px; padding:12px; font-size:12px; color:var(--dim); max-height:230px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  .result { margin-top:16px; }
+  .result video { width:100%; max-height:520px; border-radius:10px; background:#000; }
+  .result img.cover { width:130px; border-radius:8px; border:1px solid var(--line); }
+  .kv { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:13px; color:var(--dim); }
+  .kv a { color:var(--accent); text-decoration:none; }
+  .err { color:var(--err); font-size:13px; margin-top:10px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td { padding:8px 6px; border-bottom:1px solid var(--line); color:var(--dim); }
+  td b { color:var(--fg); font-weight:600; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:#1b2433; color:var(--dim); }
+  .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
+  .titem { border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .titem .tdesc { font-size:12px; color:var(--dim); margin:6px 0; line-height:1.6; }
+  .titem .tnote { font-size:11px; color:#8a94a3; }
+  .titem button { font-size:12px; padding:4px 12px; }
+  .titem.bad { border-color:#7a3b3b; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>零成本视频流水线 <span class="tag">专家控制台 · 只监听 127.0.0.1</span> <a href="/" style="font-size:13px;color:var(--dim);text-decoration:none">← 入口</a> <a href="/editor" style="font-size:13px;color:var(--accent-2);margin-left:14px;font-weight:600;text-decoration:none">✂ Editor 精修</a> <a href="/timeline" style="font-size:13px;color:var(--accent);margin-left:10px;font-weight:600;text-decoration:none">⇉ 时间轴排序</a> <a href="/wizard" style="font-size:13px;color:var(--ok);margin-left:10px;font-weight:600;text-decoration:none">🧭 流程向导</a></h1>
+  <div class="sub">填文案 → （可选）传背景图/BGM → 点「一键出片」。镜头自动按句拆分；复杂分镜建议按 skills/script.md 手写 shots.json 后跑命令行。</div>
+
+  <div class="grid">
+    <!-- 左：新建任务 -->
+    <div class="card">
+      <h2>① 新建视频</h2>
+      <label>口播文案（按句号/换行自动拆镜；首句=标题卡，中间含逗号的句子=要点卡，末句=收尾卡）</label>
+      <textarea id="text" placeholder="一句话，就能出一条成片。&#10;你只要把素材丢进来，剩下的交给流水线。&#10;字幕、配音、镜头，全自动对齐。"></textarea>
+
+      <div class="row">
+        <div>
+          <label>配音音色</label>
+          <select id="voice"></select>
+        </div>
+        <div>
+          <label>任务名（可空，自动按时间生成）</label>
+          <input type="text" id="name" placeholder="my-video">
+        </div>
+      </div>
+
+      <details id="cloneBox" style="display:none">
+        <summary style="cursor:pointer;font-weight:600;font-size:13px">🎙 克隆音色——用自己的声音出片（需 DashScope key；复刻与合成分开计费）</summary>
+        <div style="display:flex;gap:8px;align-items:center;margin:8px 0 6px;flex-wrap:wrap">
+          <input type="file" id="cloneFile" accept="audio/*" style="flex:1;min-width:200px">
+          <button id="cloneGo" onclick="cloneGo()">✦ 复刻</button>
+          <button onclick="cloneSync()">↻ 同步状态</button>
+        </div>
+        <div class="sub" style="margin-bottom:6px">样本：<b>10~20 秒干净人声</b>（无 BGM、少混响），mp3 / wav / m4a ≤15MB。复刻 Qwen 系列按官方口径 ¥0.01/次（创建失败不计费）；成功后上方音色下拉出现「克隆音色」组，选中出片<b>不走兜底换声</b>（失败就明说，不会静默换成别的声音）。</div>
+        <div id="cloneMsg" class="sub" style="margin-bottom:6px"></div>
+        <div id="cloneList" class="sub"></div>
+      </details>
+
+      <div class="row">
+        <div>
+          <label>发布规格</label>
+          <select id="size">
+            <optgroup label="平台规格（安全区/时长档按平台预设）">
+              <option value="plat:douyin">抖音 · 竖屏 1080×1920</option>
+              <option value="plat:shipinhao">视频号 · 竖屏 1080×1920</option>
+              <option value="plat:xiaohongshu">小红书 · 3:4 1080×1440</option>
+              <option value="plat:bilibili">B站 · 横屏 1920×1080</option>
+            </optgroup>
+            <optgroup label="自定义画幅">
+              <option value="size:1080x1920">竖屏 9:16 1080×1920</option>
+              <option value="size:1920x1080">横屏 16:9 1920×1080</option>
+              <option value="size:1080x1080">方形 1:1 1080×1080</option>
+            </optgroup>
+          </select>
+        </div>
+        <div>
+          <label>封面风格</label>
+          <select id="coverStyle">
+            <option value="tech">暗色科技（默认）</option>
+            <option value="bold">高对比大字（黑底暖黄）</option>
+            <option value="magazine">杂志留白（纸白衬线）</option>
+          </select>
+        </div>
+        <div>
+          <label>语速 <span class="rate-val" id="rateVal">--</span> 字/秒</label>
+          <input type="range" id="rate" min="4.5" max="9" step="0.1">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>场景风格（演示风建议配横屏 16:9，最接近参考样片）</label>
+          <select id="sceneStyle">
+            <option value="classic">经典（暗底网格 + 竖屏大字）</option>
+            <option value="deck">演示风（幻灯版式 + 底部章节导航条）</option>
+            <option value="paper">纸感（奶油底深字 + 深红点缀，横屏教学）</option>
+          </select>
+        </div>
+        <div>
+          <label>烧录字幕</label>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;color:#cfd6e0">
+            <input type="checkbox" id="captions" checked> 逐词高亮字幕（关 = 复刻样片：纯画面 + 旁白）
+          </label>
+        </div>
+      </div>
+
+      <label>批量变体（可选）——每行一个开头钩子，2~5 行出 2~5 条 A/B 测试版本（替换首镜口播+大字标题，素材/语速/音色共享）；留空=只出 1 条</label>
+      <textarea id="hooks" style="min-height:66px" placeholder="留空只出一条；填了每行一条变体：&#10;90%的新手都搞错了第一步&#10;别再花冤枉钱买课程了&#10;看了这条视频，你能少走三年弯路"></textarea>
+
+      <label>背景图（可选 0~9 张，jpg/png/webp；出片自动轮播 + 缓推动画，不传=内置渐变）</label>
+      <div class="files" onclick="document.getElementById('imgs').click()">＋ 点击选择图片</div>
+      <input type="file" id="imgs" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <div class="thumbs" id="thumbs"></div>
+
+      <label>BGM（可选，mp3；自动循环+说话闪避+卡点）——或从素材库选（与上方上传二选一，自带优先）</label>
+      <div class="files" id="bgmBox" onclick="document.getElementById('bgm').click()">＋ 点击选择音乐</div>
+      <input type="file" id="bgm" accept="audio/mpeg" hidden>
+      <select id="bgmLib" onchange="bgmLibPick()"><option value="">（素材库：未选用——刷新底部素材库后出现可选项）</option></select>
+
+      <button class="primary" id="go" onclick="create()">🎬 一键出片</button>
+      <div class="err" id="err"></div>
+    </div>
+
+    <!-- 右列：进度 + 预览 -->
+    <div class="rightcol">
+      <div class="card">
+        <h2>② 进度与成片</h2>
+        <div class="steps" id="steps"></div>
+        <pre class="log" id="log">（还没开始——左侧填好文案点「一键出片」）</pre>
+        <div class="result" id="result"></div>
+      </div>
+      <div class="card">
+        <h2>③ 历史任务</h2>
+        <table id="hist"><tr><td>加载中…</td></tr></table>
+      </div>
+    </div>
+
+    <!-- 底部全宽：素材库（P7-1） -->
+    <div class="card shelf">
+      <h2>素材库 <span style="font-weight:400;font-size:12px;color:#8a94a3">把文件丢进 <code>library\bgm｜images｜clips</code> 后点刷新 → 选目标任务 → 选用（复制进任务 assets，BGM 第 2 步 / 背景图第 3 步重跑生效）；没有现成图就用下方 ✦ AI 生图（有 key 才启用，按张计费）</span></h2>
+      <div style="display:flex;gap:10px;align-items:center;margin:2px 0 10px;flex-wrap:wrap">
+        <label style="margin:0">目标任务</label>
+        <select id="libTask" style="max-width:280px"></select>
+        <button onclick="refreshLib()">↻ 刷新</button>
+        <span class="sub" id="libMsg" style="flex:1;min-width:220px"></span>
+      </div>
+      <div id="aiOff" class="sub" style="display:none;margin:0 0 10px"></div>
+      <div id="aiBox" style="display:none;margin:0 0 12px;padding-top:8px;border-top:1px dashed var(--line)">
+        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+          <textarea id="aiPrompt" style="flex:1;min-width:280px;min-height:46px" placeholder="描述要生成的画面（中英均可）：如「奶油色纸面背景，中央圆角白底 UI 窗口样机，扁平插画，深红点缀，留白充足」——场景图/背景图/成对对照素材都靠它"></textarea>
+          <select id="aiSize" style="width:130px"></select>
+          <button id="aiGo" onclick="genImage()">✦ AI 生图</button>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+          <label style="margin:0;font-weight:400"><input type="checkbox" id="aiAttach" checked> 生成后作背景图（bg-NN）加入上方所选任务</label>
+          <span class="sub" id="aiMsg" style="flex:1;min-width:200px"></span>
+        </div>
+        <div id="aiPreview" style="margin-top:6px"></div>
+      </div>
+      <div id="lib" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
+    </div>
+
+    <!-- 底部全宽：技术库货架（P3-3） -->
+    <div class="card shelf">
+      <h2>技术库 <span style="font-weight:400;font-size:12px;color:#8a94a3">点「插入」自动填好当前任务的重跑表单（在右侧预览区下方）——确认后点「重跑」</span></h2>
+      <div id="tech" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let meta = null, imgData = [], bgmData = null, lastTask = '', pollTimer = null, batchNames = [];
+
+const STEP_NAMES = ['配音 TTS','时间轴编译','场景生成','场景渲染','合成','质检 QC'];
+
+async function j(url, opt) {
+  const r = await fetch(url, opt);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  return d;
+}
+
+function toBase64(file) {
+  return new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(file); });
+}
+
+// —— 克隆音色（P8）——
+const CLONE_STATUS = { OK: '可用', DEPLOYING: '审核中', UNDEPLOYED: '未通过' };
+
+function renderVoiceSel(keep) {
+  const cl = (meta.clone && meta.clone.voices) || [];
+  const opts = meta.voices.map((v) =>
+    `<option value="${v.id}" ${v.id === meta.defaultVoice ? 'selected' : ''}>${v.name}</option>`);
+  if (cl.length) {
+    opts.push('<optgroup label="克隆音色">');
+    for (const v of cl) {
+      const label = `${esc(v.voiceId)}${v.sampleName ? '（' + esc(v.sampleName) + '）' : ''} · ${CLONE_STATUS[v.status] || esc(v.status)}`;
+      opts.push(`<option value="${esc(v.voiceId)}" ${v.status !== 'OK' ? 'disabled' : ''}>${label}</option>`);
+    }
+    opts.push('</optgroup>');
+  }
+  $('voice').innerHTML = opts.join('');
+  if (keep && [...$('voice').options].some((o) => o.value === keep)) $('voice').value = keep;
+}
+
+function renderCloneList() {
+  const cl = (meta.clone && meta.clone.voices) || [];
+  $('cloneList').innerHTML = cl.length
+    ? cl.map((v) => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:2px 0"><code>${esc(v.voiceId)}</code>${v.sampleName ? `<span>${esc(v.sampleName)}</span>` : ''}<b>${CLONE_STATUS[v.status] || esc(v.status)}</b><button onclick="cloneDel('${esc(v.voiceId)}')">删除</button></div>`).join('')
+    : '<div>还没有克隆音色——选段 10~20 秒干净人声，点「✦ 复刻」。</div>';
+}
+
+async function cloneGo() {
+  const f = $('cloneFile').files[0];
+  if (!f) { $('cloneMsg').textContent = '先选一段样本音频（10~20 秒干净人声）'; return; }
+  $('cloneGo').disabled = true;
+  $('cloneMsg').textContent = '上传并复刻中…（审核通过通常十几秒）';
+  try {
+    const r = await j('/api/voice/clone', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: await toBase64(f), sampleName: f.name }) });
+    meta.clone.voices = [{ voiceId: r.voiceId, status: r.status, sampleName: f.name }, ...(meta.clone.voices || []).filter((v) => v.voiceId !== r.voiceId)];
+    renderVoiceSel(r.status === 'OK' ? r.voiceId : $('voice').value);
+    renderCloneList();
+    $('cloneMsg').textContent = `${r.status === 'OK' ? '✓' : '…'} ${r.voiceId} — ${r.note}`;
+  } catch (e) { $('cloneMsg').textContent = '✗ ' + e.message; }
+  $('cloneGo').disabled = false;
+}
+
+async function cloneSync() {
+  $('cloneMsg').textContent = '同步中…';
+  try {
+    const r = await j('/api/voice/clone/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    meta.clone.voices = r.voices;
+    renderVoiceSel($('voice').value);
+    renderCloneList();
+    $('cloneMsg').textContent = `同步 OK — 账号内 ${r.voices.length} 个克隆音色`;
+  } catch (e) { $('cloneMsg').textContent = '✗ ' + e.message; }
+}
+
+async function cloneDel(id) {
+  if (!confirm('删除克隆音色 ' + id + '？不可恢复；仍选用它的任务出片会明确报错')) return;
+  try {
+    const r = await j('/api/voice/clone/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voiceId: id }) });
+    meta.clone.voices = (meta.clone.voices || []).filter((v) => v.voiceId !== id);
+    renderVoiceSel(meta.defaultVoice); renderCloneList();
+    $('cloneMsg').textContent = '✓ ' + (r.note || '已删除');
+  } catch (e) { $('cloneMsg').textContent = '✗ ' + e.message; }
+}
+
+async function init() {
+  meta = await j('/api/meta');
+  renderVoiceSel();
+  $('rate').value = meta.defaultRate;
+  $('rateVal').textContent = meta.defaultRate;
+  refreshHist();
+  refreshTech();
+  refreshLib();
+  initAI();
+  if (meta.clone && meta.clone.enabled) { $('cloneBox').style.display = ''; renderCloneList(); }
+  if (meta.running) poll();
+}
+
+$('rate').addEventListener('input', () => $('rateVal').textContent = $('rate').value);
+
+$('imgs').addEventListener('change', async (e) => {
+  imgData = [];
+  for (const f of [...e.target.files].slice(0, 9)) imgData.push(await toBase64(f));
+  $('thumbs').innerHTML = imgData.map((d) => `<img src="${d}">`).join('');
+});
+
+$('bgm').addEventListener('change', async (e) => {
+  const f = e.target.files[0];
+  if (!f) { bgmData = null; $('bgmBox').textContent = '＋ 点击选择音乐'; return; }
+  bgmData = await toBase64(f);
+  $('bgmBox').textContent = '♪ ' + f.name;
+  $('bgmLib').value = ''; // 自带上传与素材库二选一（服务端同传 400）
+});
+
+async function create() {
+  $('err').textContent = '';
+  const text = $('text').value.trim();
+  if (!text) { $('err').textContent = '先把口播文案填上'; return; }
+  $('go').disabled = true;
+  try {
+    // 发布规格：plat:* → platform（02 查表出画幅），size:* → 显式 width/height（旧路径不变）
+    const [specKind, specVal] = $('size').value.split(':');
+    const spec = specKind === 'plat'
+      ? { platform: specVal }
+      : { width: Number(specVal.split('x')[0]), height: Number(specVal.split('x')[1]) };
+    const hooks = $('hooks').value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (hooks.length === 1) { $('err').textContent = '批量变体至少填 2 行钩子；只填 1 行请清空（= 出单条）'; $('go').disabled = false; return; }
+    const d = await j('/api/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, name: $('name').value.trim(), voice: $('voice').value, rate: Number($('rate').value), coverStyle: $('coverStyle').value, sceneStyle: $('sceneStyle').value, captions: $('captions').checked, assets: imgData, bgm: bgmData, bgmFromLibrary: $('bgmLib').value || '', hooks, ...spec }),
+    });
+    lastTask = d.name;
+    batchNames = d.batch || [d.name];
+    $('result').innerHTML = '';
+    poll();
+  } catch (e) {
+    $('err').textContent = e.message;
+    $('go').disabled = false;
+  }
+}
+
+function renderSteps(s) {
+  $('steps').innerHTML = STEP_NAMES.map((n, i) => {
+    const idx = i + 1;
+    let cls = '';
+    if (s.running && s.step === idx) cls = 'active';
+    else if (s.running && s.step > idx) cls = 'done';
+    else if (!s.running && s.ok === true) cls = 'done';
+    return `<div class="step ${cls}"><span class="dot"></span>${idx}. ${n}</div>`;
+  }).join('');
+}
+
+async function poll() {
+  clearTimeout(pollTimer);
+  try {
+    const s = await j('/api/status');
+    renderSteps(s);
+    $('log').textContent = s.lines.length ? s.lines.join('\n') : '（启动中…）';
+    $('log').scrollTop = $('log').scrollHeight;
+    if (!s.running) {
+      $('go').disabled = false;
+      // 批量变体跑完：done 里有全部结果（含失败项）；单条任务 done 只有一项
+      if (s.done && s.done.length) {
+        const okNames = s.done.filter((d) => d.ok).map((d) => d.name);
+        const badNames = s.done.filter((d) => !d.ok).map((d) => d.name);
+        if (badNames.length) $('err').textContent = `失败 ${badNames.length} 条：${badNames.join('、')}（看日志定位）`;
+        if (okNames.length) await showResult(okNames);
+        refreshHist();
+        return;
+      }
+      if (s.ok === false) { $('err').textContent = '出片失败，看日志定位'; refreshHist(); return; }
+    }
+  } catch (e) { $('go').disabled = false; }
+  pollTimer = setTimeout(poll, 1500);
+}
+
+// tasks：string 或 string[]——批量变体时并排展示各版本成片，方便 A/B 对比
+async function showResult(tasks) {
+  const list = Array.isArray(tasks) ? tasks : [tasks];
+  lastTask = list[0];
+  const [all, chat] = await Promise.all([
+    j('/api/tasks'),
+    list.length === 1 ? j('/api/chat?name=' + encodeURIComponent(list[0])).catch(() => null) : Promise.resolve(null),
+  ]);
+  $('result').innerHTML = list.map((task) => {
+    const t = all.find((x) => x.name === task) || {};
+    const label = list.length > 1 ? `<div class="kv" style="margin:10px 0 6px"><b style="color:var(--fg)">${task}</b></div>` : '';
+    // 局部重跑面板：只在单任务时出现（批量变体各自独立，不便共用面板）
+    const rr = list.length === 1 ? `
+    <details style="margin-top:12px;border-top:1px dashed var(--line);padding-top:10px">
+      <summary style="cursor:pointer;color:var(--accent);user-select:none">局部重跑 / 改风格（复用配音，只重跑所选步骤之后）</summary>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;align-items:center;font-size:13px">
+        <label>从 <select id="rr-from">
+          <option value="3" selected>③ 场景生成</option>
+          <option value="1">① 配音（全重跑）</option>
+          <option value="2">② 时间轴</option>
+          <option value="4">④ 渲染</option>
+          <option value="5">⑤ 合成</option>
+          <option value="6">⑥ 质检</option>
+        </select> 起</label>
+        <label>场景 <select id="rr-style">
+          <option value="classic" ${t.style === 'classic' ? 'selected' : ''}>classic</option>
+          <option value="deck" ${t.style === 'deck' ? 'selected' : ''}>deck 演示风</option>
+          <option value="paper" ${t.style === 'paper' ? 'selected' : ''}>paper 纸感</option>
+        </select></label>
+        <label>封面 <select id="rr-cover">
+          <option value="tech" ${t.cover === 'tech' ? 'selected' : ''}>tech</option>
+          <option value="bold" ${t.cover === 'bold' ? 'selected' : ''}>bold</option>
+          <option value="magazine" ${t.cover === 'magazine' ? 'selected' : ''}>magazine</option>
+        </select></label>
+        <label>字幕 <select id="rr-caps">
+          <option value="1" ${t.caps !== false ? 'selected' : ''}>开</option>
+          <option value="0" ${t.caps === false ? 'selected' : ''}>关</option>
+        </select></label>
+        <label style="flex:1 1 100%">config 补丁（JSON，可留空）<textarea id="rr-config" rows="2" style="width:100%;box-sizing:border-box"
+          placeholder='例：{"compose":{"captionSize":64}}　字幕字号/转场/BGM 等全局参数，深合并进本任务（不影响别的任务）'></textarea></label>
+        <label><input type="checkbox" id="rr-reset"> 清空本任务 config 补丁</label>
+        <button id="rr-go" onclick="rerun()">重跑</button>
+      </div>
+      ${t.hasOv ? '<div style="color:var(--accent);font-size:12px;margin-top:6px">● 本任务有 config 补丁生效中</div>' : ''}
+    </details>` : '';
+    // 需求聊天框（P3-4）：单任务时显示；多线程持久化在任务目录 chat.json，历史=审计
+    const chatBlock = list.length === 1 && chat ? `
+    <details style="margin-top:10px;border-top:1px dashed var(--line);padding-top:10px" open>
+      <summary style="cursor:pointer;color:var(--accent);user-select:none">需求聊天框（用人话续加需求 · 聊天记录=改动审计）</summary>
+      ${chat.llm ? `<div style="font-size:12px;margin:6px 0 2px;color:${chat.llm.degraded ? '#f59e0b' : '#8a94a3'}">${chat.llm.degraded ? `⚠ qwen 不可用（${esc(chat.llm.error)}）——已降级规则模式，额度恢复/接口恢复后自动切回` : (chat.llm.on ? 'qwen 语义解析已启用（额度由你的阿里云账户控制，用完自动降级）' : '规则模式（未配置或未开启 qwen）')}</div>` : ''}
+      <div id="chat-box" style="max-height:280px;overflow-y:auto;margin:10px 0;display:flex;flex-direction:column;gap:6px">${renderMsgs(chat.messages)}</div>
+      ${chat.threadTitles.length > 1 ? `<div style="font-size:11px;color:#8a94a3;margin-bottom:6px">共 ${chat.threadTitles.length} 个话题（「新话题」=换上下文重聊）</div>` : ''}
+      <div style="display:flex;gap:8px">
+        <input id="chat-in" style="flex:1;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--fg)"
+          placeholder="例：换演示风，收尾降调 3 个半音，字幕大一点　（回车发送）" onkeydown="if(event.key==='Enter')sendChat()">
+        <button onclick="sendChat(true)" title="开新话题">新话题</button>
+        <button onclick="sendChat()">发送</button>
+      </div>
+    </details>` : '';
+    return `${label}
+    <video controls src="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}?t=${Date.now()}"></video>
+    <div class="kv">
+      <span>配音：<b>${t.provider || '?'}</b> · ${t.voice || '?'}</span>
+      <span>时长：${t.dur ? t.dur.toFixed(1) + 's' : '?'}</span>
+      <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('封面.png')}" target="_blank">封面.png</a>
+      <a href="/file/${encodeURIComponent(task)}/qc-report.txt" target="_blank">QC 报告</a>
+      <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}" download>下载成片</a>
+    </div>${rr}${chatBlock}`;
+  }).join('<hr style="border:none;border-top:1px solid var(--line);margin:20px 0">');
+}
+
+// 局部重跑：shots 补丁始终带上面板当前值（预填=任务现值，不改就是原样回写），config 按需
+async function rerun() {
+  const task = lastTask;
+  if (!task) return;
+  let config = null;
+  const txt = $('rr-config').value.trim();
+  if (txt) { try { config = JSON.parse(txt); } catch { alert('config 补丁不是合法 JSON'); return; } }
+  $('rr-go').disabled = true;
+  try {
+    await j('/api/rerun', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: task,
+        from: +$('rr-from').value,
+        shots: { sceneStyle: $('rr-style').value, coverStyle: $('rr-cover').value, captions: $('rr-caps').value === '1' },
+        config,
+        resetConfig: $('rr-reset').checked,
+      }),
+    });
+    $('result').innerHTML = '';
+    poll();
+  } catch (e) { alert(e.message); $('rr-go').disabled = false; }
+}
+
+// —— 技术库货架（P3-3）——
+function deepMergeJS(a, b) {
+  const out = { ...a };
+  for (const k of Object.keys(b)) out[k] = b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) ? deepMergeJS(a[k], b[k]) : b[k];
+  return out;
+}
+
+async function refreshTech() {
+  const card = (t) => t.error ? `
+    <div class="titem bad"><b>${t.name}</b> <span class="badge" style="background:rgba(239,68,68,.15);color:#f87171">配方损坏</span>
+      <div class="tdesc">${t.id}.json · ${t.error}</div></div>` : `
+    <div class="titem">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>${t.name}</b>
+        ${t.tier === 'implemented' ? '<span class="badge ok">可直接用</span>' : (t.tier === 'manual' ? '<span class="badge">手动配方 · 看判据</span>' : '<span class="badge">待实现</span>')}
+      </div>
+      <div class="tdesc">${t.desc || ''}</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button onclick="insertTech('${t.id}')" ${t.tier === 'implemented' ? '' : 'disabled'}>⤵ 插入当前任务</button>
+        <span class="tnote">${(t.insert && t.insert.note) || ''}</span>
+      </div>
+    </div>`;
+  try {
+    const list = await j('/api/techniques');
+    if (!list.length) { $('tech').innerHTML = '<div class="sub">techniques/ 目录为空——抖音教学视频分析入库后会出现在这里</div>'; return; }
+    // 按 category 分组展示（组头固定顺序：画面→封面→字幕→声音→转场，未知类排最后）
+    const order = ['画面', '封面', '字幕', '声音', '转场'];
+    const groups = {};
+    for (const t of list) { const c = t.category || '其他'; if (!groups[c]) groups[c] = []; groups[c].push(t); }
+    const cats = Object.keys(groups).sort((a, b) => {
+      const ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia < 0 ? order.length : ia) - (ib < 0 ? order.length : ib);
+    });
+    $('tech').innerHTML = cats.map((c) => `
+      <div class="cathead"><b>${c}</b><span>${groups[c].length} 张</span></div>${groups[c].map(card).join('')}`).join('');
+  } catch (e) { $('tech').innerHTML = `<div class="sub">技术库加载失败：${e.message}</div>`; }
+}
+
+// —— 素材库（P7-1）：library/{bgm,images,clips} 列表 + 选用复制进任务；建任务表单的「素材库选 BGM」下拉共用这份数据 ——
+const LIB_META = {
+  bgm: { label: 'BGM', hint: '把 mp3/wav/m4a/aac/ogg/flac/mp4 丢进 library\\bgm', acts: [{ m: '', t: '♪ 设为任务 BGM' }] },
+  images: { label: '图片', hint: '把 jpg/png/webp 丢进 library\\images', acts: [{ m: 'bg', t: '↓ 作背景图 (bg-NN)' }, { m: 'as-is', t: '⎘ 原名复制（样机图/分镜引用）' }] },
+  clips: { label: '视频片段', hint: '把 mp4/mov/webm/mkv 丢进 library\\clips', acts: [{ m: '', t: '⎘ 复制进任务（分镜引用）' }] },
+};
+const libEsc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+async function refreshLib() {
+  try {
+    const d = await j('/api/library');
+    const tasks = await j('/api/tasks');
+    const sel = $('libTask');
+    const keep = sel.value;
+    sel.innerHTML = tasks.length
+      ? tasks.map((t) => `<option value="${libEsc(t.name)}">${t.name}</option>`).join('')
+      : '<option value="">（还没有任务）</option>';
+    if (keep && tasks.some((t) => t.name === keep)) sel.value = keep;
+    // 建任务表单的素材库 BGM 下拉同步（自带上传与它二选一）
+    const bl = $('bgmLib');
+    const blKeep = bl.value;
+    bl.innerHTML = '<option value="">（素材库：未选用）</option>'
+      + (d.kinds.bgm || []).map((it) => `<option value="${libEsc(it.name)}">${it.name}</option>`).join('');
+    if (blKeep && (d.kinds.bgm || []).some((it) => it.name === blKeep)) bl.value = blKeep;
+    $('lib').innerHTML = Object.keys(LIB_META).map((k) => {
+      const meta = LIB_META[k];
+      const items = d.kinds[k] || [];
+      const head = `<div class="cathead"><b>${meta.label}</b><span>${items.length} 个</span></div>`;
+      if (!items.length) return head + `<div class="sub" style="grid-column:1/-1">${meta.hint} 后点刷新</div>`;
+      return head + items.map((it) => `
+        <div class="titem">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="word-break:break-all">${it.name}</b><span class="badge">${fmtSize(it.size)}</span></div>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+            ${meta.acts.map((a) => `<button onclick="libAdd('${k}','${libEsc(it.name)}','${a.m}')">${a.t}</button>`).join('')}
+          </div>
+        </div>`).join('');
+    }).join('');
+  } catch (e) { $('lib').innerHTML = `<div class="sub">素材库加载失败：${e.message}</div>`; }
+}
+
+async function libAdd(kind, name, mode) {
+  const task = $('libTask').value;
+  if (!task) { $('libMsg').textContent = '先选目标任务'; return; }
+  try {
+    const r = await j('/api/library/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, name, task, mode }) });
+    $('libMsg').textContent = `✓ ${r.written} — ${r.note}`;
+  } catch (e) { $('libMsg').textContent = `✗ ${e.message}`; }
+}
+
+// 表单里选了素材库 BGM → 清自带上传（二选一，服务端同传 400）
+function bgmLibPick() {
+  if ($('bgmLib').value) { bgmData = null; $('bgm').value = ''; $('bgmBox').textContent = '＋ 点击选择音乐（将用素材库文件）'; }
+}
+
+// —— AI 生图（P7-2）：有 key 才显示操作区；未配置只给启用说明（零成本默认，出片流程零影响）——
+const AI_SIZE_LABEL = { auto: '自动', '1024x1920': '竖 9:16', '1920x1024': '横 16:9', '1024x1024': '方 1:1', '1024x1440': '竖 3:4' };
+function initAI() {
+  const ig = meta.imagegen || {};
+  if (ig.enabled) {
+    $('aiBox').style.display = '';
+    const opts = ['auto', '1024x1920', '1920x1024', '1024x1024', '1024x1440'];
+    if (ig.size && !opts.includes(ig.size)) opts.push(ig.size);
+    $('aiSize').innerHTML = opts.map((s) => `<option value="${s}" ${s === (ig.size || '1024x1920') ? 'selected' : ''}>${AI_SIZE_LABEL[s] || s}</option>`).join('');
+    $('aiMsg').textContent = `模型 ${ig.model} · key 来源 ${ig.where} · 按张计费`;
+  } else {
+    $('aiOff').style.display = '';
+    $('aiOff').textContent = `✦ AI 生图未启用——当前没有生图 key（来源：${ig.where || '未配置'}）。启用方法：pipeline\\config.local.json 里给 voice.dashscope.key（复用现有密钥）或 imagegen.key（单独密钥）填入 DashScope key，也可设环境变量 DASHSCOPE_API_KEY；不想用可写 imagegen.enabled=false 关死。不配 key 此功能就是个说明文字，出片流程零调用零花费。`;
+  }
+}
+
+async function genImage() {
+  const prompt = $('aiPrompt').value.trim();
+  if (!prompt) { $('aiMsg').textContent = '先写一句画面描述'; return; }
+  const wantAttach = $('aiAttach').checked;
+  if (wantAttach && !$('libTask').value) { $('aiMsg').textContent = '先选目标任务（或取消「加入任务」只存素材库）'; return; }
+  $('aiGo').disabled = true;
+  $('aiMsg').textContent = '生成中…（十几秒到一分钟）';
+  $('aiPreview').innerHTML = '';
+  try {
+    const r = await j('/api/txt2img', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, size: $('aiSize').value, attachTask: wantAttach ? $('libTask').value : '', attachMode: 'bg' }),
+    });
+    let msg = `✓ ${r.saved} · ${(r.ms / 1000).toFixed(1)}s`;
+    if (r.attach && r.attach.ok) msg += ` → ${r.attach.written}（${r.attach.note}）`;
+    else if (r.attach && r.attach.error) msg += `；加入任务失败：${r.attach.error}`;
+    $('aiMsg').textContent = msg;
+    $('aiPreview').innerHTML = `<img src="${r.dataUrl}" alt="生成结果" style="max-height:280px;border-radius:8px;border:1px solid var(--line)">`;
+    refreshLib();
+  } catch (e) {
+    $('aiMsg').textContent = `✗ ${e.message}`;
+  }
+  $('aiGo').disabled = false;
+}
+
+// 插入 = 填好局部重跑表单（from / 场景·封面·字幕下拉 / config 补丁深合并），不自动提交——留给用户确认
+async function insertTech(id) {
+  if (!lastTask) { alert('先出片，或到「历史任务」点开一条成片，再插入技术'); return; }
+  if (!$('rr-from')) { alert('重跑面板不在（可能正在出片）——等完成后再插入'); return; }
+  let t;
+  try { t = (await j('/api/techniques')).find((x) => x.id === id); } catch (e) { alert(e.message); return; }
+  if (!t || !t.insert) { alert('配方缺失：' + id); return; }
+  const det = document.querySelector('#result details');
+  if (det) det.open = true;
+  if (t.insert.from) $('rr-from').value = String(t.insert.from);
+  const s = t.insert.shots || {};
+  if (s.sceneStyle) $('rr-style').value = s.sceneStyle;
+  if (s.coverStyle) $('rr-cover').value = s.coverStyle;
+  if (typeof s.captions === 'boolean') $('rr-caps').value = s.captions ? '1' : '0';
+  if (t.insert.config) {
+    let cur = {};
+    const txt = $('rr-config').value.trim();
+    if (txt) { try { cur = JSON.parse(txt); } catch { cur = {}; } }
+    $('rr-config').value = JSON.stringify(deepMergeJS(cur, t.insert.config), null, 1);
+  }
+  if (det) det.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// —— 需求聊天框（P3-4）——
+function esc(s) { return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function renderMsgs(msgs) {
+  if (!msgs || !msgs.length) return '<div style="font-size:12px;color:#8a94a3">还没有需求记录——用人话告诉它怎么改，比如「换演示风，收尾降调 3 个半音」</div>';
+  return msgs.map((m) => `
+    <div style="border-left:3px solid ${m.role === 'user' ? 'var(--accent)' : 'var(--ok)'};padding:4px 10px;font-size:13px;line-height:1.7;${m.role === 'user' ? '' : 'background:rgba(255,255,255,.02);'}">
+      <b style="font-size:11px;color:#8a94a3">${m.role === 'user' ? '你' : '流水线'}${m.started ? ' · 已重跑' : ''}</b>
+      <div style="white-space:pre-wrap">${esc(m.text)}</div>
+    </div>`).join('');
+}
+async function sendChat(newThread) {
+  const inp = $('chat-in');
+  const text = ((inp && inp.value) || '').trim();
+  if (!text) return;
+  if (inp) inp.value = '';
+  try {
+    const d = await j('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: lastTask, text, newThread: !!newThread }),
+    });
+    if (d.started) { $('result').innerHTML = ''; poll(); } // 命中→已排队重跑，转进度视图
+    else await showResult(lastTask);                        // 没听懂→原地刷新（历史里能看到这轮对话）
+  } catch (e) { alert(e.message); if (inp) inp.value = text; }
+}
+
+async function refreshHist() {
+  const tasks = (await j('/api/tasks')).slice(0, 12);
+  if (!tasks.length) { $('hist').innerHTML = '<tr><td>还没有任务</td></tr>'; return; }
+  $('hist').innerHTML = tasks.map((t) => `<tr>
+    <td><b>${t.name}</b></td>
+    <td>${t.hasVideo ? `<span class="badge ok">${t.dur ? t.dur.toFixed(0) + 's' : '成片'}</span>` : '<span class="badge">未完成</span>'}</td>
+    <td>${t.voice || ''}</td>
+    <td>${t.hasVideo ? `<a href="#" style="color:var(--accent)" onclick="showResult('${t.name}');return false">预览</a>` : ''}</td>
+  </tr>`).join('');
+}
+
+init();
+</script>
+</body>
+</html>

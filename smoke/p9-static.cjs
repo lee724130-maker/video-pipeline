@@ -28,13 +28,16 @@ for (const id of ['task', 'loadBtn', 'taskInfo', 'editCard', 'shotList', 'doReru
 console.log('  ✓ editor.html ids/函数在位');
 
 const idx = fs.readFileSync(path.join(ROOT, 'web/public/index.html'), 'utf8');
-if (!idx.includes('href="/editor"')) throw new Error('index 缺 /editor 链接');
-const idxm = idx.match(/<script>([\s\S]*?)<\/script>/);
-jsCheck(idxm[1], 'index-inline');
-console.log('  ✓ index.html 链接 + 内联 JS OK');
+if (!idx.includes('href="/wizard"') || !idx.includes('href="/console"')) throw new Error('入口页缺向导/控制台双卡');
+console.log('  ✓ index.html 入口双卡在位');
+const con = fs.readFileSync(path.join(ROOT, 'web/public/console.html'), 'utf8');
+if (!con.includes('href="/editor"')) throw new Error('console 缺 /editor 链接');
+const idxm = con.match(/<script>([\s\S]*?)<\/script>/);
+jsCheck(idxm[1], 'console-inline');
+console.log('  ✓ console.html 链接 + 内联 JS OK');
 
 const srv = fs.readFileSync(path.join(ROOT, 'web/server.cjs'), 'utf8');
-for (const s of ["'/api/editor/shots'", "'/editor'", 'narrationDrift', 'SHOT_EDIT[fk]', 'shots.json.bak', 'copyFileSync(sj, sj + \'.bak\')', 'EDIT_TASK_FIELDS', 'structural', 'narrationSeg']) {
+for (const s of ["'/api/editor/shots'", "'/editor'", "'/console'", 'narrationDrift', 'SHOT_EDIT[fk]', 'shots.json.bak', 'copyFileSync(sj, sj + \'.bak\')', 'EDIT_TASK_FIELDS', 'structural', 'narrationSeg']) {
   if (!srv.includes(s)) throw new Error('server 缺: ' + s);
 }
 const t01 = fs.readFileSync(path.join(ROOT, 'pipeline/01-tts.cjs'), 'utf8');

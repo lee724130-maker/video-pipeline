@@ -34,7 +34,10 @@ async function idle(maxSec = 600) {
       && html.includes('/api/create') && html.includes('draft: true')
       && html.includes('/api/stepstatus') && html.includes('/api/rerun'));
     const idx = fs.readFileSync(path.join(ROOT, 'web/public/index.html'), 'utf8');
-    ok('首页有向导入口', idx.includes('href="/wizard"'));
+    ok('入口页有向导与控制台双卡', idx.includes('href="/wizard"') && idx.includes('href="/console"'));
+    const con = fs.readFileSync(path.join(ROOT, 'web/public/console.html'), 'utf8');
+    ok('控制台页在（含批量变体/货架等全集能力）', con.includes('/api/create') && con.includes('techniques') && con.includes('href="/"'));
+    const rc = await fetch(BASE + '/console'); ok('GET /console 200', rc.status === 200, String(rc.status));
     const rv = await fetch(BASE + '/wizard'); ok('GET /wizard 200', rv.status === 200, String(rv.status));
     const meta = await get(BASE + '/api/meta');
     ok('meta 带 platforms[] + sizes[]', Array.isArray(meta.j.platforms) && meta.j.platforms.length >= 1 && typeof meta.j.platforms[0].label === 'string' && Array.isArray(meta.j.sizes));
