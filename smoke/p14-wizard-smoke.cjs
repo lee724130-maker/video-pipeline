@@ -27,10 +27,12 @@ async function idle(maxSec = 600) {
     let jsOk = true;
     m.forEach((x, i) => { const f = path.join(tmp, '_p14_inline' + i + '.js'); fs.writeFileSync(f, x[1]); try { execSync(`node --check "${f}"`); } catch { jsOk = false; } });
     ok('wizard.html 内联 JS 语法', jsOk && m.length === 1);
-    ok('wizard 六关口 + 门控按钮 + 有界 run + stepstatus',
-      html.includes('data-stage="1"') && html.includes('data-stage="6"')
+    ok('wizard 一页一关：7 页 + 门控 gate + 常驻下一步 + 深链',
+      html.includes('data-page="1"') && html.includes('data-page="7"')
+      && html.includes('async function gate(n)') && html.includes('GATE_HINT')
+      && html.includes('id="nextBtn"') && html.includes("'#/' + n")
       && html.includes('/api/create') && html.includes('draft: true')
-      && html.includes('from, to') && html.includes('/api/stepstatus') && html.includes('/api/rerun'));
+      && html.includes('/api/stepstatus') && html.includes('/api/rerun'));
     const idx = fs.readFileSync(path.join(ROOT, 'web/public/index.html'), 'utf8');
     ok('首页有向导入口', idx.includes('href="/wizard"'));
     const rv = await fetch(BASE + '/wizard'); ok('GET /wizard 200', rv.status === 200, String(rv.status));
