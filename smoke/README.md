@@ -47,6 +47,12 @@ node smoke/guard-sentinel.cjs --trash-empty  # 疑似且确为零文件空树 �
 | `p8-clone-smoke.cjs` | P8 语音克隆（29 项） | 8787 在跑；**D 组真实复刻计费**；样本夹具在 `fixtures/p8-clone-sample.mp3` |
 | `p9-static.cjs` / `p9-editor-smoke.cjs` | P9 Editor 轻改（静态 8 / 冒烟 34 项） | 8787 在跑 |
 | `p10-icc-smoke.cjs` | P10 枚举条目色标（27 项） | 8787 在跑，cwd=项目根；零计费 |
+| `p11-editor-v2-smoke.cjs` | P11 Editor 结构版（35 项） | 8787 在跑；含 2 条真实重跑全链（免费额度 TTS）；**动探针前自动等队列清空** |
+| `p12-edit-contract-smoke.cjs` | P12-A 重剪契约+08 渲染（25 项） | 8787 在跑；C 段纯本地重编码（08 恒等导出+06 精修模式），零 TTS；自建自清 |
+| `p13-timeline-smoke.cjs` | P13 时间轴排序页（19 项） | 8787 在跑；D 段一次真实 02→06 重跑（免费 TTS） |
+| `p14-wizard-smoke.cjs` | P14 流程向导（29 项） | 8787 在跑；B–E 段真实有界重跑各一步（免费 TTS）；草稿/负例零计费 |
+| `p16-console-layout-smoke.cjs` | P16 控制台重排+视觉协调（23 项） | 8787 在跑；纯静态+`/lib` 路由安全，零管线 |
+| `p17-library-enhance-smoke.cjs` | P17 素材库增强（24 项） | 8787 在跑；ffmpeg 现场造假件（PNG/MP3）跑完自清，零管线 |
 | `cpsync-diag.cjs` / `desktop-scan.cjs` | 环境雷诊断 / 桌面事故侦察 | 只读或只写 tmp，随手可跑 |
 
 各脚本计费/清理行为以文件头注释为准；跑完以退出码 0 与「FAIL 计数 0」为准。

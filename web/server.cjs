@@ -8,6 +8,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { ROOT, FFMPEG, FFPROBE, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS, readCloneVoices, writeCloneVoices, deriveCloneTarget } = require('../pipeline/lib/common.cjs');
 const { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL, EDIT_TASK_FIELDS } = require('./chat-rules.cjs');
+const editApi = require('../pipeline/lib/edit-doc.cjs'); // P12-A 重剪编辑单契约（校验/导入/推导单一出处）
 const { qwenParse } = require('./chat-qwen.cjs');
 const { splitter } = require('./splitter.cjs');
 
@@ -840,6 +841,41 @@ const server = http.createServer(async (req, res) => {
     // —— 技术库货架（P3-3）：techniques/*.json 每技术一配方；坏文件不藏、以 error 态直示 ——
     if (p === '/api/techniques' && req.method === 'GET') {
       return json(res, 200, loadTechniques());
+    }
+
+    // —— 重剪编辑单（P12-A）：edit.json 读/导入/校验保存（脱钩导出，shots.json 零触碰）——
+    if (p === '/api/edit' && req.method === 'GET') {
+      const name = String(u.searchParams.get('name') || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, name);
+      const tl = readJson(path.join(dir, 'timeline.json'));
+      if (!tl) return json(res, 400, { error: '任务还没有 timeline.json（先出片到 02+ 才能进重剪）' });
+      const edit = readJson(path.join(dir, 'edit.json'));
+      let suggest = null;
+      try { suggest = editApi.importFromTimeline(tl); } catch { }
+      return json(res, 200, {
+        name, timeline: { duration: tl.duration, shots: tl.shots.map((s) => ({ id: s.id, type: s.type, start: s.start, end: s.end, dur: s.dur, charStart: s.charStart, charEnd: s.charEnd, ...(s.asset ? { asset: s.asset } : {}) })), width: tl.width, height: tl.height, fps: tl.fps, captionsCount: (tl.captions || []).length },
+        edit, suggest,
+        hasOutro: fs.existsSync(path.join(dir, 'segments', 'outro.mp4')),
+        exportedAt: (readJson(path.join(dir, '精修', 'edit.report.json')) || {}).at || null,
+        busy: !!(state.running || state.queue.length),
+      });
+    }
+    if (p === '/api/edit' && req.method === 'POST') {
+      if (state.running || state.queue.length) return json(res, 409, { error: '有任务正在跑/排队——等它完成再保存编辑单' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const name = String(body.name || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, name);
+      const tl = readJson(path.join(dir, 'timeline.json'));
+      if (!tl) return json(res, 400, { error: '任务没有 timeline.json，不能建编辑单' });
+      const doc = body.import ? editApi.importFromTimeline(tl) : body.edit;
+      try { editApi.validateEdit(tl, doc); } catch (e) { return json(res, 400, { error: e.message }); }
+      const ep = path.join(dir, 'edit.json');
+      if (fs.existsSync(ep)) fs.copyFileSync(ep, ep + '.bak');
+      writeJson(ep, doc);
+      log('07-web', `编辑单保存 ${name}：${doc.clips.length} clip（源 ${tl.shots.length} 镜）${body.import ? '（重新导入）' : ''}`);
+      return json(res, 200, { ok: true, edit: doc });
     }
 
     // —— 素材库（P7-1）：library/ 列表 + 选用复制进任务 assets ——

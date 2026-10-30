@@ -14,10 +14,10 @@ function check(name, ok, detail = '') {
   report.push(line);
 }
 
-function writeReport(task) {
+function writeReport(task, dest) {
   const head = `QC 报告 · ${path.basename(task)} · ${new Date().toLocaleString('zh-CN', { hour12: false })}`;
   const tail = `  ——— ${pass}/${pass + failN} 机械项通过（语义项看 qc/*.png 抽帧）`;
-  try { fs.writeFileSync(path.join(task, 'qc-report.txt'), [head, '', ...report, tail].join('\n'), 'utf8'); } catch {}
+  try { fs.writeFileSync(dest || path.join(task, 'qc-report.txt'), [head, '', ...report, tail].join('\n'), 'utf8'); } catch {}
 }
 
 function luminance(file) {
@@ -26,24 +26,32 @@ function luminance(file) {
   return m ? parseFloat(m[1]) : null;
 }
 
+function argOf(flag) { const i = process.argv.indexOf(flag); return i > 0 && process.argv[i + 1] ? path.resolve(process.argv[i + 1]) : null; }
+
 function main() {
-  const task = path.resolve(process.argv[2] || fail('用法: node pipeline/06-qc.cjs <任务目录>'));
-  const timeline = readJson(path.join(task, 'timeline.json'));
-  const final = path.join(task, '成片.mp4');
+  const task = path.resolve(process.argv[2] || fail('用法: node pipeline/06-qc.cjs <任务目录> [--timeline f] [--video f] [--report f] [--qcdir d]'));
+  // P12 精修模式：08 产物质检——四路径可覆盖（缺省=主链原行为，逐字节不变）
+  const timeline = readJson(argOf('--timeline') || path.join(task, 'timeline.json'));
+  const final = argOf('--video') || path.join(task, '成片.mp4');
+  const reportTo = argOf('--report') || path.join(task, 'qc-report.txt');
+  const qcDir = argOf('--qcdir') || path.join(task, 'qc');
+
   if (!timeline) fail('缺 timeline.json');
   const capOff = timeline.captionsOff === true; // P2-9 复刻模式：字幕不烧录，相关核验项相应跳过/换判据
   console.log('[06] 质检');
 
   check('成片存在', fs.existsSync(final), fs.existsSync(final) ? `${(fs.statSync(final).size / 1024 / 1024).toFixed(1)} MB` : '缺 成片.mp4');
-  if (!fs.existsSync(final)) { writeReport(task); console.log(`  ——— 0/${pass + failN}`); process.exit(1); }
+  if (!fs.existsSync(final)) { writeReport(task, reportTo); console.log(`  ——— 0/${pass + failN}`); process.exit(1); }
 
   const p = ffprobe(final);
   const v = p.streams.find((s) => s.codec_type === 'video') || {};
   const a = p.streams.find((s) => s.codec_type === 'audio') || {};
   const dur = parseFloat(p.format.duration);
 
-  // 时长：设计时长 + 片尾关注卡（03 写入 timeline.outro）
-  const expected = timeline.duration + (timeline.outro ? Number(timeline.outro.durSec || 0) : 0);
+  // 时长：设计时长 + 片尾关注卡（03 写入 timeline.outro）；P12 精修 effective-timeline 的 duration 已含 outro（outroInDuration 标）
+  const expected = timeline.outroInDuration
+    ? timeline.duration
+    : timeline.duration + (timeline.outro ? Number(timeline.outro.durSec || 0) : 0);
   check('时长', Math.abs(dur - expected) <= 0.3, `${dur.toFixed(2)}s / 设计 ${expected}s`);
   // 平台时长档（config.platforms.*.durHint 经 02 落 timeline）：只提示不拦——
   // 发布时限是平台规则不是片子质量，超档给一行 warn 让用户发布前自行判断
@@ -90,7 +98,7 @@ function main() {
   }
 
   // 抽帧：首/中/尾帧亮度（防黑屏）+ 3 张语义核验用图
-  const qcDir = ensureDir(path.join(task, 'qc'));
+  const qcOut = ensureDir(qcDir);
   const samples = [
     { name: 'f_first', t: 0.4 },
     { name: 'f_mid', t: timeline.duration * 0.5 },
@@ -146,7 +154,7 @@ function main() {
 
   console.log(`  ——— ${pass}/${pass + failN} 机械项通过`);
   log('06', `语义项请看 qc/f_first.png · f_mid.png · f_last.png${capOff ? '' : ' · f_caption.png（f_caption 应能看到字幕）'}`);
-  writeReport(task);
+  writeReport(task, reportTo);
   if (failN) fail(`质检 ${failN} 项不通过`);
 }
 

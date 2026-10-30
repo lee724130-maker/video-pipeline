@@ -529,3 +529,15 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - **④ AI 生图历史**：素材库页底部 `ai-*` 区——文件名时间戳解析、新→旧、点图进灯箱、一键「作背景图加入任务」；生图落库后 `refreshLib()` 自动刷新（零新后端，纯前端从列表过滤）。
 - **冒烟 24/24**（p17-library-enhance-smoke.cjs）：ffmpeg lavfi 现生成 2 PNG（640×360/320×320）+ 3s 正弦 MP3 假件，A 元信息 3 / B 波形 5（含缓存命中 <300ms、穿越 400、缺 404）/ C 批量 6（连号/兼容/BGM 首第一个/空数组 400/部分失败/资产落盘核对）/ D 缓存卫生 2（签名格式、换文件重探不残留）/ E 前端挂点 5 / F 自建自清 2——跑完库与缓存零残留。回归：p7 24/24、p16 23/23、p9-static、自测 5/5、哨兵干净。计费：零（纯本地探针+复制，不碰任务管线）。
 - **下一步候场**：P12 重剪段四拍板项（分工/对账/字幕方案/MVP）；控制台能力向导化（变体/货架/克隆搬进向导「加装备」分页）。
+
+## P12-A · 重剪数据契约 + 08 渲染管线（2026-10-30，四案拍板当日开工，冒烟 25/25）
+
+- **拍板记录（用户全选推荐案）**：① 语义/时间轴二分 ② 脱钩导出+编辑单 ③ 字幕 A 案词级到位 ④ MVP 照单。实施修正：**02 的 `timeline.charStart/charEnd` 已是全片逐字时刻表，wordTimings.json 不必新建**（省一天）。
+- **契约库 `pipeline/lib/edit-doc.cjs`**（单一出处）：edit.json v1（clip=源时间轴窗口 {in,out}+字符闭区间 [charStart,charEnd]，音画字幕共用一窗）；validateEdit 宁拦不猜（窗口/seg/char 越界、id 格式与唯一、transition 白名单 cut/fade ≤2s 且 <0.8×相邻 clip、version/fps/画幅一致性）；importFromTimeline 一镜一 clip（开→闭区间换算）；deriveEditTimeline 推导目标时间轴（xfade 恒等式链尾长=Σnorm−Σfade=bodyDuration）、字幕切窗+**跨 clip 同行自动缝合**（同源行、字下标衔接、左片尾非句末才缝——右片带句号不拦）、砸字平移、显示顺延 02 同式。
+- **ASS 引擎拆件 `pipeline/lib/ass-builder.cjs`**：05 的 assTime/assColour/buildAss 原样搬出，唯一改动 cfg.compose 入参化；**5 个真实任务 timeline 新旧输出逐字节等值断言**（vm 沙箱跑拆件前原函数对照）；05 改 require 消费，行为零变化（主链回归 17/17 实证）。p10 A5 哨兵同步改盯 ass-builder（拆件必改哨兵）。
+- **渲染器 `pipeline/08-edit.cjs`**：归一化（sidecar offset+inLocal 片段内坐标、fade 尾料预留、尾料不足降级硬切 fadeDegrade）→ xfade/concat 混合链 → 字幕（共用引擎）→ **配音全有限拓扑**（anullsrc 垫段+窗口 atrim 按序 concat，每条流自带 EOF）→ BGM 闪避（各无限流一律显式 atrim 钉顶）→ 响度 -14 → `精修/成片.mp4`+effective-timeline.json+edit.report.json+封面复制。主链产物零触碰（脱钩导出）。
+- **06 QC 参数化**：`--video/--timeline/--report/--qcdir` 四旗标（缺省逐字节原行为）；`outroInDuration` 标记治「outro 双加」——精修 effective-timeline 的 duration 已含片尾卡。
+- **server `/api/edit`**：GET（timeline 摘要+已存 edit+导入建议+hasOutro/exportedAt）、POST（import 或 validateEdit 后落盘，.bak 备份，坏单 400 磁盘不脏，运行中 409）。
+- **踩坑三枚**：① ffmpeg `adelay→amix`（含 duration=longest+normalize=0）在 copy 视频/五路输入下 **EOF 不可靠致两次「卡死」假象**（CPU 狂转不出文件、-t 兜底失效）——教训：**渲染器音频链每条流必须显式有限**（anullsrc d= + atrim），改 concat 拓扑后 45s 跑完；② 冒烟脚本 A 块 `const fail` 遮蔽计数器 + `ok(n)` 缺参——负例「捕获了仍 FAIL」的怪象定位；③ execSync 子进程非零退出吞掉 stdout——QC 取证要走 e.stdout。
+- **冒烟 25/25**（p12-edit-contract-smoke.cjs）：A 契约 11（恒等导入/拆分缝合/fade 时长数学/六个宁拦不猜）· B API 7 · C 端到端 7（**恒等导出 77.57s vs 原片 77.59s**、06 精修模式全过、产物齐）· D 清场。回归：p6/p9-static/p13 19/19/p14 29/29/p9 36/36/p10 27/27 全绿。计费：A 段渲染纯本地零 TTS。
+- **交接（下次开工）**：B 段 `/cut` 时间轴页（吃 edit.json 契约：四轨/0.1s 网格拖拽/拆分/撤销栈/属性面板，保存走 /api/edit）→ C 段导出按钮接 08+06 进控制台/向导。另：用户新列候选 **P18 剪映草稿导出**（edit.json→draft_content.json 翻译器，律师函教训=只做本地文件生成、不碰剪映程序/不绕会员，见 douyin_video 归档 2026-10-30 行）。

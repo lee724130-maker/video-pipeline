@@ -60,7 +60,9 @@ async function main() {
     s03.includes('CC_TRACK_CSS') && s03.includes('function ccInject')
     && (s03.match(/ccInject\(/g) || []).length === 2 && s03.includes("sceneStyle !== 'deck'"));
   const s05 = rd(path.join(ROOT, 'pipeline', '05-compose.cjs'));
-  ok('A5 05 assColour+关键词行内换色', s05.includes('function assColour') && s05.includes('assColour(k.accent)'));
+  const sab = rd(path.join(ROOT, 'pipeline', 'lib', 'ass-builder.cjs')); // P12-A 拆件：ASS 引擎（含行内换色）单一出处
+  ok('A5 ass-builder 持 assColour+关键词行内换色，05 共用引擎',
+    sab.includes('function assColour') && sab.includes('assColour(k.accent)') && s05.includes("require('./lib/ass-builder.cjs')") && s05.includes('buildAss(timeline, cfg.compose)'));
   const card = jj(path.join(ROOT, 'techniques', 'item-color-code.json'));
   ok('A6 卡转 implemented+from2+insert+source 留痕',
     card.tier === 'implemented' && card.insert && card.insert.from === 2
