@@ -116,6 +116,21 @@
   .chip { border:1px solid var(--line); background:#0d111a; color:var(--dim); border-radius:20px; padding:4px 13px; font-size:12px; cursor:pointer; }
   .chip.on { border-color:var(--accent); color:var(--fg); background:#0e1722; }
   .libbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  /* P17 多选 + 波形 + 生图历史 */
+  .gitem { position:relative; }
+  .gitem.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .gcheck { position:absolute; top:8px; left:8px; z-index:2; width:18px; height:18px; accent-color:var(--accent); cursor:pointer; display:none; }
+  .selecting .gcheck { display:block; }
+  .wavebox { height:34px; margin-top:2px; }
+  .wavebox canvas { width:100%; height:34px; display:block; border-radius:6px; background:#07090d; }
+  .wave-empty { font-size:10px; color:#5a6373; line-height:34px; }
+  .selcount { font-size:12px; color:var(--accent); }
+  #aiHist { display:none; margin-top:16px; padding-top:10px; border-top:1px dashed var(--line); }
+  #aiGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; }
+  .hitem { display:flex; flex-direction:column; gap:5px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#0d111a; }
+  .hitem img { width:100%; height:110px; object-fit:cover; cursor:zoom-in; }
+  .hitem .hmeta { font-size:11px; color:var(--dim); padding:0 8px 8px; word-break:break-all; }
+  .hitem .hmeta button { font-size:11px; padding:3px 8px; margin-top:4px; }
   /* 灯箱 */
   #lb { display:none; position:fixed; inset:0; z-index:50; background:rgba(5,7,10,.88); align-items:center; justify-content:center; }
   #lb.on { display:flex; }
@@ -280,7 +295,13 @@
             <button class="chip" data-f="images" onclick="libFilter('images')">图片</button>
             <button class="chip" data-f="clips" onclick="libFilter('clips')">片段</button>
           </span>
-          <span class="sub" id="libMsg" style="flex:1;min-width:220px"></span>
+          <span style="flex:1"></span>
+          <span class="selcount" id="selCount"></span>
+          <button class="mini" id="selModeBtn" onclick="toggleSelMode()">☑ 多选</button>
+          <button class="mini" id="selAllBtn" style="display:none" onclick="selAll()">全选可见</button>
+          <button class="mini accent" id="batchBgBtn" style="display:none" onclick="libApplyBatch('bg')">↓ 批量作背景图</button>
+          <button class="mini accent" id="batchCopyBtn" style="display:none" onclick="libApplyBatch('as-is')">⎘ 批量复制进任务</button>
+          <span class="sub" id="libMsg" style="flex:1 1 220px"></span>
         </div>
         <div id="aiOff" class="sub" style="display:none;margin:0 0 10px"></div>
         <div id="aiBox" style="display:none;margin:0 0 12px;padding-top:8px;border-top:1px dashed var(--line)">
@@ -296,6 +317,10 @@
           <div id="aiPreview" style="margin-top:6px"></div>
         </div>
         <div id="lib" class="libgrid"><div class="sub">加载中…</div></div>
+        <div id="aiHist">
+          <div class="cathead" style="border:none;padding:0;margin:0 0 8px"><b>✦ AI 生图历史</b><span>library\images 里的 ai-* 文件，新→旧；点图放大，可一键再作背景图加入任务</span></div>
+          <div id="aiGrid"></div>
+        </div>
       </div>
     </div>
 
@@ -707,7 +732,49 @@ async function refreshLib() {
       + (d.kinds.bgm || []).map((it) => `<option value="${libEsc(it.name)}">${it.name}</option>`).join('');
     if (blKeep && (d.kinds.bgm || []).some((it) => it.name === blKeep)) bl.value = blKeep;
     libRender();
+    renderAiHist();
   } catch (e) { $('lib').innerHTML = `<div class="sub">素材库加载失败：${e.message}</div>`; }
+}
+
+let libSelMode = false; const libSel = new Set();
+
+function toggleSelMode() {
+  libSelMode = !libSelMode;
+  libSel.clear();
+  $('selModeBtn').textContent = libSelMode ? '☐ 退出多选' : '☑ 多选';
+  for (const id of ['selAllBtn', 'batchBgBtn', 'batchCopyBtn']) $(id).style.display = libSelMode ? '' : 'none';
+  $('lib').classList.toggle('selecting', libSelMode);
+  selCountUpd(); libRender();
+}
+function selAll() {
+  const vis = [...document.querySelectorAll('#lib .gitem[data-key]')].map((el) => el.dataset.key);
+  const allOn = vis.every((k) => libSel.has(k));
+  vis.forEach((k) => allOn ? libSel.delete(k) : libSel.add(k));
+  selCountUpd(); libRender();
+}
+function selToggle(key) {
+  if (libSel.has(key)) libSel.delete(key); else libSel.add(key);
+  selCountUpd(); libRender();
+}
+function selCountUpd() { $('selCount').textContent = libSelMode ? `已选 ${libSel.size}` : ''; }
+
+async function libApplyBatch(mode) {
+  const task = $('libTask').value;
+  if (!task) { $('libMsg').textContent = '先选目标任务'; return; }
+  if (!libSel.size) { $('libMsg').textContent = '先勾选素材（点卡片左上角复选框）'; return; }
+  // 只提交当前筛选可见之外的也没关系：后端按 kind 校验；跨 kind 选择时按卡片 kind 分桶各发一次
+  const buckets = {};
+  for (const key of libSel) { const k = key.split('/')[0]; (buckets[k] = buckets[k] || []).push(key.split('/').slice(1).join('/')); }
+  const msgs = [];
+  for (const [kind, names] of Object.entries(buckets)) {
+    if (kind === 'bgm') { msgs.push('BGM 请单选（一个任务只容一首）'); continue; }
+    try {
+      const r = await j('/api/library/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, names, task, mode }) });
+      msgs.push(`${LIB_META[kind].label}：${(r.note || r.written || 'OK')}`);
+    } catch (e) { msgs.push(`${LIB_META[kind].label}失败：${e.message}`); }
+  }
+  $('libMsg').textContent = '✓ ' + msgs.join(' ｜ ');
+  libSel.clear(); selCountUpd(); libRender();
 }
 
 function libRender() {
@@ -720,21 +787,59 @@ function libRender() {
     const head = `<div class="cathead"><b>${m.label}</b><span>${items.length} 个</span></div>`;
     if (!items.length) return head + `<div class="sub" style="grid-column:1/-1">${q ? '没有匹配的' + m.label : m.hint + ' 后点刷新'}</div>`;
     return head + items.map((it) => {
+      const key = k + '/' + it.name;
+      const mt = it.meta || {};
+      const badges = [
+        mt.w ? `${mt.w}×${mt.h}` : null,
+        mt.dur ? `${Math.round(mt.dur)}s` : null,
+        fmtSize(it.size),
+      ].filter(Boolean).map((b) => `<span class="badge">${b}</span>`).join('');
       const img = k === 'images' ? `<img loading="lazy" src="${libUrl(k, it.name)}" alt="">`
         : (k === 'clips' ? `<video preload="metadata" muted src="${libUrl(k, it.name)}"></video>` : '');
       const thumbInner = k === 'bgm'
-        ? `<audio preload="none" controls src="${libUrl(k, it.name)}"></audio>`
+        ? `<div class="wavebox" data-wave="${libEsc(it.name)}"><span class="wave-empty">波形载入中…</span></div>`
         : img;
       const zoom = k === 'bgm' ? '' : ` onclick="openLb('${k}','${libEsc(it.name)}')"`;
-      return `<div class="gitem itemcard">
+      return `<div class="gitem itemcard${libSel.has(key) ? ' sel' : ''}" data-key="${libEsc(key)}">
+        <input type="checkbox" class="gcheck" ${libSel.has(key) ? 'checked' : ''} onclick="event.stopPropagation();selToggle('${libEsc(key)}')">
         <div class="gthumb"${zoom}>${thumbInner}</div>
         <div class="gbody">
-          <div class="gname">${attrEsc(it.name)}<span class="badge">${fmtSize(it.size)}</span></div>
+          <div class="gname">${attrEsc(it.name)}${badges}</div>
+          ${k === 'bgm' ? `<audio controls preload="none" style="width:100%;height:30px" src="${libUrl(k, it.name)}"></audio>` : ''}
           <div class="grow">${m.acts.map((a) => `<button class="mini" onclick="libAdd('${k}','${libEsc(it.name)}','${a.m}')">${a.t}</button>`).join('')}</div>
         </div>
       </div>`;
     }).join('');
   }).join('');
+  // 波形异步画（缓存命中极快；失败留文字）
+  document.querySelectorAll('#lib .wavebox[data-wave]').forEach((box) => drawWave(box, box.dataset.wave));
+}
+
+async function drawWave(box, name) {
+  try {
+    const r = await j('/api/library/wave?name=' + encodeURIComponent(name));
+    if (!r.wave || !Array.isArray(r.wave.p)) return;
+    const c = document.createElement('canvas');
+    box.innerHTML = ''; box.appendChild(c);
+    const W = c.clientWidth || 180, H = 34; c.width = W * 2; c.height = H * 2;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0e2230';
+    const p = r.wave.p, bw = (W * 2) / p.length;
+    p.forEach((v, i) => { const h = Math.max(2, v * H * 1.8); g.fillRect(i * bw + 1, (H * 2 - h) / 2, bw - 2, h); });
+  } catch { box.innerHTML = '<span class="wave-empty">波形不可用</span>'; }
+}
+
+// AI 生图历史：images 里 ai-* 按时间戳新→旧
+function renderAiHist() {
+  const items = (libAll.kinds.images || []).filter((it) => it.name.startsWith('ai-')).sort((a, b) => b.name.localeCompare(a.name));
+  $('aiHist').style.display = items.length ? '' : 'none';
+  if (!items.length) return;
+  const fmt = (n) => n.replace(/^ai-/, '').replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/, '$1-$-$2-$3 $4:$5:$6').replace(/(\d{4})-(\d{2})-(\d{2})(\d{2})/, '$1-$2-$3 $4');
+  $('aiGrid').innerHTML = items.map((it) => `<div class="hitem">
+    <img loading="lazy" src="${libUrl('images', it.name)}" onclick="openLb('images','${libEsc(it.name)}')" alt="">
+    <div class="hmeta">${attrEsc(fmt(it.name))} · ${fmtSize(it.size)}<br>
+      <button class="mini" onclick="libAdd('images','${libEsc(it.name)}','bg')">↓ 作背景图加入任务</button></div>
+  </div>`).join('');
 }
 
 // 灯箱：图/片段放大预览

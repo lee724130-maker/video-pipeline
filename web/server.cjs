@@ -6,7 +6,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { ROOT, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS, readCloneVoices, writeCloneVoices, deriveCloneTarget } = require('../pipeline/lib/common.cjs');
+const { ROOT, FFMPEG, FFPROBE, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS, readCloneVoices, writeCloneVoices, deriveCloneTarget } = require('../pipeline/lib/common.cjs');
 const { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL, EDIT_TASK_FIELDS } = require('./chat-rules.cjs');
 const { qwenParse } = require('./chat-qwen.cjs');
 const { splitter } = require('./splitter.cjs');
@@ -50,12 +50,92 @@ function libraryList() {
   const kinds = {};
   for (const [kind, def] of Object.entries(LIB_KINDS)) {
     const dir = ensureDir(path.join(LIB, def.dir));
+    const cache = libCacheLoad();
     kinds[kind] = fs.readdirSync(dir)
       .filter((f) => !f.startsWith('.') && def.exts.includes(LIB_EXT(f)))
-      .map((f) => { const st = fs.statSync(path.join(dir, f)); return { name: f, size: st.size, mt: st.mtimeMs }; })
+      .map((f) => {
+        const st = fs.statSync(path.join(dir, f));
+        const item = { name: f, size: st.size, mt: st.mtimeMs };
+        const key = kind + '/' + f;
+        const hit = cache[key];
+        item.meta = hit && hit.sig === st.size + ':' + Math.round(st.mtimeMs) ? hit.meta : libProbeMeta(kind, dir, f, st, cache, key);
+        return item;
+      })
       .sort((a, b) => a.name.localeCompare(b.name));
   }
+  libCacheSave();
   return { root: LIB, kinds };
+}
+
+// —— P17 素材元信息/波形：ffprobe 尺寸与时长、ffmpeg PCM→48 格 RMS 波形；结果按 大小:mtime 签名缓存 library\.cache\meta.json ——
+// 探针失败=meta null（卡片少个角标，绝不拖垮列表）；.cache 以点开头，天然被列举的隐藏文件过滤排除
+const LIB_CACHE_DIR = path.join(LIB, '.cache');
+let libCacheMem = null;
+function libCacheLoad() {
+  if (libCacheMem) return libCacheMem;
+  libCacheMem = readJson(path.join(LIB_CACHE_DIR, 'meta.json')) || {};
+  return libCacheMem;
+}
+function libCacheSave() { if (libCacheMem) { ensureDir(LIB_CACHE_DIR); writeJson(path.join(LIB_CACHE_DIR, 'meta.json'), libCacheMem); } }
+
+function ffProbeJson(args, file) {
+  try {
+    const r = require('child_process').spawnSync(FFPROBE, ['-v', 'error', ...args, file], { encoding: 'utf8', timeout: 15000 });
+    if (r.status !== 0) return null;
+    return JSON.parse(r.stdout);
+  } catch { return null; }
+}
+function libProbeMeta(kind, dir, f, st, cache, key) {
+  const full = path.join(dir, f);
+  const meta = {};
+  if (kind === 'images') {
+    const j = ffProbeJson(['-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json'], full);
+    const s = j && j.streams && j.streams[0];
+    if (s) { meta.w = s.width; meta.h = s.height; }
+  } else {
+    const j = ffProbeJson(['-show_entries', 'format=duration', '-of', 'json'], full);
+    const d = j && j.format && Number(j.format.duration);
+    if (d > 0) meta.dur = Number(d.toFixed(2));
+    if (kind === 'bgm' && meta.dur) meta.wave = libWave(full, meta.dur);
+  }
+  const out = Object.keys(meta).length ? meta : null;
+  cache[key] = { sig: st.size + ':' + Math.round(st.mtimeMs), meta: out };
+  return out;
+}
+// s16le 单声道 8kHz PCM → 48 格 RMS（0~1），只存数字数组（~1KB/首）；缓存名以 basename 清洗，与 libWaveGet 同口径
+function libWave(file, dur) {
+  const wf = path.join(LIB_CACHE_DIR, 'wave', path.basename(file).replace(/\W+/g, '_') + '.json');
+  const cache = libCacheLoad();
+  try {
+    if (fs.existsSync(wf)) {
+      const w = readJson(wf);
+      if (w && w.dur === dur && Array.isArray(w.p)) return true;
+    }
+  } catch { }
+  try {
+    const { execFileSync } = require('child_process');
+    const pcm = execFileSync(FFMPEG, ['-v', 'error', '-i', file, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], { maxBuffer: 64 * 1024 * 1024, timeout: 30000 });
+    const n = Math.floor(pcm.length / 2), buckets = 48, per = Math.max(1, Math.floor(n / buckets)), p = [];
+    for (let b = 0; b < buckets; b++) {
+      let sum = 0;
+      for (let i = b * per; i < Math.min((b + 1) * per, n); i++) { const v = pcm.readInt16LE(i * 2); sum += v * v; }
+      const rms = Math.sqrt(sum / Math.max(1, per));
+      p.push(Math.min(1, Number((rms / 12000).toFixed(3))));
+    }
+    ensureDir(path.dirname(wf));
+    writeJson(wf, { dur, p });
+    return true;
+  } catch { return false; }
+}
+function libWaveGet(name) {
+  if (!LIB_NAME_RE.test(name) || /[\\/]/.test(name) || !BGM_EXTS.includes(LIB_EXT(name))) return { error: 'bad name', status: 400 };
+  const file = path.join(LIB, 'bgm', name);
+  if (!fs.existsSync(file)) return { error: '没有这个 BGM', status: 404 };
+  const wf = path.join(LIB_CACHE_DIR, 'wave', name.replace(/\W+/g, '_') + '.json');
+  try { if (fs.existsSync(wf)) return { ok: true, wave: readJson(wf) }; } catch { }
+  const dur = (libProbeMeta('bgm', path.join(LIB, 'bgm'), name, fs.statSync(file), libCacheLoad(), 'bgm/' + name) || {}).dur;
+  libCacheSave();
+  return fs.existsSync(wf) ? { ok: true, wave: readJson(wf) } : { error: '波形生成失败（文件可能损坏）', status: 500 };
 }
 
 // 复制库内 BGM 进任务 assets：统一命名 bgm.<ext>，先清同任务旧 bgm.*（findBgm 按表返回，留旧会歧义）
@@ -95,6 +175,25 @@ function libraryAdd(kind, name, task, mode) {
   ensureDir(adir);
   fs.copyFileSync(src, target);
   return { ok: true, written: `assets/${name}`, note: '已复制进任务——分镜 shots.json 的 media 按文件名引用，改分镜后重跑对应步骤' };
+}
+
+// 批量选用（多选模式）：逐个走 libraryAdd（校验一个不放过）；BGM 语义=全局唯一，取第一个即停并说明
+function libraryAddBatch(kind, names, task, mode) {
+  const list = (Array.isArray(names) ? names : []).map((n) => String(n || '')).filter(Boolean).slice(0, 30);
+  if (!list.length) return { error: 'names 需为 1~30 个文件名数组', status: 400 };
+  if (kind === 'bgm' && list.length > 1) {
+    const r = libraryAdd(kind, list[0], task, mode);
+    if (r.error) return r;
+    return { ok: true, batch: true, done: [{ name: list[0], written: r.written }], skipped: list.slice(1), note: r.note + '；BGM 一个任务只容一首，只选了第一个（要换歌请单选）' };
+  }
+  const done = [], failed = [];
+  for (const n of list) {
+    const r = libraryAdd(kind, n, task, mode);
+    if (r.error) failed.push({ name: n, error: r.error });
+    else done.push({ name: n, written: r.written });
+  }
+  if (!done.length) return { error: `全部失败：${failed.map((f) => f.name + '(' + f.error + ')').join('；')}`, status: (failed[0] && failed[0].status) || 400 };
+  return { ok: true, batch: true, done, failed, note: `已选用 ${done.length} 个${failed.length ? `，${failed.length} 个失败（${failed.map((f) => f.name).join('、')}）` : ''}` + (mode === 'bg' ? '——背景图从第 3 步重跑生效' : kind === 'bgm' ? '——从第 2 步重跑生效' : '——分镜引用后重跑对应步骤生效') };
 }
 
 // —— AI 生图（P7-2）：qwen-image OpenAI 兼容同步端点（千问AI平台 maas 域名——探针实测 2026-10-23：
@@ -747,9 +846,16 @@ const server = http.createServer(async (req, res) => {
     if (p === '/api/library' && req.method === 'GET') {
       return json(res, 200, libraryList());
     }
+    if (p === '/api/library/wave' && req.method === 'GET') {
+      const r = libWaveGet(String(u.searchParams.get('name') || ''));
+      if (r.error) return json(res, r.status || 400, { error: r.error });
+      return json(res, 200, r);
+    }
     if (p === '/api/library/add' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
-      const r = libraryAdd(String(body.kind || ''), String(body.name || ''), String(body.task || ''), String(body.mode || ''));
+      const r = Array.isArray(body.names)
+        ? libraryAddBatch(String(body.kind || ''), body.names, String(body.task || ''), String(body.mode || ''))
+        : libraryAdd(String(body.kind || ''), String(body.name || ''), String(body.task || ''), String(body.mode || ''));
       if (r.error) return json(res, r.status || 400, { error: r.error });
       return json(res, 200, r);
     }
