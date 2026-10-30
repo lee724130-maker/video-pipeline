@@ -2,47 +2,74 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>零成本视频流水线 · 本地控制台</title>
+<title>零成本视频流水线 · 专家控制台</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root { --bg:#0B0E14; --panel:#12161f; --line:#232a38; --fg:#F5F7FA; --dim:#9AA3B2; --accent:#08B6DD; --accent-2:#7C3AED; --ok:#22c55e; --err:#ef4444; }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:var(--bg); color:var(--fg); font-family:"Microsoft YaHei","PingFang SC",sans-serif; min-height:100vh; }
-  .wrap { max-width:1240px; margin:0 auto; padding:32px 24px 80px; }
-  h1 { font-size:26px; margin-bottom:6px; }
-  h1 .tag { font-size:13px; color:var(--accent); font-weight:400; margin-left:10px; }
-  .sub { color:var(--dim); font-size:14px; margin-bottom:28px; }
-  .grid { display:grid; grid-template-columns: 440px 1fr; gap:24px; align-items:start; }
-  @media (max-width:960px){ .grid{grid-template-columns:1fr;} }
-  .rightcol { display:flex; flex-direction:column; gap:24px; }
-  .shelf { grid-column:1 / -1; }
-  .techgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
-  .techgrid > .sub { grid-column:1/-1; }
-  .cathead { grid-column:1/-1; display:flex; align-items:baseline; gap:8px; margin-top:8px; padding-bottom:5px; border-bottom:1px solid var(--line); }
-  .cathead b { font-size:14px; }
-  .cathead span { font-size:11px; color:#8a94a3; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
-  .card h2 { font-size:16px; margin-bottom:16px; color:var(--fg); }
-  label { display:block; font-size:13px; color:var(--dim); margin:14px 0 6px; }
-  textarea, input[type=text], select {
-    width:100%; background:#0d111a; color:var(--fg); border:1px solid var(--line);
-    border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit; outline:none;
-  }
+  /* 顶栏 */
+  .topbar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px; padding:12px 20px; background:rgba(11,14,20,.94); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); }
+  .topbar .logo { font-size:17px; font-weight:800; }
+  .topbar .logo em { font-style:normal; color:var(--accent); }
+  .topbar .who { font-size:11px; color:var(--dim); border:1px solid var(--line); border-radius:20px; padding:2px 9px; }
+  .topbar .sp { flex:1; }
+  .topbar a { color:var(--dim); text-decoration:none; font-size:13px; }
+  .topbar a:hover { color:var(--accent); }
+  .topbar a.hot { color:var(--ok); font-weight:600; }
+  /* 双栏骨架 */
+  .shell { display:flex; gap:18px; max-width:1400px; margin:0 auto; padding:18px 20px 80px; align-items:flex-start; }
+  .sidebar { flex:0 0 280px; position:sticky; top:66px; display:flex; flex-direction:column; gap:14px; max-height:calc(100vh - 90px); }
+  .main { flex:1; min-width:0; }
+  @media (max-width:1080px){ .shell { flex-direction:column; } .sidebar { position:static; flex:none; width:100%; max-height:none; } }
+  /* 卡 */
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; }
+  .card h2 { font-size:15px; margin-bottom:12px; }
+  .card h2 small { font-weight:400; font-size:11px; color:var(--dim); margin-left:8px; }
+  /* 左栏任务 */
+  .curtask { font-size:13px; color:var(--dim); line-height:1.6; }
+  .curtask b { color:var(--fg); font-size:14px; word-break:break-all; }
+  .curlinks { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .curlinks a, .curlinks button { font-size:11px; }
+  #taskList { overflow-y:auto; flex:1; min-height:120px; }
+  .trow { display:flex; align-items:center; gap:8px; padding:8px 9px; border:1px solid transparent; border-radius:9px; cursor:pointer; font-size:12.5px; color:var(--dim); }
+  .trow:hover { background:#0d111a; border-color:var(--line); }
+  .trow.on { border-color:var(--accent); background:#0e1722; color:var(--fg); }
+  .trow .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .trow .st { font-size:10px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:#1b2433; color:var(--dim); }
+  .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
+  .badge.warn { background:rgba(245,158,11,.15); color:#fbbf24; }
+  .badge.danger { background:rgba(239,68,68,.15); color:#f87171; }
+  /* 标签页 */
+  .tabs { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .tabbtn { border:1px solid var(--line); background:#0d111a; color:var(--dim); border-radius:10px; padding:9px 18px; font-size:14px; font-weight:600; cursor:pointer; }
+  .tabbtn:hover { border-color:var(--accent); color:var(--fg); }
+  .tabbtn.on { border-color:var(--accent); color:var(--fg); background:#0e1722; box-shadow:inset 0 -2px 0 var(--accent); }
+  .tabpane { display:none; }
+  .tabpane.on { display:block; }
+  .panebox { display:flex; flex-direction:column; gap:16px; }
+  /* 表单 */
+  label { display:block; font-size:13px; color:var(--dim); margin:12px 0 6px; }
+  textarea, input[type=text], input[type=number], select, input[type=search] { width:100%; background:#0d111a; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:14px; font-family:inherit; outline:none; }
   textarea:focus, input:focus, select:focus { border-color:var(--accent); }
-  textarea { min-height:130px; resize:vertical; line-height:1.7; }
-  .row { display:flex; gap:12px; } .row > * { flex:1; }
+  textarea { min-height:120px; resize:vertical; line-height:1.7; }
+  .row { display:flex; gap:12px; } .row > * { flex:1; min-width:0; }
+  @media (max-width:720px){ .row { flex-direction:column; } }
   input[type=range] { width:100%; accent-color:var(--accent); }
   .rate-val { color:var(--accent); font-weight:700; }
+  .group { font-size:12px; color:var(--accent); letter-spacing:2px; margin:20px 0 2px; border-bottom:1px dashed var(--line); padding-bottom:5px; }
   .files { border:1px dashed var(--line); border-radius:8px; padding:10px; font-size:13px; color:var(--dim); cursor:pointer; }
   .files:hover { border-color:var(--accent); }
   .thumbs { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
   .thumbs img { height:56px; border-radius:6px; border:1px solid var(--line); }
-  button.primary {
-    width:100%; margin-top:22px; padding:14px; border:none; border-radius:10px;
-    background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#fff;
-    font-size:16px; font-weight:700; cursor:pointer;
-  }
+  button.primary { width:100%; margin-top:22px; padding:14px; border:none; border-radius:10px; background:linear-gradient(90deg, var(--accent), var(--accent-2)); color:#fff; font-size:16px; font-weight:700; cursor:pointer; }
   button.primary:disabled { opacity:.45; cursor:not-allowed; }
+  button.ghost { border:1px solid var(--line); background:#161b26; color:var(--fg); border-radius:8px; padding:6px 13px; cursor:pointer; font-size:13px; font-family:inherit; }
+  button.ghost:hover { border-color:var(--accent); }
+  .err { color:var(--err); font-size:13px; margin-top:10px; }
+  .sub { color:var(--dim); font-size:13px; line-height:1.7; }
+  /* 任务台 */
   .steps { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
   .step { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--dim); }
   .step .dot { width:10px; height:10px; border-radius:50%; background:var(--line); flex:none; }
@@ -50,168 +77,273 @@
   .step.done { color:var(--ok); } .step.done .dot { background:var(--ok); }
   @keyframes pulse { 50% { opacity:.35 } }
   pre.log { background:#0d111a; border:1px solid var(--line); border-radius:8px; padding:12px; font-size:12px; color:var(--dim); max-height:230px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
-  .result { margin-top:16px; }
   .result video { width:100%; max-height:520px; border-radius:10px; background:#000; }
   .result img.cover { width:130px; border-radius:8px; border:1px solid var(--line); }
   .kv { display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; font-size:13px; color:var(--dim); }
   .kv a { color:var(--accent); text-decoration:none; }
-  .err { color:var(--err); font-size:13px; margin-top:10px; }
   table { width:100%; border-collapse:collapse; font-size:13px; }
   td { padding:8px 6px; border-bottom:1px solid var(--line); color:var(--dim); }
   td b { color:var(--fg); font-weight:600; }
-  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:#1b2433; color:var(--dim); }
-  .badge.ok { background:rgba(34,197,94,.15); color:var(--ok); }
-  .titem { border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
-  .titem .tdesc { font-size:12px; color:var(--dim); margin:6px 0; line-height:1.6; }
+  /* 素材库 / 技术库共用设计件 */
+  .techgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; }
+  .techgrid > .sub { grid-column:1/-1; }
+  .cathead { grid-column:1/-1; display:flex; align-items:baseline; gap:8px; margin-top:10px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+  .cathead b { font-size:13.5px; }
+  .cathead span { font-size:11px; color:#8a94a3; }
+  .mini { border:1px solid var(--line); background:#161b26; color:var(--fg); border-radius:8px; padding:4px 12px; font-size:12px; cursor:pointer; font-family:inherit; transition:border-color .12s; }
+  .mini:hover { border-color:var(--accent); }
+  .mini:disabled { opacity:.4; cursor:not-allowed; }
+  .mini:disabled:hover { border-color:var(--line); }
+  .mini.accent { color:var(--accent); border-color:rgba(8,182,221,.4); }
+  .mini.danger:hover { border-color:var(--err); color:#f87171; }
+  .itemcard { border:1px solid var(--line); border-radius:12px; background:#0d111a; transition:border-color .12s; }
+  .itemcard:hover { border-color:#33415a; }
+  .titem { padding:11px 13px; display:flex; flex-direction:column; gap:7px; }
+  .titem .tt { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13.5px; }
+  .titem .tdesc { font-size:12px; color:var(--dim); line-height:1.65; }
   .titem .tnote { font-size:11px; color:#8a94a3; }
-  .titem button { font-size:12px; padding:4px 12px; }
+  .titem .trow2 { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .titem.bad { border-color:#7a3b3b; }
+  .libgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; }
+  .gitem { display:flex; flex-direction:column; overflow:hidden; }
+  .gthumb { height:128px; display:flex; align-items:center; justify-content:center; background:#07090d; cursor:zoom-in; overflow:hidden; }
+  .gthumb img, .gthumb video { width:100%; height:100%; object-fit:cover; }
+  .gthumb > div { width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .gthumb audio { width:92%; }
+  .gbody { padding:10px 12px; display:flex; flex-direction:column; gap:8px; }
+  .gname { font-size:12px; word-break:break-all; line-height:1.5; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .grow { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .chip { border:1px solid var(--line); background:#0d111a; color:var(--dim); border-radius:20px; padding:4px 13px; font-size:12px; cursor:pointer; }
+  .chip.on { border-color:var(--accent); color:var(--fg); background:#0e1722; }
+  .libbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  /* 灯箱 */
+  #lb { display:none; position:fixed; inset:0; z-index:50; background:rgba(5,7,10,.88); align-items:center; justify-content:center; }
+  #lb.on { display:flex; }
+  #lbBox { max-width:88vw; max-height:86vh; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px; }
+  #lbBody img, #lbBody video { max-width:80vw; max-height:70vh; border-radius:8px; display:block; }
+  #lbName { font-size:13px; color:var(--dim); word-break:break-all; }
+  /* 声音页 */
+  .chain { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 2px; }
+  .chain span { font-size:11px; border:1px solid var(--line); border-radius:8px; padding:4px 10px; color:var(--dim); }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>零成本视频流水线 <span class="tag">专家控制台 · 只监听 127.0.0.1</span> <a href="/" style="font-size:13px;color:var(--dim);text-decoration:none">← 入口</a> <a href="/editor" style="font-size:13px;color:var(--accent-2);margin-left:14px;font-weight:600;text-decoration:none">✂ Editor 精修</a> <a href="/timeline" style="font-size:13px;color:var(--accent);margin-left:10px;font-weight:600;text-decoration:none">⇉ 时间轴排序</a> <a href="/wizard" style="font-size:13px;color:var(--ok);margin-left:10px;font-weight:600;text-decoration:none">🧭 流程向导</a></h1>
-  <div class="sub">填文案 → （可选）传背景图/BGM → 点「一键出片」。镜头自动按句拆分；复杂分镜建议按 skills/script.md 手写 shots.json 后跑命令行。</div>
+<div class="topbar">
+  <span class="logo">✂ 零成本视频流水线 <em>专家控制台</em></span>
+  <span class="who">127.0.0.1 本机 · 零成本链路</span>
+  <span class="sp"></span>
+  <a class="hot" href="/wizard">🧭 流程向导</a>
+  <a href="/editor">✂ 精修</a>
+  <a href="/timeline">⇉ 时间轴</a>
+  <a href="/">← 入口</a>
+</div>
 
-  <div class="grid">
-    <!-- 左：新建任务 -->
+<div class="shell">
+  <!-- 左栏：常驻任务导航 -->
+  <div class="sidebar">
     <div class="card">
-      <h2>① 新建视频</h2>
-      <label>口播文案（按句号/换行自动拆镜；首句=标题卡，中间含逗号的句子=要点卡，末句=收尾卡）</label>
-      <textarea id="text" placeholder="一句话，就能出一条成片。&#10;你只要把素材丢进来，剩下的交给流水线。&#10;字幕、配音、镜头，全自动对齐。"></textarea>
-
-      <div class="row">
-        <div>
-          <label>配音音色</label>
-          <select id="voice"></select>
-        </div>
-        <div>
-          <label>任务名（可空，自动按时间生成）</label>
-          <input type="text" id="name" placeholder="my-video">
-        </div>
+      <h2>当前任务 <small id="curState">（未选择）</small></h2>
+      <div class="curtask"><b id="curName">—</b></div>
+      <div class="curlinks">
+        <a class="ghost" href="#" onclick="openInEditor();return false">✂ 精修改字段</a>
+        <a class="ghost" href="#" onclick="openInTimeline();return false">⇉ 时间轴排序</a>
       </div>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <h2>任务列表 <small>点行载入预览</small> <button class="mini" style="float:right;margin-top:-2px" onclick="refreshHist()">↻</button></h2>
+      <div id="taskList"><div class="sub">加载中…</div></div>
+    </div>
+  </div>
 
-      <details id="cloneBox" style="display:none">
-        <summary style="cursor:pointer;font-weight:600;font-size:13px">🎙 克隆音色——用自己的声音出片（需 DashScope key；复刻与合成分开计费）</summary>
-        <div style="display:flex;gap:8px;align-items:center;margin:8px 0 6px;flex-wrap:wrap">
-          <input type="file" id="cloneFile" accept="audio/*" style="flex:1;min-width:200px">
-          <button id="cloneGo" onclick="cloneGo()">✦ 复刻</button>
-          <button onclick="cloneSync()">↻ 同步状态</button>
-        </div>
-        <div class="sub" style="margin-bottom:6px">样本：<b>10~20 秒干净人声</b>（无 BGM、少混响），mp3 / wav / m4a ≤15MB。复刻 Qwen 系列按官方口径 ¥0.01/次（创建失败不计费）；成功后上方音色下拉出现「克隆音色」组，选中出片<b>不走兜底换声</b>（失败就明说，不会静默换成别的声音）。</div>
-        <div id="cloneMsg" class="sub" style="margin-bottom:6px"></div>
-        <div id="cloneList" class="sub"></div>
-      </details>
-
-      <div class="row">
-        <div>
-          <label>发布规格</label>
-          <select id="size">
-            <optgroup label="平台规格（安全区/时长档按平台预设）">
-              <option value="plat:douyin">抖音 · 竖屏 1080×1920</option>
-              <option value="plat:shipinhao">视频号 · 竖屏 1080×1920</option>
-              <option value="plat:xiaohongshu">小红书 · 3:4 1080×1440</option>
-              <option value="plat:bilibili">B站 · 横屏 1920×1080</option>
-            </optgroup>
-            <optgroup label="自定义画幅">
-              <option value="size:1080x1920">竖屏 9:16 1080×1920</option>
-              <option value="size:1920x1080">横屏 16:9 1920×1080</option>
-              <option value="size:1080x1080">方形 1:1 1080×1080</option>
-            </optgroup>
-          </select>
-        </div>
-        <div>
-          <label>封面风格</label>
-          <select id="coverStyle">
-            <option value="tech">暗色科技（默认）</option>
-            <option value="bold">高对比大字（黑底暖黄）</option>
-            <option value="magazine">杂志留白（纸白衬线）</option>
-          </select>
-        </div>
-        <div>
-          <label>语速 <span class="rate-val" id="rateVal">--</span> 字/秒</label>
-          <input type="range" id="rate" min="4.5" max="9" step="0.1">
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>场景风格（演示风建议配横屏 16:9，最接近参考样片）</label>
-          <select id="sceneStyle">
-            <option value="classic">经典（暗底网格 + 竖屏大字）</option>
-            <option value="deck">演示风（幻灯版式 + 底部章节导航条）</option>
-            <option value="paper">纸感（奶油底深字 + 深红点缀，横屏教学）</option>
-          </select>
-        </div>
-        <div>
-          <label>烧录字幕</label>
-          <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px;color:#cfd6e0">
-            <input type="checkbox" id="captions" checked> 逐词高亮字幕（关 = 复刻样片：纯画面 + 旁白）
-          </label>
-        </div>
-      </div>
-
-      <label>批量变体（可选）——每行一个开头钩子，2~5 行出 2~5 条 A/B 测试版本（替换首镜口播+大字标题，素材/语速/音色共享）；留空=只出 1 条</label>
-      <textarea id="hooks" style="min-height:66px" placeholder="留空只出一条；填了每行一条变体：&#10;90%的新手都搞错了第一步&#10;别再花冤枉钱买课程了&#10;看了这条视频，你能少走三年弯路"></textarea>
-
-      <label>背景图（可选 0~9 张，jpg/png/webp；出片自动轮播 + 缓推动画，不传=内置渐变）</label>
-      <div class="files" onclick="document.getElementById('imgs').click()">＋ 点击选择图片</div>
-      <input type="file" id="imgs" accept="image/jpeg,image/png,image/webp" multiple hidden>
-      <div class="thumbs" id="thumbs"></div>
-
-      <label>BGM（可选，mp3；自动循环+说话闪避+卡点）——或从素材库选（与上方上传二选一，自带优先）</label>
-      <div class="files" id="bgmBox" onclick="document.getElementById('bgm').click()">＋ 点击选择音乐</div>
-      <input type="file" id="bgm" accept="audio/mpeg" hidden>
-      <select id="bgmLib" onchange="bgmLibPick()"><option value="">（素材库：未选用——刷新底部素材库后出现可选项）</option></select>
-
-      <button class="primary" id="go" onclick="create()">🎬 一键出片</button>
-      <div class="err" id="err"></div>
+  <!-- 右区：标签页 -->
+  <div class="main">
+    <div class="tabs">
+      <button class="tabbtn on" data-tab="new" onclick="showTab('new')">＋ 新建</button>
+      <button class="tabbtn" data-tab="work" onclick="showTab('work')">🎞 任务台</button>
+      <button class="tabbtn" data-tab="lib" onclick="showTab('lib')">🗂 素材库</button>
+      <button class="tabbtn" data-tab="tech" onclick="showTab('tech')">🧰 技术库</button>
+      <button class="tabbtn" data-tab="voice" onclick="showTab('voice')">🎙 声音</button>
     </div>
 
-    <!-- 右列：进度 + 预览 -->
-    <div class="rightcol">
+    <!-- ① 新建 -->
+    <div class="tabpane on" data-pane="new">
       <div class="card">
-        <h2>② 进度与成片</h2>
-        <div class="steps" id="steps"></div>
-        <pre class="log" id="log">（还没开始——左侧填好文案点「一键出片」）</pre>
-        <div class="result" id="result"></div>
+        <h2>新建视频 <small>填文案一键出片；镜头自动按句拆分，复杂分镜建议手写 shots.json 跑命令行</small></h2>
+        <label>口播文案（按句号/换行自动拆镜；首句=标题卡，中间含逗号的句子=要点卡，末句=收尾卡）</label>
+        <textarea id="text" placeholder="一句话，就能出一条成片。&#10;你只要把素材丢进来，剩下的交给流水线。&#10;字幕、配音、镜头，全自动对齐。"></textarea>
+
+        <div class="group">规 格</div>
+        <div class="row">
+          <div>
+            <label>任务名（可空，自动按时间生成）</label>
+            <input type="text" id="name" placeholder="my-video">
+          </div>
+          <div>
+            <label>发布规格</label>
+            <select id="size">
+              <optgroup label="平台规格（安全区/时长档按平台预设）">
+                <option value="plat:douyin">抖音 · 竖屏 1080×1920</option>
+                <option value="plat:shipinhao">视频号 · 竖屏 1080×1920</option>
+                <option value="plat:xiaohongshu">小红书 · 3:4 1080×1440</option>
+                <option value="plat:bilibili">B站 · 横屏 1920×1080</option>
+              </optgroup>
+              <optgroup label="自定义画幅">
+                <option value="size:1080x1920">竖屏 9:16 1080×1920</option>
+                <option value="size:1920x1080">横屏 16:9 1080×1920</option>
+                <option value="size:1080x1080">方形 1:1 1080×1080</option>
+              </optgroup>
+            </select>
+          </div>
+          <div>
+            <label>场景风格（演示风建议配横屏 16:9，最接近参考样片）</label>
+            <select id="sceneStyle">
+              <option value="classic">经典（暗底网格 + 竖屏大字）</option>
+              <option value="deck">演示风（幻灯版式 + 底部章节导航条）</option>
+              <option value="paper">纸感（奶油底深字 + 深红点缀，横屏教学）</option>
+            </select>
+          </div>
+          <div>
+            <label>封面风格</label>
+            <select id="coverStyle">
+              <option value="tech">暗色科技（默认）</option>
+              <option value="bold">高对比大字（黑底暖黄）</option>
+              <option value="magazine">杂志留白（纸白衬线）</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>配音音色（详见「🎙 声音」页，含克隆音色）</label>
+            <select id="voice"></select>
+          </div>
+          <div>
+            <label>语速 <span class="rate-val" id="rateVal">--</span> 字/秒</label>
+            <input type="range" id="rate" min="4.5" max="9" step="0.1">
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <label style="display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:14px;color:#cfd6e0">
+              <input type="checkbox" id="captions" checked> 逐词高亮字幕（关 = 纯画面 + 旁白）
+            </label>
+          </div>
+        </div>
+
+        <div class="group">批 量 变 体</div>
+        <label style="margin-top:4px">每行一个开头钩子，2~5 行出 2~5 条 A/B 测试版本（替换首镜口播+大字标题，素材/语速/音色共享）；留空=只出 1 条</label>
+        <textarea id="hooks" style="min-height:66px" placeholder="留空只出一条；填了每行一条变体：&#10;90%的新手都搞错了第一步&#10;别再花冤枉钱买课程了&#10;看了这条视频，你能少走三年弯路"></textarea>
+
+        <div class="group">素 材</div>
+        <label style="margin-top:4px">背景图（可选 0~9 张，jpg/png/webp；出片自动轮播 + 缓推动画，不传=内置渐变）</label>
+        <div class="files" onclick="document.getElementById('imgs').click()">＋ 点击选择图片</div>
+        <input type="file" id="imgs" accept="image/jpeg,image/png,image/webp" multiple hidden>
+        <div class="thumbs" id="thumbs"></div>
+
+        <label>BGM（可选，mp3；自动循环+说话闪避+卡点）——或从素材库选（与上方上传二选一，自带优先）</label>
+        <div class="row">
+          <div class="files" id="bgmBox" onclick="document.getElementById('bgm').click()">＋ 点击选择音乐</div>
+          <input type="file" id="bgm" accept="audio/mpeg" hidden>
+          <select id="bgmLib" onchange="bgmLibPick()"><option value="">（素材库：未选用——刷新素材库页后出现可选项）</option></select>
+        </div>
+
+        <button class="primary" id="go" onclick="create()">🎬 一键出片</button>
+        <div class="err" id="err"></div>
       </div>
+    </div>
+
+    <!-- ② 任务台 -->
+    <div class="tabpane" data-pane="work">
+      <div class="panebox">
+        <div class="card result">
+          <h2>进度与成片 <small>局部重跑 / 需求聊天在成片下方折叠面板里</small></h2>
+          <div class="steps" id="steps"></div>
+          <pre class="log" id="log">（还没开始——「＋ 新建」填好文案点「一键出片」，或左栏点一个任务载入）</pre>
+          <div class="result" id="result"></div>
+        </div>
+        <div class="card">
+          <h2>历史任务 <small>左栏任务列表同源的完整视图</small></h2>
+          <table id="hist"><tr><td>加载中…</td></tr></table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ 素材库 -->
+    <div class="tabpane" data-pane="lib">
       <div class="card">
-        <h2>③ 历史任务</h2>
-        <table id="hist"><tr><td>加载中…</td></tr></table>
+        <h2>素材库 <small>文件丢进 library\bgm｜images｜clips 后点刷新；选用=复制进任务 assets（BGM 第 2 步 / 背景图第 3 步重跑生效）；点缩略图放大预览</small></h2>
+        <div class="libbar">
+          <label style="margin:0">目标任务</label>
+          <select id="libTask" style="max-width:260px"></select>
+          <button class="mini" onclick="refreshLib()">↻ 刷新</button>
+          <input type="search" id="libQ" style="max-width:220px" placeholder="搜素材名…" oninput="libRender()">
+          <span id="libFilters" style="display:flex;gap:6px">
+            <button class="chip on" data-f="all" onclick="libFilter('all')">全部</button>
+            <button class="chip" data-f="bgm" onclick="libFilter('bgm')">BGM</button>
+            <button class="chip" data-f="images" onclick="libFilter('images')">图片</button>
+            <button class="chip" data-f="clips" onclick="libFilter('clips')">片段</button>
+          </span>
+          <span class="sub" id="libMsg" style="flex:1;min-width:220px"></span>
+        </div>
+        <div id="aiOff" class="sub" style="display:none;margin:0 0 10px"></div>
+        <div id="aiBox" style="display:none;margin:0 0 12px;padding-top:8px;border-top:1px dashed var(--line)">
+          <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+            <textarea id="aiPrompt" style="flex:1;min-width:280px;min-height:46px" placeholder="描述要生成的画面（中英均可）：如「奶油色纸面背景，中央圆角白底 UI 窗口样机，扁平插画，深红点缀，留白充足」——场景图/背景图/成对对照素材都靠它"></textarea>
+            <select id="aiSize" style="width:130px"></select>
+            <button id="aiGo" onclick="genImage()">✦ AI 生图</button>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
+            <label style="margin:0;font-weight:400"><input type="checkbox" id="aiAttach" checked> 生成后作背景图（bg-NN）加入上方所选任务</label>
+            <span class="sub" id="aiMsg" style="flex:1;min-width:200px"></span>
+          </div>
+          <div id="aiPreview" style="margin-top:6px"></div>
+        </div>
+        <div id="lib" class="libgrid"><div class="sub">加载中…</div></div>
       </div>
     </div>
 
-    <!-- 底部全宽：素材库（P7-1） -->
-    <div class="card shelf">
-      <h2>素材库 <span style="font-weight:400;font-size:12px;color:#8a94a3">把文件丢进 <code>library\bgm｜images｜clips</code> 后点刷新 → 选目标任务 → 选用（复制进任务 assets，BGM 第 2 步 / 背景图第 3 步重跑生效）；没有现成图就用下方 ✦ AI 生图（有 key 才启用，按张计费）</span></h2>
-      <div style="display:flex;gap:10px;align-items:center;margin:2px 0 10px;flex-wrap:wrap">
-        <label style="margin:0">目标任务</label>
-        <select id="libTask" style="max-width:280px"></select>
-        <button onclick="refreshLib()">↻ 刷新</button>
-        <span class="sub" id="libMsg" style="flex:1;min-width:220px"></span>
+    <!-- ④ 技术库 -->
+    <div class="tabpane" data-pane="tech">
+      <div class="card">
+        <h2>技术库 <small>点「插入」自动填好当前任务的局部重跑表单（任务台页成片下方）——确认后点「重跑」</small></h2>
+        <div style="margin-bottom:8px"><button class="mini" onclick="refreshTech()">↻ 刷新货架</button> <span class="sub">插卡前请先在左栏选中任务</span></div>
+        <div id="tech" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
       </div>
-      <div id="aiOff" class="sub" style="display:none;margin:0 0 10px"></div>
-      <div id="aiBox" style="display:none;margin:0 0 12px;padding-top:8px;border-top:1px dashed var(--line)">
-        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
-          <textarea id="aiPrompt" style="flex:1;min-width:280px;min-height:46px" placeholder="描述要生成的画面（中英均可）：如「奶油色纸面背景，中央圆角白底 UI 窗口样机，扁平插画，深红点缀，留白充足」——场景图/背景图/成对对照素材都靠它"></textarea>
-          <select id="aiSize" style="width:130px"></select>
-          <button id="aiGo" onclick="genImage()">✦ AI 生图</button>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px">
-          <label style="margin:0;font-weight:400"><input type="checkbox" id="aiAttach" checked> 生成后作背景图（bg-NN）加入上方所选任务</label>
-          <span class="sub" id="aiMsg" style="flex:1;min-width:200px"></span>
-        </div>
-        <div id="aiPreview" style="margin-top:6px"></div>
-      </div>
-      <div id="lib" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
     </div>
 
-    <!-- 底部全宽：技术库货架（P3-3） -->
-    <div class="card shelf">
-      <h2>技术库 <span style="font-weight:400;font-size:12px;color:#8a94a3">点「插入」自动填好当前任务的重跑表单（在右侧预览区下方）——确认后点「重跑」</span></h2>
-      <div id="tech" class="techgrid"><div class="sub" style="grid-column:1/-1">加载中…</div></div>
+    <!-- ⑤ 声音 -->
+    <div class="tabpane" data-pane="voice">
+      <div class="panebox">
+        <div class="card">
+          <h2>音色与四级兜底</h2>
+          <div class="sub">新任务默认在「＋ 新建」页选音色。配音通道按序兜底，断网也出片（克隆音色除外——点名要自己的声音，失败就明说，绝不静默换声）：</div>
+          <div class="chain"><span>① DashScope qwen TTS（免费额度，50+ 音色）</span><span>② edge-tts</span><span>③ gTTS</span><span>④ SAPI 离线（Windows 自带 Huihui）</span></div>
+        </div>
+        <div class="card">
+          <h2>🎙 克隆音色 <small>用自己的声音出片（需 DashScope key；复刻与合成分开计费）</small></h2>
+          <details id="cloneBox" style="display:none">
+            <summary style="cursor:pointer;font-weight:600;font-size:13px">展开克隆面板</summary>
+            <div style="display:flex;gap:8px;align-items:center;margin:12px 0 6px;flex-wrap:wrap">
+              <input type="file" id="cloneFile" accept="audio/*" style="flex:1;min-width:200px">
+              <button id="cloneGo" onclick="cloneGo()">✦ 复刻</button>
+              <button onclick="cloneSync()">↻ 同步状态</button>
+            </div>
+            <div class="sub" style="margin-bottom:6px">样本：<b>10~20 秒干净人声</b>（无 BGM、少混响），mp3 / wav / m4a ≤15MB。复刻 Qwen 系列按官方口径 ¥0.01/次（创建失败不计费）；成功后「新建」页音色下拉出现「克隆音色」组，选中出片<b>不走兜底换声</b>。</div>
+            <div id="cloneMsg" class="sub" style="margin-bottom:6px"></div>
+            <div id="cloneList" class="sub"></div>
+          </details>
+          <div id="cloneOff" class="sub" style="display:none">未检测到 DashScope key，克隆功能未启用。在 pipeline\config.local.json 给 voice.dashscope.key（复用）或 voice.clone.key（单独）填 key，或设环境变量 DASHSCOPE_API_KEY。</div>
+        </div>
+      </div>
     </div>
+  </div>
+</div>
+
+<!-- 灯箱 -->
+<div id="lb" onclick="if(event.target===this)closeLb()">
+  <div id="lbBox">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+      <span id="lbName"></span>
+      <button class="ghost" onclick="closeLb()">✕ 关闭（Esc）</button>
+    </div>
+    <div id="lbBody"></div>
   </div>
 </div>
 
@@ -231,6 +363,22 @@ async function j(url, opt) {
 function toBase64(file) {
   return new Promise((ok) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(file); });
 }
+
+// —— 标签页 / 当前任务 ——
+function showTab(name) {
+  document.querySelectorAll('.tabbtn').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.tabpane').forEach((p) => p.classList.toggle('on', p.dataset.pane === name));
+}
+function setCur(name) {
+  lastTask = name || lastTask;
+  if (name) {
+    $('curName').textContent = name;
+    $('curState').textContent = '已选中';
+    document.querySelectorAll('#taskList .trow').forEach((r) => r.classList.toggle('on', r.dataset.name === name));
+  }
+}
+function openInEditor() { if (lastTask) location.href = '/editor#' + encodeURIComponent(lastTask); else alert('先在左栏选一个任务'); }
+function openInTimeline() { if (lastTask) location.href = '/timeline#' + encodeURIComponent(lastTask); else alert('先在左栏选一个任务'); }
 
 // —— 克隆音色（P8）——
 const CLONE_STATUS = { OK: '可用', DEPLOYING: '审核中', UNDEPLOYED: '未通过' };
@@ -254,7 +402,7 @@ function renderVoiceSel(keep) {
 function renderCloneList() {
   const cl = (meta.clone && meta.clone.voices) || [];
   $('cloneList').innerHTML = cl.length
-    ? cl.map((v) => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:2px 0"><code>${esc(v.voiceId)}</code>${v.sampleName ? `<span>${esc(v.sampleName)}</span>` : ''}<b>${CLONE_STATUS[v.status] || esc(v.status)}</b><button onclick="cloneDel('${esc(v.voiceId)}')">删除</button></div>`).join('')
+    ? cl.map((v) => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:2px 0"><code>${esc(v.voiceId)}</code>${v.sampleName ? `<span>${esc(v.sampleName)}</span>` : ''}<b>${CLONE_STATUS[v.status] || esc(v.status)}</b><button class="mini danger" onclick="cloneDel('${esc(v.voiceId)}')">删除</button></div>`).join('')
     : '<div>还没有克隆音色——选段 10~20 秒干净人声，点「✦ 复刻」。</div>';
 }
 
@@ -304,7 +452,8 @@ async function init() {
   refreshLib();
   initAI();
   if (meta.clone && meta.clone.enabled) { $('cloneBox').style.display = ''; renderCloneList(); }
-  if (meta.running) poll();
+  else $('cloneOff').style.display = '';
+  if (meta.running) { showTab('work'); poll(); }
 }
 
 $('rate').addEventListener('input', () => $('rateVal').textContent = $('rate').value);
@@ -343,7 +492,9 @@ async function create() {
     });
     lastTask = d.name;
     batchNames = d.batch || [d.name];
+    setCur(d.name);
     $('result').innerHTML = '';
+    showTab('work');
     poll();
   } catch (e) {
     $('err').textContent = e.message;
@@ -390,6 +541,8 @@ async function poll() {
 async function showResult(tasks) {
   const list = Array.isArray(tasks) ? tasks : [tasks];
   lastTask = list[0];
+  setCur(list[0]);
+  showTab('work');
   const [all, chat] = await Promise.all([
     j('/api/tasks'),
     list.length === 1 ? j('/api/chat?name=' + encodeURIComponent(list[0])).catch(() => null) : Promise.resolve(null),
@@ -491,15 +644,15 @@ function deepMergeJS(a, b) {
 
 async function refreshTech() {
   const card = (t) => t.error ? `
-    <div class="titem bad"><b>${t.name}</b> <span class="badge" style="background:rgba(239,68,68,.15);color:#f87171">配方损坏</span>
+    <div class="titem itemcard bad"><div class="tt"><b>${t.name}</b><span class="badge danger">配方损坏</span></div>
       <div class="tdesc">${t.id}.json · ${t.error}</div></div>` : `
-    <div class="titem">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>${t.name}</b>
-        ${t.tier === 'implemented' ? '<span class="badge ok">可直接用</span>' : (t.tier === 'manual' ? '<span class="badge">手动配方 · 看判据</span>' : '<span class="badge">待实现</span>')}
+    <div class="titem itemcard">
+      <div class="tt"><b>${t.name}</b>
+        ${t.tier === 'implemented' ? '<span class="badge ok">可直接用</span>' : (t.tier === 'manual' ? '<span class="badge warn">手动配方 · 看判据</span>' : '<span class="badge">待实现</span>')}
       </div>
       <div class="tdesc">${t.desc || ''}</div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <button onclick="insertTech('${t.id}')" ${t.tier === 'implemented' ? '' : 'disabled'}>⤵ 插入当前任务</button>
+      <div class="trow2">
+        <button class="mini accent" onclick="insertTech('${t.id}')" ${t.tier === 'implemented' ? '' : 'disabled'}>⤵ 插入当前任务</button>
         <span class="tnote">${(t.insert && t.insert.note) || ''}</span>
       </div>
     </div>`;
@@ -519,19 +672,28 @@ async function refreshTech() {
   } catch (e) { $('tech').innerHTML = `<div class="sub">技术库加载失败：${e.message}</div>`; }
 }
 
-// —— 素材库（P7-1）：library/{bgm,images,clips} 列表 + 选用复制进任务；建任务表单的「素材库选 BGM」下拉共用这份数据 ——
+// —— 素材库（P7-1 + P16 灯箱网格）：缓存数据供筛选/搜索/缩略图；选用=复制进任务 ——
 const LIB_META = {
   bgm: { label: 'BGM', hint: '把 mp3/wav/m4a/aac/ogg/flac/mp4 丢进 library\\bgm', acts: [{ m: '', t: '♪ 设为任务 BGM' }] },
-  images: { label: '图片', hint: '把 jpg/png/webp 丢进 library\\images', acts: [{ m: 'bg', t: '↓ 作背景图 (bg-NN)' }, { m: 'as-is', t: '⎘ 原名复制（样机图/分镜引用）' }] },
-  clips: { label: '视频片段', hint: '把 mp4/mov/webm/mkv 丢进 library\\clips', acts: [{ m: '', t: '⎘ 复制进任务（分镜引用）' }] },
+  images: { label: '图片', hint: '把 jpg/png/webp 丢进 library\\images', acts: [{ m: 'bg', t: '↓ 作背景图 (bg-NN)' }, { m: 'as-is', t: '⎘ 原名复制' }] },
+  clips: { label: '视频片段', hint: '把 mp4/mov/webm/mkv 丢进 library\\clips', acts: [{ m: '', t: '⎘ 复制进任务' }] },
 };
 const libEsc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+const attrEsc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const fmtSize = (n) => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const libUrl = (kind, name) => '/lib/' + kind + '/' + encodeURIComponent(name);
+let libAll = { kinds: {} }, libF = 'all';
+
+function libFilter(f) {
+  libF = f;
+  document.querySelectorAll('#libFilters .chip').forEach((c) => c.classList.toggle('on', c.dataset.f === f));
+  libRender();
+}
 
 async function refreshLib() {
   try {
-    const d = await j('/api/library');
-    const tasks = await j('/api/tasks');
+    const [d, tasks] = await Promise.all([j('/api/library'), j('/api/tasks')]);
+    libAll = d;
     const sel = $('libTask');
     const keep = sel.value;
     sel.innerHTML = tasks.length
@@ -544,21 +706,47 @@ async function refreshLib() {
     bl.innerHTML = '<option value="">（素材库：未选用）</option>'
       + (d.kinds.bgm || []).map((it) => `<option value="${libEsc(it.name)}">${it.name}</option>`).join('');
     if (blKeep && (d.kinds.bgm || []).some((it) => it.name === blKeep)) bl.value = blKeep;
-    $('lib').innerHTML = Object.keys(LIB_META).map((k) => {
-      const meta = LIB_META[k];
-      const items = d.kinds[k] || [];
-      const head = `<div class="cathead"><b>${meta.label}</b><span>${items.length} 个</span></div>`;
-      if (!items.length) return head + `<div class="sub" style="grid-column:1/-1">${meta.hint} 后点刷新</div>`;
-      return head + items.map((it) => `
-        <div class="titem">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b style="word-break:break-all">${it.name}</b><span class="badge">${fmtSize(it.size)}</span></div>
-          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-            ${meta.acts.map((a) => `<button onclick="libAdd('${k}','${libEsc(it.name)}','${a.m}')">${a.t}</button>`).join('')}
-          </div>
-        </div>`).join('');
-    }).join('');
+    libRender();
   } catch (e) { $('lib').innerHTML = `<div class="sub">素材库加载失败：${e.message}</div>`; }
 }
+
+function libRender() {
+  if (!libAll || !libAll.kinds) return;
+  const q = ($('libQ').value || '').toLowerCase();
+  const keys = Object.keys(LIB_META).filter((k) => libF === 'all' || libF === k);
+  $('lib').innerHTML = keys.map((k) => {
+    const m = LIB_META[k];
+    const items = (libAll.kinds[k] || []).filter((it) => !q || it.name.toLowerCase().includes(q));
+    const head = `<div class="cathead"><b>${m.label}</b><span>${items.length} 个</span></div>`;
+    if (!items.length) return head + `<div class="sub" style="grid-column:1/-1">${q ? '没有匹配的' + m.label : m.hint + ' 后点刷新'}</div>`;
+    return head + items.map((it) => {
+      const img = k === 'images' ? `<img loading="lazy" src="${libUrl(k, it.name)}" alt="">`
+        : (k === 'clips' ? `<video preload="metadata" muted src="${libUrl(k, it.name)}"></video>` : '');
+      const thumbInner = k === 'bgm'
+        ? `<audio preload="none" controls src="${libUrl(k, it.name)}"></audio>`
+        : img;
+      const zoom = k === 'bgm' ? '' : ` onclick="openLb('${k}','${libEsc(it.name)}')"`;
+      return `<div class="gitem itemcard">
+        <div class="gthumb"${zoom}>${thumbInner}</div>
+        <div class="gbody">
+          <div class="gname">${attrEsc(it.name)}<span class="badge">${fmtSize(it.size)}</span></div>
+          <div class="grow">${m.acts.map((a) => `<button class="mini" onclick="libAdd('${k}','${libEsc(it.name)}','${a.m}')">${a.t}</button>`).join('')}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }).join('');
+}
+
+// 灯箱：图/片段放大预览
+function openLb(kind, name) {
+  const src = libUrl(kind, name);
+  const body = kind === 'images' ? `<img src="${src}">` : `<video controls autoplay src="${src}"></video>`;
+  $('lbName').textContent = kind + ' / ' + name;
+  $('lbBody').innerHTML = body;
+  $('lb').classList.add('on');
+}
+function closeLb() { $('lb').classList.remove('on'); $('lbBody').innerHTML = ''; }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLb(); });
 
 async function libAdd(kind, name, mode) {
   const task = $('libTask').value;
@@ -618,7 +806,8 @@ async function genImage() {
 
 // 插入 = 填好局部重跑表单（from / 场景·封面·字幕下拉 / config 补丁深合并），不自动提交——留给用户确认
 async function insertTech(id) {
-  if (!lastTask) { alert('先出片，或到「历史任务」点开一条成片，再插入技术'); return; }
+  if (!lastTask) { alert('先在左栏点选一个任务，再插入技术'); return; }
+  showTab('work');
   if (!$('rr-from')) { alert('重跑面板不在（可能正在出片）——等完成后再插入'); return; }
   let t;
   try { t = (await j('/api/techniques')).find((x) => x.id === id); } catch (e) { alert(e.message); return; }
@@ -665,14 +854,21 @@ async function sendChat(newThread) {
   } catch (e) { alert(e.message); if (inp) inp.value = text; }
 }
 
+// —— 任务列表（左栏）+ 历史（任务台）同源刷新 ——
 async function refreshHist() {
-  const tasks = (await j('/api/tasks')).slice(0, 12);
+  const tasks = await j('/api/tasks');
+  // 左栏：全量可滚
+  $('taskList').innerHTML = tasks.length
+    ? tasks.map((t) => `<div class="trow ${t.name === lastTask ? 'on' : ''}" data-name="${attrEsc(t.name)}" onclick="showResult('${libEsc(t.name)}')" title="${attrEsc(t.name)}">
+        <span class="nm">${t.name}</span><span class="st">${t.hasVideo ? `<span class="badge ok">${t.dur ? t.dur.toFixed(0) + 's' : '成片'}</span>` : '<span class="badge">未完成</span>'}</span></div>`).join('')
+    : '<div class="sub">还没有任务</div>';
+  // 历史表：前 12 条完整视图
   if (!tasks.length) { $('hist').innerHTML = '<tr><td>还没有任务</td></tr>'; return; }
-  $('hist').innerHTML = tasks.map((t) => `<tr>
+  $('hist').innerHTML = tasks.slice(0, 12).map((t) => `<tr>
     <td><b>${t.name}</b></td>
-    <td>${t.hasVideo ? `<span class="badge ok">${t.dur ? t.dur.toFixed(0) + 's' : '成片'}</span>` : '<span class="badge">未完成</span>'}</td>
+    <td>${t.hasVideo ? `<span class="badge ok">${t.dur ? t.dur.toFixed(1) + 's' : '成片'}</span>` : '<span class="badge">未完成</span>'}</td>
     <td>${t.voice || ''}</td>
-    <td>${t.hasVideo ? `<a href="#" style="color:var(--accent)" onclick="showResult('${t.name}');return false">预览</a>` : ''}</td>
+    <td>${t.hasVideo ? `<a href="#" style="color:var(--accent)" onclick="showResult('${libEsc(t.name)}');return false">预览</a>` : ''}</td>
   </tr>`).join('');
 }
 

@@ -954,6 +954,17 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { reply, started, activeThread: chat.activeThread });
     }
 
+    // —— 素材库只读预览（/lib/<kind>/<file>）：控制台素材网格缩略图/灯箱用；三类目录 + 文件名白名单，同 /file 防穿越 ——
+    const lm = /^\/lib\/(bgm|images|clips)\/([^/]+)$/.exec(p);
+    if (lm) {
+      let libName;
+      try { libName = decodeURIComponent(lm[2]); } catch { return json(res, 400, { error: 'bad encoding' }); }
+      const okName = /^[\w一-鿿.\- ]+$/.test(libName) && !libName.includes('..') && !libName.startsWith('.');
+      const fp = path.join(LIB, lm[1], libName);
+      if (!okName || !fp.startsWith(path.join(LIB, lm[1]))) return json(res, 400, { error: 'bad path' });
+      return serveFile(req, res, fp);
+    }
+
     // —— 任务产物预览（白名单文件名，防穿越）——
     const fm = /^\/file\/([^/]+)\/(.+)$/.exec(p);
     if (fm) {
