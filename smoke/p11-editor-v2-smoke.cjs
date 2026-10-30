@@ -16,6 +16,16 @@ const ok = (name, cond, extra) => {
   else { fail++; console.log(`  ✗ FAIL ${name}${extra ? ' — ' + extra : ''}`); }
 };
 async function get(url) { const r = await fetch(url); return { status: r.status, j: await r.json().catch(() => ({})) }; }
+// 冒烟并发防护：8787 只有一条管线队列，别的套件（如 p14）在跑时禁止动探针目录（重铺会撞车）
+async function waitServerIdle(maxSec = 300) {
+  const t0 = Date.now();
+  for (;;) {
+    const s = await get(BASE + '/api/status');
+    if (!s.j.running && !(s.j.queue && s.j.queue.length)) return true;
+    if (Date.now() - t0 > maxSec * 1000) throw new Error('等 8787 队列清空超时——先停掉其他在跑的冒烟/出片');
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+}
 async function post(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
   return { status: r.status, j: await r.json().catch(() => ({})) };
@@ -55,6 +65,7 @@ async function waitIdle(maxSec) {
   }
 
   // ===== 建探针 =====
+  await waitServerIdle(); // 并发防护：其他套件在跑时先等队列空（建探针前）
   const PA = probeDir('_p11_legacy');  // deck-demo 副本（无 seg，legacy 口径）
   const PB = probeDir('_p11_new');     // 全新副本走插镜重跑链
   copyDir(SRC, PA); copyDir(SRC, PB);
@@ -129,7 +140,8 @@ async function waitIdle(maxSec) {
   // ===== F legacy 副本：换序（文本不变）→ structural 钳 1 → 重配音落 seg → 再换序 drift 抓 =====
   console.log('F legacy 换序链（真实重跑 ①）');
   {
-    // 清掉 D 段参数影响：重铺原始副本
+    // 清掉 D 段参数影响：重铺原始副本（先等队列空，防并发套件正在写探针目录）
+    await waitServerIdle();
     fs.rmSync(PA, { recursive: true, force: true }); copyDir(SRC, PA);
     const l = listA();
     [l[1], l[2]] = [l[2], l[1]]; // 纯换序，文本零改动

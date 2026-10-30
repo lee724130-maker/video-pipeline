@@ -45,6 +45,7 @@ async function idle(maxSec = 600) {
     ok('runPipeline 有界签名 + queue 透传 to + draft 分支', srv.includes('runPipeline(taskDir, from = 1, to = 6)') && srv.includes('item.to || 6') && srv.includes('if (body.draft)'));
   }
 
+  await idle(300); // 并发防护：等其他套件管线队列清空
   // 清理任何残留，建一个干净目录名（草稿接口会自建，不用 probeDir 预建）
   fs.rmSync(DIR, { recursive: true, force: true });
   console.log('B 草稿：只拆镜、零运行');

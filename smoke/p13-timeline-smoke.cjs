@@ -56,6 +56,7 @@ async function postClear(name, shots, extra) { // 等队列空闲再 POST（防 
   }
 
   console.log('B GET durations 契约');
+  await waitIdle(300); // 并发防护：等其他套件管线队列清空再动探针
   const PA = probeDir('_p13_nstyle');   // deck-demo 副本（n 型 + 有 timeline.json）
   const PB = probeDir('_p13_nokey');    // 副本剥键（无键升级流）
   copyDir(SRC, PA); copyDir(SRC, PB);
