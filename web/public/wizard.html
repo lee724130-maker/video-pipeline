@@ -162,6 +162,7 @@
       <button class="ghost" onclick="dl()">下载成片</button>
       <a class="ghost" style="display:inline-block" id="qcLink" href="#" target="_blank">看 QC 报告</a>
       <button class="ghost" onclick="backConsole()">回控制台细看</button>
+      <a class="ghost" style="display:inline-block" id="cutLink" href="#">✂ 去重剪时间轴</a>
       <button class="primary" style="padding:10px 24px;font-size:14px" onclick="restart()">再做一个 →</button>
     </div>
   </div>
@@ -372,6 +373,7 @@ function paintDone(){
   $('doneDesc').innerHTML = '任务 <b>' + esc(task) + '</b> 已出片' + (ss.qc ? ' · QC ' + (ss.qc.pass ?? '?') + '/' + (ss.qc.total ?? '?') + ' 通过' : '') + '，下面直接看成片。';
   $('doneBox').innerHTML = ss.video && ss.video.ok ? '<video controls src="' + fileUrl(task, '成片.mp4') + '"></video>' : '<span class="locktip">还没出片：回第 6 页点「合成成片」</span>';
   $('qcLink').href = fileUrl(task, 'qc-report.txt');
+  $('cutLink').href = '/cut#' + encodeURIComponent(task);
 }
 function dl(){ if (task) { const a = document.createElement('a'); a.href = fileUrl(task, '成片.mp4'); a.download = task + '-成片.mp4'; a.click(); } }
 function restart(){ task = null; story = []; msg('新建一条吧'); $('resumeTask').value = ''; showPage(1); }

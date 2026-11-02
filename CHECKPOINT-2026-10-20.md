@@ -541,3 +541,25 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 - **踩坑三枚**：① ffmpeg `adelay→amix`（含 duration=longest+normalize=0）在 copy 视频/五路输入下 **EOF 不可靠致两次「卡死」假象**（CPU 狂转不出文件、-t 兜底失效）——教训：**渲染器音频链每条流必须显式有限**（anullsrc d= + atrim），改 concat 拓扑后 45s 跑完；② 冒烟脚本 A 块 `const fail` 遮蔽计数器 + `ok(n)` 缺参——负例「捕获了仍 FAIL」的怪象定位；③ execSync 子进程非零退出吞掉 stdout——QC 取证要走 e.stdout。
 - **冒烟 25/25**（p12-edit-contract-smoke.cjs）：A 契约 11（恒等导入/拆分缝合/fade 时长数学/六个宁拦不猜）· B API 7 · C 端到端 7（**恒等导出 77.57s vs 原片 77.59s**、06 精修模式全过、产物齐）· D 清场。回归：p6/p9-static/p13 19/19/p14 29/29/p9 36/36/p10 27/27 全绿。计费：A 段渲染纯本地零 TTS。
 - **交接（下次开工）**：B 段 `/cut` 时间轴页（吃 edit.json 契约：四轨/0.1s 网格拖拽/拆分/撤销栈/属性面板，保存走 /api/edit）→ C 段导出按钮接 08+06 进控制台/向导。另：用户新列候选 **P18 剪映草稿导出**（edit.json→draft_content.json 翻译器，律师函教训=只做本地文件生成、不碰剪映程序/不绕会员，见 douyin_video 归档 2026-10-30 行）。
+
+## P12-B/C + P18 改道 · 重剪页、导出链、剪映接力包（2026-10-30 同日续跑，p19 23/23 + p20 16/16）
+
+- **P12-B `/cut` 重剪时间轴**（web/public/cut.html 单文件）：三轨（口播/配音/字幕）按目标时间轴等比铺 clip；**手势分区**=中间拖换序 / 左右 11px 边缘拖 0.1s 吸附裁剪 / 双击点处拆分（两侧 ≥0.1s 守卫）/ Del 删除 / Ctrl+Z 栈；属性面板=进入转场 cut/fade + in/out 数值框；**字符窗自动推导**（charAtTime 二分 charStart 表，裁剪/换序/拆分后窗口重算，与服务端契约同式）；保存走 /api/edit（.bak 代际），导出走 rerun 7→8。`/api/edit` GET 补 captions/charStart/charEnd（页面算字幕轨用）。
+- **P12-C 导出链接线**：STEPS 加第 7 步（08-edit）第 8 步（**08-qc.cjs**——06 参数化旗标的薄包装，判据单一出处）；startRerun from 放宽 1~8、to 钳 8；控制台任务台 hasEdit 行（打开重剪页/导出精修/精修成片/精修 QC/接力包）+ 向导完成页「✂ 去重剪时间轴」+ /api/tasks 带 hasEdit。
+- **P18 改道始末（重要决策）**：用户想要「无头剪映」同款链路 → 勘察本机剪映 6.x：`draft_content.json`/`draft_meta_info.json` **全加密**（仅 Timelines/project.json 等外围明文）——直接写草稿物理不可行，且破解加密正是律师函诉点，**不做**；改道 100% 合规「接力包」：08 加 `--no-subs`（干净底带）+ `--out`（独立文件名防覆盖烧字幕版，白名单只许 精修/*.mp4）；`pipeline/lib/srt.cjs`（effective captions→SRT，编号连续/空条目跳/CRLF/最短 0.2s）；`POST /api/edit/jianying-package` 同步产三文件（底带+SRT+三步说明）；入口 /cut 底栏 + 控制台。
+- **冒烟**：p19 23/23（/cut 静态 + 编辑单往返含「坏单 400 磁盘不脏」「.bak 代际」+ 导出 E2E 含**主链成片 mtime+size 零触碰**硬断言）；p20 16/16（SRT 单测 + E2E 含「烧字幕版不被接力包覆盖」「干净版时长≈烧版」+ 负例 + 清场）。踩坑：p20 首跑 1 败是**测试代码自己**的 ffmpeg metadata=print 语法错（产品断言全过）——修断言非修产品；接力包说明数组一处引号不配对被 --check 当场抓出。
+- **计费**：本轮全本地（08 重编码多轮），零 TTS 零生图。
+- **回归（2026-11-02 收尾确认）**：九套件串行全绿——p6-check、p9-static、p16 23/23、p17 24/24、p12 25/25、p13 19/19、p14 29/29、p9-editor 36/36、p10 27/27（含本轮新增 p19 23/23、p20 16/16 已过）；哨兵/清场干净。
+
+## 断点交接 · 2026-11-02（会话将删除，下次开工直接从这一节接）
+
+- **现场**：P12-B/C + P18 三档（本 CHECKPOINT / ROADMAP / README）已同步，工作树改动全部提交并推送 GitHub（`video-pipeline` main）。服务：`node web/server.cjs`（8787）；重启口令见 README「跑起来」。产物：`output/<任务>/精修/{成片.mp4, effective-timeline.json, edit.report.json, qc-report.txt, 成片-干净底带.mp4, 字幕.srt, 剪映接力说明.md}`。
+- **唯一未完成事项 = 用户真人实测 `/cut`**。拖拽换序、边缘裁剪、双击拆分、Ctrl+Z、保存/导出/接力包这些**手势 API 冒烟测不到**（p19 只锁住契约与服务端）。实测入口：`http://127.0.0.1:8787/wizard` 走完 06 → 完成页「✂ 去重剪时间轴」，或直接 `http://127.0.0.1:8787/cut` 载入有 `精修/edit.json` 的任务。反馈落地前**不开新功能**。
+- **下一批候选清单（已呈报，等用户拍板）**：
+  - **第 0 批**：用户真实跑一条自己的选题（需求→向导 06→/cut 精修→剪映接力包→抖音），验收「零成本出片 + 剪映精修补投流」这条主价值链是否真顺。
+  - **第 1 批**：按第 0 批反馈修 /cut 与向导的顺手度（优先级由反馈决定，不预设）。
+  - **第 2 批**：向导 04 页接精修预览（用 edit.json 提前渲一小段）；批量变体 × 重剪打通（每变体一份 edit.json）；接力包资产打包（底带+SRT+封面+BGM 一键 zip）。
+  - **第 3 批**：QC 语义化自动审（qwen-vl 看图验错位/遮挡，替代部分人眼检查）；抖音抓取固化成技能；技术库手法卡扩充。
+  - **第 4 批（长期）**：变速/关键帧动画等高成本项。**「自动发布到抖音」建议永不做**——无官方合规通道，走逆向即律师函诉点。
+- **开工仪式（不变）**：任何改动 → 跑对应冒烟 + 既有回归全绿 → 才 git 提交（一里程碑一提交）→ 同步 README/ROADMAP/CHECKPOINT 三档；冒烟脚本必须归档进 `smoke/` 并更新 `smoke/README.md` 清单表，不许只留临时目录。
+- **易踩雷速查**：① 渲染器音频链每条流必须显式有限流（anullsrc `d=` + atrim），`adelay→amix` 会 EOF 假死；② 跨 shell 传中文路径一律 ASCII 脚本 + `[char]0xXXXX`，删除走回收站 API；③ 冒烟动探针目录前必须 `waitServerIdle()`；④ 改 `lib/ass-builder.cjs` 要同步 p10 A5 哨兵；⑤ 上线前必须先跑 migration 再启新代码。

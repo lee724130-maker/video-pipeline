@@ -22,6 +22,8 @@ const STEPS = [
   { n: 4, name: '场景渲染', file: '04-render.cjs' },
   { n: 5, name: '合成', file: '05-compose.cjs' },
   { n: 6, name: '质检 QC', file: '06-qc.cjs' },
+  { n: 7, name: '重剪渲染（精修）', file: '08-edit.cjs' },
+  { n: 8, name: '精修质检 QC', file: '08-qc.cjs' },
 ];
 const VOICES = [
   { id: 'loongstella_v3.1', name: '飒爽新闻女（默认）' },
@@ -408,7 +410,7 @@ function narrationDrift(dir, shots) {
 function startRerun(name, dir, from, patch, config, resetConfig, to = 6) {
   const sj = path.join(dir, 'shots.json');
   if (!fs.existsSync(sj)) return { error: '任务不存在' };
-  if (!Number.isInteger(from) || from < 1 || from > 6) return { error: 'from 必须是 1~6' };
+  if (!Number.isInteger(from) || from < 1 || from > 8) return { error: 'from 必须是 1~8（7=重剪渲染 8=精修质检）' };
   patch = patch && typeof patch === 'object' ? patch : {};
   const shots = readJson(sj) || {};
   // 平台补丁（P6）：platform/width/height 同补 = 语义矛盾宁 fail；platform 是画幅单一出处 →
@@ -536,6 +538,7 @@ const server = http.createServer(async (req, res) => {
           cover: shots.coverStyle || 'tech',
           caps: shots.captions !== false,
           hasOv: fs.existsSync(path.join(dir, 'config.overrides.json')), // 任务级 config 补丁生效中
+          hasEdit: fs.existsSync(path.join(dir, 'edit.json')),           // P12 重剪编辑单存在
         };
       }).sort((a, b) => b.mt - a.mt);
       return json(res, 200, tasks);
@@ -663,7 +666,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
       const name = String(body.name || '').trim();
       if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
-      const r = startRerun(name, path.join(OUTPUT, name), Number(body.from) || 3, body.shots, body.config, body.resetConfig, body.to != null ? Math.min(6, Math.max(1, Number(body.to) || 6)) : 6);
+      const r = startRerun(name, path.join(OUTPUT, name), Number(body.from) || 3, body.shots, body.config, body.resetConfig, body.to != null ? Math.min(8, Math.max(1, Number(body.to) || 8)) : 6);
       if (r.error) return json(res, r.error === '任务不存在' ? 404 : 400, { error: r.error });
       return json(res, 200, { ok: true, name, from: r.from });
     }
@@ -854,7 +857,7 @@ const server = http.createServer(async (req, res) => {
       let suggest = null;
       try { suggest = editApi.importFromTimeline(tl); } catch { }
       return json(res, 200, {
-        name, timeline: { duration: tl.duration, shots: tl.shots.map((s) => ({ id: s.id, type: s.type, start: s.start, end: s.end, dur: s.dur, charStart: s.charStart, charEnd: s.charEnd, ...(s.asset ? { asset: s.asset } : {}) })), width: tl.width, height: tl.height, fps: tl.fps, captionsCount: (tl.captions || []).length },
+        name, timeline: { duration: tl.duration, shots: tl.shots.map((s) => ({ id: s.id, type: s.type, start: s.start, end: s.end, dur: s.dur, charStart: s.charStart, charEnd: s.charEnd, ...(s.asset ? { asset: s.asset } : {}) })), width: tl.width, height: tl.height, fps: tl.fps, captions: (tl.captions || []).map((c) => ({ text: c.text, start: c.start, end: c.end, idx: c.idx })), charStart: tl.charStart, charEnd: tl.charEnd },
         edit, suggest,
         hasOutro: fs.existsSync(path.join(dir, 'segments', 'outro.mp4')),
         exportedAt: (readJson(path.join(dir, '精修', 'edit.report.json')) || {}).at || null,
@@ -876,6 +879,42 @@ const server = http.createServer(async (req, res) => {
       writeJson(ep, doc);
       log('07-web', `编辑单保存 ${name}：${doc.clips.length} clip（源 ${tl.shots.length} 镜）${body.import ? '（重新导入）' : ''}`);
       return json(res, 200, { ok: true, edit: doc });
+    }
+
+    if (p === '/api/edit/jianying-package' && req.method === 'POST') {
+      if (state.running || state.queue.length) return json(res, 409, { error: '有任务正在跑/排队——等它完成再生成接力包' });
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const name = String(body.name || '').trim();
+      if (!NAME_RE.test(name)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, name);
+      if (!fs.existsSync(path.join(dir, 'edit.json'))) return json(res, 400, { error: '缺 edit.json：先在重剪页导入/保存编辑单' });
+      // ① 干净底带（不烧字幕）——08 同步跑（本地重编码，零计费）
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(ROOT, 'pipeline', '08-edit.cjs'), dir, '--no-subs', '--out', '精修/成片-干净底带.mp4'], { cwd: ROOT, encoding: 'utf8', timeout: 10 * 60 * 1000 });
+      if (r.status !== 0) return json(res, 500, { error: '干净底带渲染失败：' + String((r.stdout || '') + (r.stderr || '')).split('\n').slice(-6).join(' ').slice(0, 300) });
+      // ② SRT（与烧录字幕同源：effective-timeline.captions）
+      const eff = readJson(path.join(dir, '精修', 'effective-timeline.json'));
+      if (!eff) return json(res, 500, { error: '缺 effective-timeline.json（08 未正常产出）' });
+      const { buildSrt } = require('../pipeline/lib/srt.cjs');
+      const srt = buildSrt(eff.captions);
+      fs.writeFileSync(path.join(dir, '精修', '字幕.srt'), srt, 'utf8');
+      // ③ 接力说明
+      fs.writeFileSync(path.join(dir, '精修', '剪映接力说明.md'), [
+        `# 剪映接力包 · ${name}`, '',
+        '剪映 6.x 起草稿文件已加密，第三方**无法也不应**直接生成草稿工程（逆向/绕过正是律师函项目被诉的点）。',
+        '本包走官方路：文件导入 + SRT 字幕轨，进剪映后每一轨都可继续编辑。', '',
+        '## 三步接力',
+        '1. 剪映 → 本地草稿 → **导入** `精修/成片-干净底带.mp4`（无烧字幕，含片尾卡）',
+        '2. 菜单「文本 → 本地字幕」导入 `精修/字幕.srt` —— 全部字幕成为**可编辑文字轨**（改文案/换字体/一键转花字）',
+        '3. 需要重配音就在剪映加音频轨；不需要则直接导出 → **发布至抖音**（官方通道）', '',
+        '## 文件清单',
+        `- ` + '`精修/成片-干净底带.mp4`' + ` — ${eff.duration}s，${eff.width}×${eff.height}，响度 -14 LUFS，不烧字幕`,
+        `- ` + '`精修/字幕.srt`' + ` — ${(eff.captions || []).length} 条，时间与配音逐字对齐（与烧录 ASS 同源）`,
+        `- 对照参考：` + '`精修/成片.mp4`' + `（若已导出过烧字幕版，可开着它对照 SRT 轨微调样式）`, '',
+        `生成时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`, '',
+      ].join('\n'), 'utf8');
+      log('07-web', `剪映接力包 ${name}：干净底带 + SRT(${(eff.captions || []).length} 条) + 说明`);
+      return json(res, 200, { ok: true, files: ['精修/成片-干净底带.mp4', '精修/字幕.srt', '精修/剪映接力说明.md'], captions: (eff.captions || []).length, duration: eff.duration });
     }
 
     // —— 素材库（P7-1）：library/ 列表 + 选用复制进任务 assets ——
@@ -1143,6 +1182,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/timeline') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'timeline.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      return res.end(html);
+    }
+    if (p === '/cut') {
+      const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'cut.html'), 'utf8');
       res.writeHead(200, { 'Content-Type': MIME['.html'] });
       return res.end(html);
     }

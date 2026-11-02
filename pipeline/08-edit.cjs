@@ -21,13 +21,14 @@ function main() {
   if (!fs.existsSync(path.join(task, 'audio', 'voice.mp3'))) fail('缺 audio/voice.mp3');
 
   const noOutro = process.argv.includes('--no-outro');
+  const noSubs = process.argv.includes('--no-subs'); // P18 剪映接力包：干净底带（字幕改由 SRT 轨进剪映，不烧录）
   const outroSeg = path.join(task, 'segments', 'outro.mp4');
   const withOutro = !noOutro && fs.existsSync(outroSeg)
     ? ((timeline.outro && timeline.outro.durSec) ? timeline.outro : { durSec: (cfg.outro || {}).durSec || 2.6 })
     : null;
   const eff = deriveEditTimeline(timeline, doc, withOutro);
   if (eff.captionsOff === undefined) delete eff.captionsOff;
-  const capOff = eff.captionsOff === true;
+  const capOff = eff.captionsOff === true || noSubs;
   const total = eff.duration;
   log('08', `编辑单 ${doc.clips.length} clip（源 ${timeline.shots.length} 镜）· 目标 ${total.toFixed(2)}s${withOutro ? '（含片尾卡）' : ''}`);
 
@@ -127,9 +128,11 @@ function main() {
     log('08', `字幕 ${eff.captions.length} 条 + 砸字 ${eff.keywords.length} 个 → ${assRel}`);
   }
 
-  // ④ 混流：配音按 clip 目标起点逐段 atrim+adelay 回贴（音频跟着窗口走，画面/语音同源不漂）
-  const finalRel = '精修/成片.mp4';
-  const finalPath = path.join(outDir, '成片.mp4');
+  // ④ 混流：配音按 clip 目标窗口 concat 顺贴（全确定拓扑，每条流自带 EOF；画面/语音同窗不漂）
+  const outIx = process.argv.indexOf('--out');
+  const finalRel = outIx > 0 && process.argv[outIx + 1] ? process.argv[outIx + 1].replace(/\\/g, '/') : '精修/成片.mp4';
+  if (!/^精修\/[\w.\- 一-鿿]+\.mp4$/.test(finalRel)) fail(`--out 只允许 精修/ 下的 .mp4（收到：${finalRel}）`);
+  const finalPath = path.join(task, finalRel);
   fs.existsSync(finalPath) && fs.unlinkSync(finalPath);
   const fadeStart = Math.max(0, total - cfg.compose.fadeOutSec);
   const bgmFile = findBgm(task);

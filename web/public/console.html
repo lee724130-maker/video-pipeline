@@ -150,6 +150,7 @@
   <a class="hot" href="/wizard">🧭 流程向导</a>
   <a href="/editor">✂ 精修</a>
   <a href="/timeline">⇉ 时间轴</a>
+  <a href="/cut">✂ 重剪</a>
   <a href="/">← 入口</a>
 </div>
 
@@ -631,8 +632,27 @@ async function showResult(tasks) {
       <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('封面.png')}" target="_blank">封面.png</a>
       <a href="/file/${encodeURIComponent(task)}/qc-report.txt" target="_blank">QC 报告</a>
       <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('成片.mp4')}" download>下载成片</a>
-    </div>${rr}${chatBlock}`;
+    </div>
+    ${t.hasEdit ? `<div class="kv" style="border-top:1px dashed var(--line);padding-top:8px;margin-top:2px">
+      <span style="color:var(--accent)">✂ 重剪编辑单已存在</span>
+      <a href="/cut#${encodeURIComponent(task)}">打开重剪页</a>
+      <a href="#" style="color:var(--ok)" onclick="exportEdit('${libEsc(task)}');return false">导出精修（08+QC）</a>
+      <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('精修/成片.mp4')}" target="_blank">精修成片</a>
+      <a href="/file/${encodeURIComponent(task)}/${encodeURIComponent('精修/qc-report.txt')}" target="_blank">精修 QC</a>
+      <a href="#" onclick="relayPkg('${libEsc(task)}');return false">📦 剪映接力包</a>
+    </div>` : ''}${rr}${chatBlock}`;
   }).join('<hr style="border:none;border-top:1px solid var(--line);margin:20px 0">');
+}
+
+async function relayPkg(t){ try { const r = await j('/api/edit/jianying-package', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: t || lastTask }) }); alert('接力包已生成：\n' + r.files.join('\n') + '\n\n剪映操作：导入干净底带 → 文本→本地字幕 导入 SRT → 编辑后发布抖音'); } catch (e) { alert(e.message); } }
+
+// P12-C 导出精修：跑第 7 步（08 重剪渲染）+ 第 8 步（精修 QC），产物在 精修/ 不碰主链
+async function exportEdit(task) {
+  try {
+    await j('/api/rerun', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: task || lastTask, from: 7, to: 8 }) });
+    $('result').innerHTML = '';
+    poll();
+  } catch (e) { alert(e.message); }
 }
 
 // 局部重跑：shots 补丁始终带上面板当前值（预填=任务现值，不改就是原样回写），config 按需
