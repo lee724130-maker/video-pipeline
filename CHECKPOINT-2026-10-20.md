@@ -553,7 +553,7 @@ README 货架段收尾能力 / 本 CHECKPOINT。`PIPELINE_DEBUG_FC` 埋点保留
 
 ## 断点交接 · 2026-11-02（会话将删除，下次开工直接从这一节接）
 
-- **现场**：P12-B/C + P18 三档（本 CHECKPOINT / ROADMAP / README）已同步，工作树改动全部提交并推送 GitHub（`video-pipeline` main）。服务：`node web/server.cjs`（8787）；重启口令见 README「跑起来」。产物：`output/<任务>/精修/{成片.mp4, effective-timeline.json, edit.report.json, qc-report.txt, 成片-干净底带.mp4, 字幕.srt, 剪映接力说明.md}`。
+- **现场**：P12-B/C + P18 已提交 `c063d0d` 并推送 GitHub（`video-pipeline` main，工作树干净）。**8787 服务当时正在跑**（`node web/server.cjs`，2026-11-02 17:35 起，`curl http://127.0.0.1:8787/` 返 200）——下次开工先探活，别急着重启；重启口令见 README「跑起来」。产物：`output/<任务>/精修/{成片.mp4, effective-timeline.json, edit.report.json, qc-report.txt, 成片-干净底带.mp4, 字幕.srt, 剪映接力说明.md}`。三档（本 CHECKPOINT / ROADMAP / README）已在同一提交内同步，无欠账。
 - **唯一未完成事项 = 用户真人实测 `/cut`**。拖拽换序、边缘裁剪、双击拆分、Ctrl+Z、保存/导出/接力包这些**手势 API 冒烟测不到**（p19 只锁住契约与服务端）。实测入口：`http://127.0.0.1:8787/wizard` 走完 06 → 完成页「✂ 去重剪时间轴」，或直接 `http://127.0.0.1:8787/cut` 载入有 `精修/edit.json` 的任务。反馈落地前**不开新功能**。
 - **下一批候选清单（已呈报，等用户拍板）**：
   - **第 0 批**：用户真实跑一条自己的选题（需求→向导 06→/cut 精修→剪映接力包→抖音），验收「零成本出片 + 剪映精修补投流」这条主价值链是否真顺。
