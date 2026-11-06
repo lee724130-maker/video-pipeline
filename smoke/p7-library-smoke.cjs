@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const root = 'C:\\Users\\Administrator\\Desktop\\\u526a\u8f91\u5e94\u7528';
+const { ROOT: root } = require('./lib.cjs');   // 规矩①：项目根一律 __dirname 派生，禁硬编码绝对路径（跨盘搬迁后仍有效）
 const LIB = path.join(root, 'library');
 const TASK = 'deck-demo';
 const TDIR = path.join(root, 'output', TASK);
