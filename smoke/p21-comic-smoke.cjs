@@ -138,6 +138,169 @@ const dataUrl = (b64) => 'data:image/png;base64,' + b64;
       const v = await pg.evaluate(() => ({ ...window.__S.view }));
       ok('F7 底图缩放/偏移滑块写入状态（曾经的静默失效点）', Math.abs(v.zoom - 0.42) < 0.01 && Math.abs(v.x - 0.23) < 0.01, JSON.stringify(v));
       ok('F8 页面无 JS 报错', perr.length === 0, perr.slice(0, 2).join(' | '));
+
+      console.log('\n  [G] 椭圆文字包含 + 对齐/字色真的影响绘制');
+      await pg.locator('#addBub').click(); await pg.waitForTimeout(200);
+      const setBub = (k, v) => pg.evaluate(([k, v]) => {
+        const els = document.querySelectorAll(`#bubs [data-k="${k}"]`);
+        const el = els[els.length - 1]; el.value = v; el.dispatchEvent(new Event('input', { bubbles: true }));
+      }, [k, String(v)]);
+      const lastBub = () => pg.evaluate(() => {
+        const b = window.__S.bubs[window.__S.bubs.length - 1];
+        return { rect: { ...b._rect }, text: { ...b._text }, shape: b.shape };
+      });
+      const texts = ['快去吧，\n别让仙人等急了。',
+        '这件毛衣的版型是宽松落肩的，袖口收了一圈细罗纹，配同色阔腿裤很显腿长，身高一米六五穿到脚踝。',
+        '好。'];
+      for (let ti = 0; ti < texts.length; ti++) {
+        await setBub('text', texts[ti]); await pg.waitForTimeout(160);
+        const g = await lastBub();
+        const A = g.rect.w / 2, B = g.rect.h / 2, x = g.text.w / 2, y = g.text.h / 2;
+        const r = (x * x) / (A * A) + (y * y) / (B * B);
+        ok(`G1-${ti + 1} 椭圆气泡：文字矩形角点在曲线内（≤1 即不溢出）`, r <= 1,
+          `r=${r.toFixed(3)} 文字 ${Math.round(g.text.w)}×${Math.round(g.text.h)} / 形状 ${Math.round(g.rect.w)}×${Math.round(g.rect.h)}`);
+      }
+      await setBub('shape', 'rect'); await pg.waitForTimeout(160);
+      const gr = await lastBub();
+      ok('G2 方角气泡：文字框四周留有不小于 8px 内边距',
+        gr.rect.w - gr.text.w >= 16 && gr.rect.h - gr.text.h >= 8,
+        `宽余 ${Math.round(gr.rect.w - gr.text.w)}px 高余 ${Math.round(gr.rect.h - gr.text.h)}px`);
+
+      // 像素哈希：控件改了状态但没接到绘制路径，这两条就会失败
+      await setBub('shape', 'ellipse'); await setBub('text', '第一行短\n第二行很长很长很长'); await pg.waitForTimeout(200);
+      const hashBub = () => pg.evaluate(() => {
+        const b = window.__S.bubs.at(-1);
+        const d = document.getElementById('view').getContext('2d')
+          .getImageData(Math.round(b._rect.x), Math.round(b._rect.y), Math.round(b._rect.w), Math.round(b._rect.h)).data;
+        let h = 0; for (let i = 0; i < d.length; i += 997) h = (h * 31 + d[i]) >>> 0;
+        return h;
+      });
+
+      // 干净场景：白底、关旁白、清空旧气泡、把待测气泡移到画布正中（避免包围盒越界读到透明黑）
+      await pg.evaluate(() => {
+        const el = document.getElementById('bg'); el.value = '#ffffff'; el.dispatchEvent(new Event('input', { bubbles: true }));
+        document.getElementById('narOn').checked = false; document.getElementById('narOn').dispatchEvent(new Event('input', { bubbles: true }));
+        window.__S.bubs.length = 0;
+      });
+      await pg.waitForTimeout(200);
+      await pg.locator('#addBub').click(); await pg.waitForTimeout(250);
+      await pg.evaluate(() => {
+        const b = window.__S.bubs.at(-1);
+        b.text = '短的一行\n这是长得多的第二行文字\n第三行也短'; b.x = 0.5; b.y = 0.5; b.w = 0.42; b.align = 'center';
+        window.dispatchEvent(new Event('resize'));
+      });
+      await pg.waitForTimeout(250);
+      // 重绘要靠 render()：通过控件事件触发一次
+      await setBub('f', '32'); await pg.waitForTimeout(250);
+
+      const firstInk = (rowFrac) => pg.evaluate(([rowFrac]) => {
+        const b = window.__S.bubs.at(-1);
+        const g = document.getElementById('view').getContext('2d');
+        const x0 = Math.max(0, Math.round(b._rect.x)), y0 = Math.max(0, Math.round(b._rect.y));
+        const w = Math.min(1024 - x0, Math.round(b._rect.w)), h = Math.min(1536 - y0, Math.round(b._rect.h));
+        const d = g.getImageData(x0, y0, w, h).data, row = Math.round(h * rowFrac), hits = [];
+        for (let x = 0; x < w; x++) {
+          const i = (row * w + x) * 4;
+          if (d[i + 3] > 200 && d[i] < 120 && d[i + 1] < 120 && d[i + 2] < 120) hits.push(x);
+        }
+        return hits.length ? hits[0] : -1;
+      }, [rowFrac]);
+
+      const bubSel = pg.locator('#bubs .bub').last().locator('select[data-k=align]');
+      await bubSel.selectOption('center'); await pg.waitForTimeout(280);
+      const c1 = await firstInk(0.30), c2 = await firstInk(0.50), c3 = await firstInk(0.70);
+      await bubSel.selectOption('left'); await pg.waitForTimeout(280);
+      const l1 = await firstInk(0.30), l2 = await firstInk(0.50), l3 = await firstInk(0.70);
+      ok('G3 左对齐确实把文字移到左边（首字位置差 >15px）', c1 - l1 > 15,
+        `第1行首字：居中 ${c1}px vs 左对齐 ${l1}px，差 ${c1 - l1}px`);
+      ok('G3b 居中时各行首字位置不同（按线宽居中）', new Set([c1, c2, c3]).size === 3, `center 首字 ${c1}/${c2}/${c3}`);
+      ok('G3c 左对齐时各行首字位置基本一致（左边缘齐平）',
+        Math.max(l1, l2, l3) - Math.min(l1, l2, l3) <= 14, `left 首字 ${l1}/${l2}/${l3}`);
+      const hLeft = await hashBub();
+      await bubSel.selectOption('center'); await pg.waitForTimeout(250); const hCenter = await hashBub();
+      ok('G3d 对齐切换确实改变绘制像素', hLeft !== hCenter, `hash ${hLeft} vs ${hCenter}`);
+      await bubSel.selectOption('left'); await pg.waitForTimeout(200);
+      await setBub('fg', '#ff0000'); await pg.waitForTimeout(180); const hRed = await hashBub();
+      ok('G5 字色控件真的改变绘制（改色后像素不同）', hRed !== hCenter, `hash ${hCenter} vs ${hRed}`);
+      ok('G6 字色写入状态', await pg.evaluate(() => window.__S.bubs[window.__S.bubs.length - 1].fg === '#ff0000'));
+      await setv('narAlign', 'center'); await pg.waitForTimeout(180);
+      ok('G7 旁白框对齐写入状态', await pg.evaluate(() => window.__S.nar.align === 'center'));
+      ok('G8 全段跑完仍无 JS 报错', perr.length === 0, perr.slice(0, 2).join(' | '));
+
+      console.log('\n  [H] 矢量导出：文字必须是可编辑对象，不是像素');
+      await pg.evaluate(() => {
+        const S = window.__S;
+        S.nar.on = true; S.nar.text = '测试旁白第一行\n第二行';
+        S.bubs.length = 0;
+        S.bubs.push({ id: 1, text: '这件毛衣版型宽松落肩\n配同色阔腿裤', x: 0.4, y: 0.35, w: 0.42,
+          tx: 0.5, ty: 0.5, shape: 'ellipse', f: 32, a: 0.95, theme: 'light', align: 'center', fg: '#15181c', tight: 0.35 });
+        S.bubs.push({ id: 2, text: '已拍，期待上身效果', x: 0.55, y: 0.72, w: 0.34,
+          tx: 0.5, ty: 0.6, shape: 'rect', f: 30, a: 0.95, theme: 'dark', align: 'left', fg: '#f2f4f7', tight: 0.35 });
+        window.__render();
+      });
+      await pg.waitForTimeout(300);
+
+      const svgInfo = await pg.evaluate(() => {
+        const s = window.__buildSvg();
+        const doc = new DOMParser().parseFromString(s, 'image/svg+xml');
+        const err = doc.querySelector('parsererror');
+        return {
+          len: s.length, parseErr: !!err,
+          startsSvg: s.startsWith('<svg'), endsSvg: s.trim().endsWith('</svg>'),
+          viewBox: (s.match(/viewBox="([^"]+)"/) || [])[1],
+          texts: doc.querySelectorAll('text').length,
+          tspans: doc.querySelectorAll('tspan').length,
+          ellipses: doc.querySelectorAll('ellipse').length,
+          rects: doc.querySelectorAll('rect').length,
+          polys: doc.querySelectorAll('polygon').length,
+          images: doc.querySelectorAll('image').length,
+          hasNarText: !!doc.querySelector('#narration-text'),
+          hasBub1: !!doc.querySelector('#bubble-1-text'),
+          hasBub2: !!doc.querySelector('#bubble-2-text'),
+          narLines: doc.querySelectorAll('#narration-text tspan').length,
+          bub1Rx: Number((doc.querySelector('#bubble-1 ellipse') || {}).getAttribute ? doc.querySelector('#bubble-1 ellipse').getAttribute('rx') : 0),
+          bub1Ry: Number(doc.querySelector('#bubble-1 ellipse') ? doc.querySelector('#bubble-1 ellipse').getAttribute('ry') : 0),
+          bub1Text: Array.from(doc.querySelectorAll('#bubble-1-text tspan')).map(t => t.textContent).join('|'),
+          bub2Anchor: doc.querySelector('#bubble-2-text') ? doc.querySelector('#bubble-2-text').getAttribute('text-anchor') : '',
+          bub1Anchor: doc.querySelector('#bubble-1-text') ? doc.querySelector('#bubble-1-text').getAttribute('text-anchor') : '',
+        };
+      });
+      ok('H1 SVG 可被 XML 解析（无 parsererror）', !svgInfo.parseErr && svgInfo.startsSvg && svgInfo.endsSvg, `长度 ${svgInfo.len}`);
+      ok('H2 viewBox 为 0 0 1024 1536', svgInfo.viewBox === '0 0 1024 1536', svgInfo.viewBox);
+      ok('H3 底图作为独立位图层存在（1 个 image）', svgInfo.images === 1, `image=${svgInfo.images}`);
+      ok('H4 三个文字层各有自己的 text 元素', svgInfo.hasNarText && svgInfo.hasBub1 && svgInfo.hasBub2,
+        `text=${svgInfo.texts} tspan=${svgInfo.tspans}`);
+      ok('H5 文字是真实内容而非像素（tspan 逐行且能读回）', svgInfo.bub1Text === '这件毛衣版型宽松落肩|配同色阔腿裤', `bub1="${svgInfo.bub1Text}"`);
+      ok('H6 旁白按换行拆成 2 个 tspan', svgInfo.narLines === 2, `narLines=${svgInfo.narLines}`);
+      ok('H7 对齐映射正确（居中=middle，左对齐=start）',
+        svgInfo.bub1Anchor === 'middle' && svgInfo.bub2Anchor === 'start', `${svgInfo.bub1Anchor}/${svgInfo.bub2Anchor}`);
+      const geoSync = await pg.evaluate(() => {
+        const b = window.__S.bubs[0];
+        return { rx: Number(document ? 0 : 0), rectW: b._rect.w, rectH: b._rect.h };
+      });
+      ok('H8 椭圆 rx/ry 与画布几何同源（rx=框宽/2）',
+        Math.abs(svgInfo.bub1Rx - geoSync.rectW / 2) < 1 && Math.abs(svgInfo.bub1Ry - geoSync.rectH / 2) < 1,
+        `rx=${svgInfo.bub1Rx} vs 框宽/2=${(geoSync.rectW / 2).toFixed(1)}；ry=${svgInfo.bub1Ry} vs ${(geoSync.rectH / 2).toFixed(1)}`);
+      ok('H9 气泡尾巴导出为 polygon', svgInfo.polys === 2, `polygon=${svgInfo.polys}`);
+
+      const man = await pg.evaluate(() => window.__buildManifest());
+      ok('H10 manifest 含 3 个文字层且字段齐',
+        man.layers.length === 3 && man.layers.every(l => l.text && Array.isArray(l.lines) && l.rect && l.font && l.font.size && l.font.color),
+        JSON.stringify(man.layers.map(l => l.kind)));
+      ok('H11 manifest 记录画布尺寸与底图状态',
+        man.canvas.width === 1024 && man.canvas.height === 1536 && typeof man.base.hasImage === 'boolean', JSON.stringify(man.canvas));
+
+      // 改文案 → SVG 文字跟着变（证明文字可编辑，不是烧进像素）
+      await pg.evaluate(() => { window.__S.bubs[0].text = '改过的文案'; window.__render(); });
+      await pg.waitForTimeout(250);
+      const after = await pg.evaluate(() => {
+        const doc = new DOMParser().parseFromString(window.__buildSvg(), 'image/svg+xml');
+        return Array.from(doc.querySelectorAll('#bubble-1-text tspan')).map(t => t.textContent).join('|');
+      });
+      ok('H12 改文案后 SVG 文字同步（可编辑性的核心证据）', after === '改过的文案', after);
+
+      const spec = await pg.evaluate(() => JSON.stringify(window.__buildPanelSpec()));
+      ok('H13 panel-spec 已剥掉临时几何字段', !/"_paint"|"_rect"|"_text"/.test(spec), spec.length + ' 字节');
       await b.close();
     } catch (e) { skip('F 段执行', e.message.slice(0, 120)); }
   }

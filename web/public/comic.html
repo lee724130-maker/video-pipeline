@@ -75,6 +75,10 @@
       <div><label>位置预设</label><select id="narPos"><option value="top">顶部</option><option value="bottom">底部</option></select></div>
       <div><label>主题</label><select id="narTheme"><option value="light">浅底深字</option><option value="dark">深底白字</option><option value="frost">磨砂半透</option></select></div>
     </div>
+    <div class="grid2">
+      <div><label>对齐</label><select id="narAlign"><option value="left">左对齐</option><option value="center">居中</option></select></div>
+      <div><label>字色</label><input type="color" id="narFg" value="#15181c" style="width:100%;height:28px;padding:2px"></div>
+    </div>
     <label>宽度 <span id="narWv"></span></label><input type="range" id="narW" min="0.3" max="0.98" step="0.01" value="0.86">
     <label>字号 <span id="narFv"></span></label><input type="range" id="narF" min="24" max="52" step="1" value="34">
     <label>不透明度 <span id="narAv"></span></label><input type="range" id="narA" min="0.3" max="1" step="0.02" value="0.92">
@@ -114,6 +118,11 @@
     </div>
     <div class="row"><button id="saveJson" class="sm">存剧本 JSON</button><button id="loadJson" class="sm">读剧本 JSON</button>
       <input type="file" id="jsonFile" accept="application/json" style="display:none"></div>
+    <div class="row" style="margin-top:6px">
+      <button id="svg" class="sm">导出 SVG（文字可编辑）</button>
+      <button id="manifest" class="sm">存 text-manifest.json</button>
+    </div>
+    <div class="hint">SVG 里底图是位图层，旁白框/气泡/文字都是**矢量对象**：价格、卖点、台词可以在 Illustrator / Inkscape / PPT 里直接改字，不必回来重排。manifest 单独存文字内容与坐标，便于批量替换文案。</div>
     <div id="outMsg" class="hint"></div>
     <label>该任务已导出的格</label><div id="outGrid"><div class="empty">选择任务后加载</div></div>
   </fieldset>
@@ -132,7 +141,7 @@ let ctx = cv.getContext('2d');
 const S = {
   base: null,
   view: { fit: 'cover', x: 0, y: 0, zoom: 1, bg: '#101215' },
-  nar: { on: true, text: '', pos: 'top', x: 0.5, y: 0.09, theme: 'light', w: 0.86, f: 34, a: 0.92, _rect: null },
+  nar: { on: true, text: '', pos: 'top', x: 0.5, y: 0.09, theme: 'light', w: 0.86, f: 34, a: 0.92, align: 'left', fg: '#15181c', _rect: null },
   bubs: [], sel: -1, selKind: 'none',
   ch: { on: false, prompt: '', a: '', b: '', c: '' },
 };
@@ -147,7 +156,7 @@ const $ = (id) => document.getElementById(id);
 
 function newBubble(text) {
   return { id: ++uid, text, x: 0.3, y: 0.28, w: 0.42, tx: 0.45, ty: 0.44,
-           shape: 'ellipse', f: 32, a: 0.94, theme: 'light' };
+           shape: 'ellipse', f: 32, a: 0.94, theme: 'light', align: 'center', fg: '#15181c', tight: 0.35 };
 }
 
 /* ---------- 文本换行与形状 ---------- */
@@ -164,23 +173,38 @@ function wrap(text, maxW, size) {
   }
   return out;
 }
-function drawTextBlock(lines, x, y, size, color) {
-  ctx.font = `${size}px ${FONT}`; ctx.fillStyle = color; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+function measure(text, size) { ctx.font = `${size}px ${FONT}`; return ctx.measureText(text).width; }
+function drawTextBlock(lines, x, y, size, color, align) {
+  ctx.font = `${size}px ${FONT}`; ctx.fillStyle = color; ctx.textBaseline = 'top';
+  ctx.textAlign = align === 'center' ? 'center' : 'left';
   const lh = size * 1.42;
   lines.forEach((l, i) => ctx.fillText(l, x, y + i * lh));
+  ctx.textAlign = 'left';
   return lines.length * lh;
+}
+/** 量文字块：换行后返回真实行宽与总高，供形状外接文字（而不是把文字塞进形状里） */
+function textBlock(text, maxW, size) {
+  const lines = wrap(text, maxW, size);
+  const w = lines.reduce((a, l) => Math.max(a, measure(l, size)), 0);
+  return { lines, w, h: lines.length * size * 1.42, lh: size * 1.42 };
 }
 function rrect(x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
-function tail(fromX, fromY, toX, toY, wid) {
+function tailPoints(fromX, fromY, toX, toY, wid) {
   const ang = Math.atan2(toY - fromY, toX - fromX), per = ang + Math.PI / 2;
+  return [
+    [fromX + Math.cos(per) * wid, fromY + Math.sin(per) * wid],
+    [toX, toY],
+    [fromX - Math.cos(per) * wid, fromY - Math.sin(per) * wid],
+  ];
+}
+function tail(fromX, fromY, toX, toY, wid) {
+  const p = tailPoints(fromX, fromY, toX, toY, wid);
   ctx.beginPath();
-  ctx.moveTo(fromX + Math.cos(per) * wid, fromY + Math.sin(per) * wid);
-  ctx.lineTo(toX, toY);
-  ctx.lineTo(fromX - Math.cos(per) * wid, fromY - Math.sin(per) * wid);
+  ctx.moveTo(p[0][0], p[0][1]); ctx.lineTo(p[1][0], p[1][1]); ctx.lineTo(p[2][0], p[2][1]);
   ctx.closePath(); ctx.fill();
 }
 function dot(x, y) { ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill(); }
@@ -201,12 +225,15 @@ function drawBase() {
   ctx.restore();
 }
 function drawChoices() {
-  const c = S.ch; if (!c.on) return;
+  const c = S.ch; if (!c.on) { c._paint = null; return; }
+  const blocks = [];
+  c._paint = { overlay: 'rgba(8,10,13,.72)', f: 34, pad: 26, prompt: null, blocks };
   ctx.fillStyle = 'rgba(8,10,13,.72)'; ctx.fillRect(0, 0, W, H);
   const f = 34, pad = 26;
   let y = 150;
   const pl = wrap(c.prompt, W * 0.8 - pad * 2, f);
   ctx.globalAlpha = .95; ctx.fillStyle = '#f4f6f8'; rrect(W * 0.1, y - 14, W * 0.8, pl.length * f * 1.42 + 28, 12); ctx.fill(); ctx.globalAlpha = 1;
+  c._paint.prompt = { rect: { x: W * 0.1, y: y - 14, w: W * 0.8, h: pl.length * f * 1.42 + 28 }, fill: '#f4f6f8', lines: pl, tx: W * 0.1 + pad, ty: y, fg: '#15181c' };
   y += drawTextBlock(pl, W * 0.1 + pad, y, f, '#15181c') + 40;
   [['A', c.a], ['B', c.b], ['C', c.c]].forEach(([k, txt]) => {
     if (!txt.trim()) return;
@@ -215,6 +242,9 @@ function drawChoices() {
     ctx.strokeStyle = '#c9a227'; ctx.lineWidth = 3; ctx.stroke();
     ctx.font = `bold ${f}px ${FONT}`; ctx.fillStyle = '#e8c15a'; ctx.textBaseline = 'top';
     ctx.fillText(k + ':', W * 0.14 + pad * 0.5, y + pad * 0.8);
+    blocks.push({ key: k, rect: { x: W * 0.14, y, w: W * 0.72, h: bh }, lines,
+      label: { x: W * 0.14 + pad * 0.5, y: y + pad * 0.8, color: '#e8c15a' },
+      text: { x: W * 0.14 + pad * 2.1, y: y + pad * 0.8, color: '#f0f2f5' } });
     drawTextBlock(lines, W * 0.14 + pad * 2.1, y + pad * 0.8, f, '#f0f2f5');
     y += bh + 26;
   });
@@ -222,13 +252,17 @@ function drawChoices() {
 function drawNarration(showHandles) {
   const n = S.nar; if (!n.on || !n.text.trim()) { n._rect = null; return; }
   const t = THEME[n.theme], pad = n.f * 0.62, bw = W * n.w;
-  const lines = wrap(n.text, bw - pad * 2, n.f), lh = n.f * 1.42, bh = lines.length * lh + pad * 2;
+  const box = textBlock(n.text, bw - pad * 2, n.f);
+  const lines = box.lines, lh = box.lh, bh = lines.length * lh + pad * 2;
   const bx = Math.max(8, Math.min(W - bw - 8, n.x * W - bw / 2));
   const by = Math.max(8, Math.min(H - bh - 8, n.y * H - bh / 2));
   n._rect = { x: bx, y: by, w: bw, h: bh };
   ctx.globalAlpha = n.a; ctx.fillStyle = t.bg; rrect(bx, by, bw, bh, 10); ctx.fill();
   ctx.globalAlpha = Math.min(1, n.a + 0.05); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke();
-  ctx.globalAlpha = 1; drawTextBlock(lines, bx + pad, by + pad, n.f, t.fg);
+  ctx.globalAlpha = 1;
+  const nx = n.align === 'center' ? bx + bw / 2 : bx + pad;
+  n._paint = { lines, lh, f: n.f, fg: n.fg || t.fg, align: n.align || 'left', tx: nx, ty: by + pad, pad };
+  drawTextBlock(lines, nx, by + pad, n.f, n.fg || t.fg, n.align);
   if (showHandles && S.selKind === 'nar') {
     ctx.strokeStyle = '#4c8dff'; ctx.lineWidth = 2; ctx.setLineDash([7, 5]);
     ctx.strokeRect(bx - 6, by - 6, bw + 12, bh + 12); ctx.setLineDash([]);
@@ -236,21 +270,42 @@ function drawNarration(showHandles) {
   }
 }
 function drawBubbles(showHandles) {
+  const SQ2 = Math.SQRT2, SAFE = 1.06;
   S.bubs.forEach((b, i) => {
-    const t = THEME[b.theme], bw = W * b.w, pad = b.f * 0.6;
-    const lines = wrap(b.text, bw - pad * 2, b.f), lh = b.f * 1.42, bh = lines.length * lh + pad * 2;
+    const t = THEME[b.theme], padH = b.f * 0.62, padV = b.f * 0.5;
+    // 文本框模型：「宽度」滑条决定换行宽度；「紧凑度」决定形状贴不贴文字。
+    // tight=1 形状贴最长行（短文字不会框大字少），tight=0 形状铺满框宽（对齐差别最明显）。
+    const innerW = Math.max(b.f * 2, W * b.w - padH * 2);
+    const tb = textBlock(b.text, innerW, b.f);
+    const tight = (typeof b.tight === 'number') ? Math.min(1, Math.max(0, b.tight)) : 0.35;
+    const usedW = tb.w + (innerW - tb.w) * (1 - tight);
+    const lines = tb.lines, textH = tb.h;
     const cx = b.x * W, cy = b.y * H;
+    // 形状外接「实际用宽」而非最长行：椭圆内接矩形半宽只有 A/√2，故 A=√2·(usedW/2+padH)
+    let sw, sh;
+    if (b.shape === 'ellipse') { sw = SQ2 * (usedW / 2 + padH) * SAFE * 2; sh = SQ2 * (textH / 2 + padV) * SAFE * 2; }
+    else { sw = usedW + padH * 2; sh = textH + padV * 2; }
+    const fg = b.fg || t.fg;
     ctx.globalAlpha = b.a; ctx.fillStyle = t.bg;
-    if (b.shape === 'ellipse') { ctx.beginPath(); ctx.ellipse(cx, cy, bw / 2, bh / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
-    else if (b.shape === 'rect') { rrect(cx - bw / 2, cy - bh / 2, bw, bh, 22); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
-    else { rrect(cx - bw / 2, cy - bh / 2, bw, bh, bh / 2); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
-    if (b.shape !== 'whisper') { ctx.fillStyle = t.bg; tail(cx, cy, b.tx * W, b.ty * H, Math.min(bw, bh) * 0.13); }
+    if (b.shape === 'ellipse') {
+      ctx.beginPath(); ctx.ellipse(cx, cy, sw / 2, sh / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke();
+    } else if (b.shape === 'rect') { rrect(cx - sw / 2, cy - sh / 2, sw, sh, 22); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
+    else { rrect(cx - sw / 2, cy - sh / 2, sw, sh, sh / 2); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
+    if (b.shape !== 'whisper') { ctx.fillStyle = t.bg; tail(cx, cy, b.tx * W, b.ty * H, Math.min(sw, sh) * 0.11); }
     ctx.globalAlpha = 1;
-    drawTextBlock(lines, cx - bw / 2 + pad, cy - (lines.length * lh) / 2, b.f, t.fg);
-    b._rect = { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh };
+    const tx = b.align === 'center' ? cx : cx - usedW / 2;
+    b._paint = {
+      shape: b.shape, cx, cy, sw, sh, f: b.f, lh: b.f * 1.42, fg,
+      align: b.align || 'center', tx, ty: cy - textH / 2, lines, alpha: b.a,
+      tail: b.shape !== 'whisper' ? tailPoints(cx, cy, b.tx * W, b.ty * H, Math.min(sw, sh) * 0.11) : null,
+    };
+    drawTextBlock(lines, tx, cy - textH / 2, b.f, fg, b.align);
+    b._rect = { x: cx - sw / 2, y: cy - sh / 2, w: sw, h: sh };
+    b._text = { w: usedW, h: textH };   // 供冒烟用椭圆方程验角点包含：(tw/2)²/A² + (th/2)²/B² ≤ 1
     if (showHandles && i === S.sel && S.selKind === 'bub') {
       ctx.strokeStyle = '#4c8dff'; ctx.lineWidth = 2; ctx.setLineDash([7, 5]);
-      ctx.strokeRect(cx - bw / 2 - 6, cy - bh / 2 - 6, bw + 12, bh + 12); ctx.setLineDash([]);
+      ctx.strokeRect(cx - sw / 2 - 6, cy - sh / 2 - 6, sw + 12, sh + 12); ctx.setLineDash([]);
       ctx.fillStyle = '#4c8dff'; dot(cx, cy); ctx.fillStyle = '#ffb020'; dot(b.tx * W, b.ty * H);
     }
   });
@@ -273,10 +328,17 @@ function bubbleList() {
         <div><label>主题</label><select data-k="theme" data-i="${i}">
           <option value="light">浅底深字</option><option value="dark">深底白字</option><option value="frost">磨砂半透</option></select></div>
       </div>
+      <div class="grid2" style="margin-top:6px">
+        <div><label>对齐</label><select data-k="align" data-i="${i}">
+          <option value="left">左对齐</option><option value="center">居中</option></select></div>
+        <div><label>字色</label><input type="color" data-k="fg" data-i="${i}" value="${b.fg || '#15181c'}" style="width:100%;height:28px;padding:2px"></div>
+      </div>
       <label>字号</label><input type="range" data-k="f" data-i="${i}" min="22" max="46" step="1" value="${b.f}">
-      <label>宽度</label><input type="range" data-k="w" data-i="${i}" min="0.2" max="0.8" step="0.01" value="${b.w}">
+      <label>宽度（决定换行）</label><input type="range" data-k="w" data-i="${i}" min="0.2" max="0.8" step="0.01" value="${b.w}">
+      <label>紧凑度（1=贴文字 / 0=铺满框宽）</label><input type="range" data-k="tight" data-i="${i}" min="0" max="1" step="0.05" value="${typeof b.tight === 'number' ? b.tight : 0.35}">
       <label>不透明度</label><input type="range" data-k="a" data-i="${i}" min="0.4" max="1" step="0.02" value="${b.a}">`;
     d.querySelector('[data-k=shape]').value = b.shape; d.querySelector('[data-k=theme]').value = b.theme;
+    d.querySelector('[data-k=align]').value = b.align || 'center';
     box.appendChild(d);
   });
   box.querySelectorAll('[data-sel]').forEach(el => el.onclick = () => { S.sel = +el.dataset.sel; S.selKind = 'bub'; render(); bubbleList(); });
@@ -368,12 +430,14 @@ Object.keys(viewMap).forEach(id => { $(id).oninput = () => { S.view[viewMap[id]]
 $('fit').onchange = e => { S.view.fit = e.target.value; render(); };
 $('bg').oninput = e => { S.view.bg = e.target.value; render(); };
 bind('narOn', 'nar', 'on'); bind('narText', 'nar', 'text'); bind('narTheme', 'nar', 'theme');
+bind('narAlign', 'nar', 'align'); bind('narFg', 'nar', 'fg');
 $('narPos').onchange = e => { S.nar.pos = e.target.value; S.nar.y = e.target.value === 'top' ? 0.09 : 0.9; render(); };
 bind('narW', 'nar', 'w', 'narWv'); bind('narF', 'nar', 'f', 'narFv'); bind('narA', 'nar', 'a', 'narAv');
 bind('chOn', 'ch', 'on'); bind('chPrompt', 'ch', 'prompt'); bind('chA', 'ch', 'a'); bind('chB', 'ch', 'b'); bind('chC', 'ch', 'c');
 $('addBub').onclick = () => { S.bubs.push(newBubble('这里写字')); S.sel = S.bubs.length - 1; S.selKind = 'bub'; bubbleList(); render(); };
 $('delBub').onclick = () => { if (S.sel >= 0) { S.bubs.splice(S.sel, 1); S.sel = -1; S.selKind = 'none'; bubbleList(); render(); } };
 window.__S = S;   // 供冒烟脚本读真实几何（_rect）断言控件是否生效
+window.__render = () => { bubbleList(); render(); };   // 直接改状态后强制重绘（冒烟/截图脚本用）
 
 /* ---------- 底图来源：素材库 + 本地上传 ---------- */
 function loadImage(src) { const img = new Image(); img.onload = () => { S.base = img; render(); }; img.onerror = () => { $('outMsg').textContent = '底图加载失败：' + src; }; img.src = src; }
@@ -455,9 +519,120 @@ $('toTask').onclick = async () => {
   } catch (e) { msg.textContent = '❌ 请求失败：' + e.message; }
 };
 
-/* ---------- 剧本 JSON 存取 ---------- */
+/* ---------- P22：矢量导出（文字保持可编辑） ---------- */
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function baseLayerDataUrl() {
+  const off = document.createElement('canvas'); off.width = W; off.height = H;
+  const live = ctx; ctx = off.getContext('2d');
+  drawBase();
+  ctx = live;
+  return off.toDataURL('image/png');
+}
+/** SVG 的 text y 是基线，canvas 的 textBaseline=top 是字顶 —— 用真实字体度量换算，别硬编系数 */
+function baselineOffset(size) {
+  ctx.font = `${size}px ${FONT}`; ctx.textBaseline = 'top';
+  const m = ctx.measureText('国');
+  return (m.actualBoundingBoxAscent || size * 0.8) + 0.5;
+}
+function svgTextEl(p, idBase) {
+  const anchor = p.align === 'center' ? 'middle' : 'start';
+  const dy = p.lh;
+  const bo = baselineOffset(p.f);
+  const tspans = p.lines.map((l, i) =>
+    `<tspan x="${p.tx.toFixed(1)}" y="${(p.ty + bo + i * dy).toFixed(1)}">${esc(l)}</tspan>`).join('');
+  return `<text id="${idBase}" font-family="${esc(FONT)}" font-size="${p.f}" fill="${esc(p.fg)}" text-anchor="${anchor}">${tspans}</text>`;
+}
+function buildSvg() {
+  render();   // 确保 _paint 是最新几何
+  const parts = [`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`];
+  parts.push(`<image x="0" y="0" width="${W}" height="${H}" href="${baseLayerDataUrl()}"/>`);
+  const c = S.ch._paint;
+  if (c) {
+    parts.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="${esc(c.overlay)}"/>`);
+    if (c.prompt) {
+      const r = c.prompt.rect;
+      parts.push(`<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" rx="12" fill="${esc(c.prompt.fill)}"/>`);
+      parts.push(svgTextEl(c.prompt, 'ch-prompt'));
+    }
+    c.blocks.forEach((bl, i) => {
+      parts.push(`<rect x="${bl.rect.x.toFixed(1)}" y="${bl.rect.y.toFixed(1)}" width="${bl.rect.w.toFixed(1)}" height="${bl.rect.h.toFixed(1)}" rx="14" fill="#14181d" fill-opacity="0.92" stroke="#c9a227" stroke-width="3"/>`);
+      const bo = baselineOffset(c.f);
+      parts.push(`<text font-family="${esc(FONT)}" font-size="${c.f}" font-weight="bold" fill="${esc(bl.label.color)}"><tspan x="${bl.label.x.toFixed(1)}" y="${(bl.label.y + bo).toFixed(1)}">${esc(bl.key)}:</tspan></text>`);
+      const tspans = bl.lines.map((l, k) => `<tspan x="${bl.text.x.toFixed(1)}" y="${(bl.text.y + bo + k * c.f * 1.42).toFixed(1)}">${esc(l)}</tspan>`).join('');
+      parts.push(`<text id="ch-opt-${bl.key}" font-family="${esc(FONT)}" font-size="${c.f}" fill="${esc(bl.text.color)}">${tspans}</text>`);
+    });
+  }
+  const n = S.nar;
+  if (n.on && n._paint && n._paint.lines.length) {
+    const r = n._rect;
+    parts.push(`<g id="narration" opacity="${n.a}">`);
+    parts.push(`<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" rx="10" fill="${esc(THEME[n.theme].bg)}" stroke="${esc(THEME[n.theme].stroke)}" stroke-width="2"/>`);
+    parts.push(svgTextEl(n._paint, 'narration-text'));
+    parts.push('</g>');
+  }
+  S.bubs.forEach((b, i) => {
+    if (!b._paint) return;
+    const p = b._paint, bg = esc(THEME[b.theme].bg), st = esc(THEME[b.theme].stroke);
+    parts.push(`<g id="bubble-${i + 1}" opacity="${p.alpha}">`);
+    if (p.tail) parts.push(`<polygon points="${p.tail.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" fill="${bg}"/>`);
+    if (p.shape === 'ellipse') parts.push(`<ellipse cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" rx="${(p.sw / 2).toFixed(1)}" ry="${(p.sh / 2).toFixed(1)}" fill="${bg}" stroke="${st}" stroke-width="2"/>`);
+    else {
+      const rx = p.shape === 'rect' ? 22 : p.sh / 2;
+      parts.push(`<rect x="${(p.cx - p.sw / 2).toFixed(1)}" y="${(p.cy - p.sh / 2).toFixed(1)}" width="${p.sw.toFixed(1)}" height="${p.sh.toFixed(1)}" rx="${rx.toFixed(1)}" fill="${bg}" stroke="${st}" stroke-width="2"/>`);
+    }
+    parts.push(svgTextEl(p, `bubble-${i + 1}-text`));
+    parts.push('</g>');
+  });
+  parts.push('</svg>');
+  return parts.join('\n');
+}
+function buildManifest() {
+  render();
+  const layers = [];
+  if (S.nar.on && S.nar._paint) layers.push({
+    kind: 'narration', text: S.nar.text, lines: S.nar._paint.lines,
+    rect: S.nar._rect, font: { size: S.nar.f, lineHeight: +(S.nar.f * 1.42).toFixed(2), color: S.nar._paint.fg, align: S.nar.align },
+    theme: S.nar.theme, opacity: S.nar.a,
+  });
+  S.bubs.forEach((b, i) => {
+    if (!b._paint) return;
+    layers.push({
+      kind: 'bubble', id: i + 1, text: b.text, lines: b._paint.lines, rect: b._rect,
+      font: { size: b.f, lineHeight: +(b.f * 1.42).toFixed(2), color: b._paint.fg, align: b.align },
+      shape: b.shape, theme: b.theme, opacity: b.a,
+      anchor: { x: +(b.x).toFixed(4), y: +(b.y).toFixed(4), tailX: +(b.tx).toFixed(4), tailY: +(b.ty).toFixed(4) },
+    });
+  });
+  if (S.ch.on && S.ch._paint) {
+    layers.push({ kind: 'choice-prompt', text: S.ch.prompt, lines: S.ch._paint.prompt ? S.ch._paint.prompt.lines : [], rect: S.ch._paint.prompt ? S.ch._paint.prompt.rect : null });
+    S.ch._paint.blocks.forEach(bl => layers.push({ kind: 'choice-option', key: bl.key, text: S.ch[bl.key.toLowerCase()], lines: bl.lines, rect: bl.rect }));
+  }
+  return { version: 1, canvas: { width: W, height: H }, background: S.view.bg, base: { hasImage: !!S.base, fit: S.view.fit, x: +S.view.x.toFixed(4), y: +S.view.y.toFixed(4), zoom: +S.view.zoom.toFixed(3) }, layers };
+}
+function dl(name, content, mime) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], { type: mime })); a.download = name; a.click();
+}
+$('svg').onclick = () => {
+  try {
+    const s = buildSvg();
+    dl(`漫画格_${Date.now()}.svg`, s, 'image/svg+xml');
+    $('outMsg').textContent = `✅ 已导出 SVG（矢量文字层 ${(s.length / 1024).toFixed(0)}KB，含底图位图层）`;
+  } catch (e) { $('outMsg').textContent = '❌ SVG 导出失败：' + e.message; }
+};
+$('manifest').onclick = () => {
+  const m = buildManifest();
+  dl('text-manifest.json', JSON.stringify(m, null, 2), 'application/json');
+  $('outMsg').textContent = `✅ 已存 text-manifest.json（${m.layers.length} 个文字层）`;
+};
+window.__buildSvg = buildSvg; window.__buildManifest = buildManifest;   // 冒烟用
+function buildPanelSpec() {
+  const strip = (o) => { const c = { ...o }; Object.keys(c).forEach(k => { if (k.startsWith('_')) delete c[k]; }); return c; };
+  return { w: W, h: H, view: S.view, nar: strip(S.nar), bubs: S.bubs.map(strip), ch: strip(S.ch) };
+}
+window.__buildPanelSpec = buildPanelSpec;   // 冒烟用
 $('saveJson').onclick = () => {
-  const blob = new Blob([JSON.stringify({ w: W, h: H, view: S.view, nar: S.nar, bubs: S.bubs, ch: S.ch }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(buildPanelSpec(), null, 2)], { type: 'application/json' });
   const a = document.createElement('a'); a.download = 'panel-spec.json'; a.href = URL.createObjectURL(blob); a.click();
 };
 $('loadJson').onclick = () => $('jsonFile').click();
@@ -474,6 +649,7 @@ $('jsonFile').onchange = (e) => {
 };
 function syncInputs() {
   narOn.checked = S.nar.on; narText.value = S.nar.text; narPos.value = S.nar.pos; narTheme.value = S.nar.theme;
+  narAlign.value = S.nar.align; narFg.value = S.nar.fg;
   narW.value = S.nar.w; narF.value = S.nar.f; narA.value = S.nar.a;
   chOn.checked = S.ch.on; chPrompt.value = S.ch.prompt; chA.value = S.ch.a; chB.value = S.ch.b; chC.value = S.ch.c;
   fit.value = S.view.fit; offX.value = S.view.x; offY.value = S.view.y; zoom.value = S.view.zoom; bg.value = S.view.bg;
@@ -481,6 +657,7 @@ function syncInputs() {
 function initFromDom() {
   S.nar.on = narOn.checked; S.nar.text = narText.value; S.nar.pos = narPos.value; S.nar.theme = narTheme.value;
   S.nar.w = +narW.value; S.nar.f = +narF.value; S.nar.a = +narA.value;
+  S.nar.align = narAlign.value; S.nar.fg = narFg.value;
   S.ch.on = chOn.checked; S.ch.prompt = chPrompt.value; S.ch.a = chA.value; S.ch.b = chB.value; S.ch.c = chC.value;
   $('narWv').textContent = Math.round(S.nar.w * 100) + '%';
   $('narFv').textContent = S.nar.f;

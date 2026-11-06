@@ -55,7 +55,7 @@ node smoke/guard-sentinel.cjs --trash-empty  # 疑似且确为零文件空树 �
 | `p17-library-enhance-smoke.cjs` | P17 素材库增强（24 项） | 8787 在跑；ffmpeg 现场造假件（PNG/MP3）跑完自清，零管线 |
 | `p19-cut-export-smoke.cjs` | P12-B/C 重剪页+导出链（23 项） | 8787 在跑；C 段导出=纯本地 08+08-qc 重编码零 TTS；断言主链成片 mtime 零触碰 |
 | `p20-jianying-relay-smoke.cjs` | P18 剪映接力包（16 项） | 8787 在跑；两轮 08 本地渲染零 TTS；探针自建自清 |
-| `p21-comic-smoke.cjs` | P21 漫画格排版页（38 项） | 8787 在跑；A 路由与页面骨架 9 + B 导出正例 6 + C 负例 8 + D 主链零触碰 4 + F 控件几何断言 9 + E 清场 2。**零计费**（纯本地写盘，不调生图服务）；PNG 夹具由 ffmpeg 现场造、随探针目录一起清；F 段需本机 headless chromium，缺失自动 SKIP 不影响 A–E 结论 |
+| `p21-comic-smoke.cjs` | P21/P22 漫画格排版页（63 项） | 8787 在跑；A 路由与页面骨架 9 + B 导出正例 6 + C 负例 8 + D 主链零触碰 4 + F 控件几何断言 9 + G 椭圆文字包含与对齐/字色 13 + **H 矢量导出 13** + E 清场 2。G 段不只比像素哈希，还**逐行量第一个着墨像素的横坐标**（居中时三行应各不相同、左对齐时应基本齐平且明显靠左），锚点选错这类"看着没反应"的问题拦得住；H 段用 DOMParser 解析导出的 SVG，断言文字是 `<tspan>` 真实内容（改文案后 SVG 同步）而非烧进像素、椭圆 rx/ry 与画布几何同源、manifest 每层带 text/lines/rect/font、panel-spec 已剥掉临时几何字段。**零计费**（纯本地写盘，不调生图服务）；PNG 夹具由 ffmpeg 现场造、随探针目录一起清；F/G/H 段需本机 headless chromium，缺失自动 SKIP 不影响 A–E 结论 |
 | `cpsync-diag.cjs` / `desktop-scan.cjs` | 环境雷诊断 / 桌面事故侦察 | 只读或只写 tmp，随手可跑 |
 
 各脚本计费/清理行为以文件头注释为准；跑完以退出码 0 与「FAIL 计数 0」为准。
