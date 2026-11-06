@@ -1164,6 +1164,38 @@ const server = http.createServer(async (req, res) => {
       return serveFile(req, res, fp);
     }
 
+    // —— P21 漫画格排版：产物只写 output/<任务>/comic/，与主链文件（成片/封面/精修）物理隔离 ——
+    if (p === '/api/comic/export' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const task = String(body.task || '').trim();
+      const name = String(body.name || '').trim();
+      const dataUrl = String(body.dataUrl || '');
+      if (!NAME_RE.test(task)) return json(res, 400, { error: 'bad task' });
+      if (!fs.existsSync(path.join(OUTPUT, task))) return json(res, 404, { error: '任务不存在' });
+      if (!/^[\w一-鿿 -]{1,60}\.png$/.test(name) || name.includes('..')) return json(res, 400, { error: 'bad name（只允许中文/字母/数字/空格/-_，须以 .png 结尾）' });
+      const m = /^data:image\/png;base64,([\w+/=]+)$/.exec(dataUrl);
+      if (!m) return json(res, 400, { error: 'bad dataUrl（需 data:image/png;base64,…）' });
+      const buf = Buffer.from(m[1], 'base64');
+      if (buf.slice(1, 4).toString('latin1') !== 'PNG') return json(res, 400, { error: '不是合法 PNG 数据' });
+      if (buf.length < 100) return json(res, 400, { error: '图片数据过小' });
+      if (buf.length > 20 * 1024 * 1024) return json(res, 413, { error: '图片超过 20MB' });
+      const dir = path.join(OUTPUT, task, 'comic');
+      const fp = path.join(dir, name);
+      if (!fp.startsWith(dir + path.sep)) return json(res, 400, { error: 'bad path' });
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(fp, buf);
+      return json(res, 200, { ok: true, task, rel: 'comic/' + name, bytes: buf.length });
+    }
+    if (p === '/api/comic/list' && req.method === 'GET') {
+      const task = String(u.searchParams.get('name') || '').trim();
+      if (!NAME_RE.test(task)) return json(res, 400, { error: 'bad task' });
+      const dir = path.join(OUTPUT, task, 'comic');
+      const files = fs.existsSync(dir)
+        ? fs.readdirSync(dir).filter((f) => /\.png$/.test(f) && !f.startsWith('.')).sort()
+        : [];
+      return json(res, 200, { task, files });
+    }
+
     // —— 页面 ——
     if (p === '/' || p === '/index.html') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'index.html'), 'utf8');
@@ -1192,6 +1224,11 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/wizard') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'wizard.html'), 'utf8');
+      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      return res.end(html);
+    }
+    if (p === '/comic') {
+      const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'comic.html'), 'utf8');
       res.writeHead(200, { 'Content-Type': MIME['.html'] });
       return res.end(html);
     }

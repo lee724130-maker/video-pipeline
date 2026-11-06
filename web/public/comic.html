@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>漫画格排版 · 真人风格分镜/带货图</title>
+<style>
+  :root { --bg:#1c1e22; --panel:#26292f; --line:#3a3f47; --txt:#e6e8eb; --dim:#9aa3ad; --accent:#4c8dff; --ok:#3ecf8e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:14px/1.6 "PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+  header { padding:11px 18px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  header a { color:var(--dim); text-decoration:none; font-size:13px; }
+  header a:hover { color:var(--accent); }
+  .note { color:var(--dim); font-size:12px; }
+  main { display:grid; grid-template-columns:400px 1fr; gap:0; height:calc(100vh - 53px); }
+  aside { border-right:1px solid var(--line); overflow-y:auto; padding:14px; }
+  .stage { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:14px; overflow:auto; }
+  canvas#view { background:#000; box-shadow:0 6px 30px rgba(0,0,0,.5); cursor:grab; max-width:100%; max-height:calc(100vh - 92px); width:auto; height:auto; }
+  fieldset { border:1px solid var(--line); border-radius:8px; margin:0 0 12px; padding:10px 12px; }
+  legend { padding:0 6px; color:var(--dim); font-size:12px; }
+  label { display:block; margin:7px 0 3px; font-size:12px; color:var(--dim); }
+  input[type=text], input[type=number], textarea, select { width:100%; background:#1a1d21; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+  textarea { min-height:56px; resize:vertical; }
+  input[type=range] { width:100%; }
+  button { background:#333842; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 11px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.pri { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.ok { background:#1f6f52; border-color:var(--ok); color:#fff; }
+  button.sm { padding:3px 8px; font-size:12px; }
+  .row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .chk { display:flex; gap:6px; align-items:center; margin:4px 0; }
+  .chk input { width:auto; }
+  .bub { border:1px solid var(--line); border-radius:7px; padding:8px; margin-bottom:8px; background:#1f2226; }
+  .bub.sel { border-color:var(--accent); }
+  .bub .hd { display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; font-size:12px; color:var(--dim); }
+  .hint { font-size:11px; color:var(--dim); line-height:1.5; }
+  .tag { font-size:11px; background:#2f3742; border-radius:4px; padding:1px 6px; }
+  #libGrid, #outGrid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-top:6px; }
+  #libGrid img, #outGrid img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:4px; border:1px solid var(--line); cursor:pointer; display:block; }
+  #libGrid img:hover, #outGrid img:hover { border-color:var(--accent); }
+  .empty { color:var(--dim); font-size:12px; padding:6px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>漫画格排版</h1>
+  <span class="tag">P21 · 排版层，不接生图模型</span>
+  <a href="/">← 入口</a><a href="/console">控制台</a><a href="/cut">重剪</a><a href="/wizard">向导</a>
+  <span class="note">拖动旁白框/气泡定位，拖右下角圆点改宽度；画布滚轮缩放底图，Alt+拖动移动底图</span>
+</header>
+<main>
+<aside>
+  <fieldset>
+    <legend>底图 · 从素材库选</legend>
+    <div class="row"><button id="libReload" class="sm">刷新素材库</button><input type="file" id="file" accept="image/*" style="flex:1"></div>
+    <div id="libGrid"><div class="empty">加载中…</div></div>
+    <label>铺法</label>
+    <select id="fit"><option value="cover">cover 铺满裁切</option><option value="contain">contain 完整可见</option></select>
+    <div class="grid2">
+      <div><label>水平偏移 <span id="xv"></span></label><input type="range" id="offX" min="-0.6" max="0.6" step="0.01" value="0"></div>
+      <div><label>垂直偏移 <span id="yv"></span></label><input type="range" id="offY" min="-0.6" max="0.6" step="0.01" value="0"></div>
+    </div>
+    <label>缩放 <span id="zoomv"></span></label><input type="range" id="zoom" min="0.2" max="4" step="0.01" value="1">
+    <label>背景色（图缩小后露出的区域）</label><input type="color" id="bg" value="#101215" style="width:100%;height:30px;padding:2px">
+  </fieldset>
+
+  <fieldset>
+    <legend>旁白框</legend>
+    <div class="chk"><input type="checkbox" id="narOn" checked><label for="narOn" style="margin:0">启用</label></div>
+    <textarea id="narText">当你被仙人选中，
+选择一心向道时</textarea>
+    <div class="grid2">
+      <div><label>位置预设</label><select id="narPos"><option value="top">顶部</option><option value="bottom">底部</option></select></div>
+      <div><label>主题</label><select id="narTheme"><option value="light">浅底深字</option><option value="dark">深底白字</option><option value="frost">磨砂半透</option></select></div>
+    </div>
+    <label>宽度 <span id="narWv"></span></label><input type="range" id="narW" min="0.3" max="0.98" step="0.01" value="0.86">
+    <label>字号 <span id="narFv"></span></label><input type="range" id="narF" min="24" max="52" step="1" value="34">
+    <label>不透明度 <span id="narAv"></span></label><input type="range" id="narA" min="0.3" max="1" step="0.02" value="0.92">
+  </fieldset>
+
+  <fieldset>
+    <legend>对话气泡</legend>
+    <div class="row"><button id="addBub" class="sm">+ 添加气泡</button><button id="delBub" class="sm">删除选中</button></div>
+    <div id="bubs" style="margin-top:8px"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>A/B/C 分支选项卡</legend>
+    <div class="chk"><input type="checkbox" id="chOn"><label for="chOn" style="margin:0">整格改为选项卡（底图变暗）</label></div>
+    <label>引导语</label><textarea id="chPrompt">小禾，你要照顾好自己。
+等我修炼有成了，就回来看你。</textarea>
+    <label>选项 A</label><textarea id="chA">我不去了。
+我要留在这里，和你在一起。</textarea>
+    <label>选项 B</label><textarea id="chB">仙凡有别。
+你这样的凡人，
+就别再和我攀交情了。</textarea>
+    <label>选项 C</label><textarea id="chC">我愿意！仙长，
+我愿意去！</textarea>
+  </fieldset>
+
+  <fieldset>
+    <legend>导出</legend>
+    <label>目标任务（产物写入 <code>output/任务/comic/</code>，不碰主链文件）</label>
+    <div class="row"><select id="taskSel" style="flex:1"></select><button id="taskReload" class="sm">↻</button></div>
+    <div class="grid2">
+      <div><label>格号</label><input type="number" id="cellNo" min="1" max="999" value="1"></div>
+      <div><label>文件名前缀</label><input type="text" id="cellPrefix" value="格" maxlength="20"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="png" class="pri">浏览器下载 PNG</button>
+      <button id="toTask" class="ok">写入任务目录</button>
+    </div>
+    <div class="row"><button id="saveJson" class="sm">存剧本 JSON</button><button id="loadJson" class="sm">读剧本 JSON</button>
+      <input type="file" id="jsonFile" accept="application/json" style="display:none"></div>
+    <div id="outMsg" class="hint"></div>
+    <label>该任务已导出的格</label><div id="outGrid"><div class="empty">选择任务后加载</div></div>
+  </fieldset>
+</aside>
+
+<section class="stage">
+  <canvas id="view" width="1024" height="1536"></canvas>
+  <div class="hint" id="stat"></div>
+</section>
+</main>
+
+<script>
+const W = 1024, H = 1536;
+const cv = document.getElementById('view');
+let ctx = cv.getContext('2d');
+const S = {
+  base: null,
+  view: { fit: 'cover', x: 0, y: 0, zoom: 1, bg: '#101215' },
+  nar: { on: true, text: '', pos: 'top', x: 0.5, y: 0.09, theme: 'light', w: 0.86, f: 34, a: 0.92, _rect: null },
+  bubs: [], sel: -1, selKind: 'none',
+  ch: { on: false, prompt: '', a: '', b: '', c: '' },
+};
+const THEME = {
+  light: { bg: '#ffffff', fg: '#15181c', stroke: 'rgba(0,0,0,.18)' },
+  dark:  { bg: '#12161b', fg: '#f2f4f7', stroke: 'rgba(255,255,255,.22)' },
+  frost: { bg: '#ffffff', fg: '#1b2027', stroke: 'rgba(255,255,255,.5)' },
+};
+const FONT = '"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif';
+let uid = 0;
+const $ = (id) => document.getElementById(id);
+
+function newBubble(text) {
+  return { id: ++uid, text, x: 0.3, y: 0.28, w: 0.42, tx: 0.45, ty: 0.44,
+           shape: 'ellipse', f: 32, a: 0.94, theme: 'light' };
+}
+
+/* ---------- 文本换行与形状 ---------- */
+function wrap(text, maxW, size) {
+  ctx.font = `${size}px ${FONT}`;
+  const out = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    for (const ch of para) {
+      if (ctx.measureText(line + ch).width > maxW && line) { out.push(line); line = ch; }
+      else line += ch;
+    }
+    out.push(line);
+  }
+  return out;
+}
+function drawTextBlock(lines, x, y, size, color) {
+  ctx.font = `${size}px ${FONT}`; ctx.fillStyle = color; ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+  const lh = size * 1.42;
+  lines.forEach((l, i) => ctx.fillText(l, x, y + i * lh));
+  return lines.length * lh;
+}
+function rrect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function tail(fromX, fromY, toX, toY, wid) {
+  const ang = Math.atan2(toY - fromY, toX - fromX), per = ang + Math.PI / 2;
+  ctx.beginPath();
+  ctx.moveTo(fromX + Math.cos(per) * wid, fromY + Math.sin(per) * wid);
+  ctx.lineTo(toX, toY);
+  ctx.lineTo(fromX - Math.cos(per) * wid, fromY - Math.sin(per) * wid);
+  ctx.closePath(); ctx.fill();
+}
+function dot(x, y) { ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill(); }
+
+/* ---------- 绘制 ---------- */
+function drawBase() {
+  ctx.fillStyle = S.view.bg; ctx.fillRect(0, 0, W, H);
+  if (!S.base) {
+    ctx.fillStyle = '#5a636e'; ctx.font = `28px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('从素材库选一张底图，或上传本地图片', W / 2, H / 2); ctx.textAlign = 'left'; return;
+  }
+  const img = S.base, v = S.view;
+  const ratio = v.fit === 'contain' ? Math.min(W / img.width, H / img.height) : Math.max(W / img.width, H / img.height);
+  const s = ratio * v.zoom, dw = img.width * s, dh = img.height * s;
+  const dx = (W - dw) / 2 + v.x * W, dy = (H - dh) / 2 + v.y * H;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.restore();
+}
+function drawChoices() {
+  const c = S.ch; if (!c.on) return;
+  ctx.fillStyle = 'rgba(8,10,13,.72)'; ctx.fillRect(0, 0, W, H);
+  const f = 34, pad = 26;
+  let y = 150;
+  const pl = wrap(c.prompt, W * 0.8 - pad * 2, f);
+  ctx.globalAlpha = .95; ctx.fillStyle = '#f4f6f8'; rrect(W * 0.1, y - 14, W * 0.8, pl.length * f * 1.42 + 28, 12); ctx.fill(); ctx.globalAlpha = 1;
+  y += drawTextBlock(pl, W * 0.1 + pad, y, f, '#15181c') + 40;
+  [['A', c.a], ['B', c.b], ['C', c.c]].forEach(([k, txt]) => {
+    if (!txt.trim()) return;
+    const lines = wrap(txt, W * 0.72 - pad * 2, f), bh = lines.length * f * 1.42 + pad * 1.6;
+    ctx.fillStyle = 'rgba(20,24,29,.92)'; rrect(W * 0.14, y, W * 0.72, bh, 14); ctx.fill();
+    ctx.strokeStyle = '#c9a227'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.font = `bold ${f}px ${FONT}`; ctx.fillStyle = '#e8c15a'; ctx.textBaseline = 'top';
+    ctx.fillText(k + ':', W * 0.14 + pad * 0.5, y + pad * 0.8);
+    drawTextBlock(lines, W * 0.14 + pad * 2.1, y + pad * 0.8, f, '#f0f2f5');
+    y += bh + 26;
+  });
+}
+function drawNarration(showHandles) {
+  const n = S.nar; if (!n.on || !n.text.trim()) { n._rect = null; return; }
+  const t = THEME[n.theme], pad = n.f * 0.62, bw = W * n.w;
+  const lines = wrap(n.text, bw - pad * 2, n.f), lh = n.f * 1.42, bh = lines.length * lh + pad * 2;
+  const bx = Math.max(8, Math.min(W - bw - 8, n.x * W - bw / 2));
+  const by = Math.max(8, Math.min(H - bh - 8, n.y * H - bh / 2));
+  n._rect = { x: bx, y: by, w: bw, h: bh };
+  ctx.globalAlpha = n.a; ctx.fillStyle = t.bg; rrect(bx, by, bw, bh, 10); ctx.fill();
+  ctx.globalAlpha = Math.min(1, n.a + 0.05); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke();
+  ctx.globalAlpha = 1; drawTextBlock(lines, bx + pad, by + pad, n.f, t.fg);
+  if (showHandles && S.selKind === 'nar') {
+    ctx.strokeStyle = '#4c8dff'; ctx.lineWidth = 2; ctx.setLineDash([7, 5]);
+    ctx.strokeRect(bx - 6, by - 6, bw + 12, bh + 12); ctx.setLineDash([]);
+    ctx.fillStyle = '#4c8dff'; dot(bx + bw, by + bh);
+  }
+}
+function drawBubbles(showHandles) {
+  S.bubs.forEach((b, i) => {
+    const t = THEME[b.theme], bw = W * b.w, pad = b.f * 0.6;
+    const lines = wrap(b.text, bw - pad * 2, b.f), lh = b.f * 1.42, bh = lines.length * lh + pad * 2;
+    const cx = b.x * W, cy = b.y * H;
+    ctx.globalAlpha = b.a; ctx.fillStyle = t.bg;
+    if (b.shape === 'ellipse') { ctx.beginPath(); ctx.ellipse(cx, cy, bw / 2, bh / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
+    else if (b.shape === 'rect') { rrect(cx - bw / 2, cy - bh / 2, bw, bh, 22); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
+    else { rrect(cx - bw / 2, cy - bh / 2, bw, bh, bh / 2); ctx.fill(); ctx.strokeStyle = t.stroke; ctx.lineWidth = 2; ctx.stroke(); }
+    if (b.shape !== 'whisper') { ctx.fillStyle = t.bg; tail(cx, cy, b.tx * W, b.ty * H, Math.min(bw, bh) * 0.13); }
+    ctx.globalAlpha = 1;
+    drawTextBlock(lines, cx - bw / 2 + pad, cy - (lines.length * lh) / 2, b.f, t.fg);
+    b._rect = { x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh };
+    if (showHandles && i === S.sel && S.selKind === 'bub') {
+      ctx.strokeStyle = '#4c8dff'; ctx.lineWidth = 2; ctx.setLineDash([7, 5]);
+      ctx.strokeRect(cx - bw / 2 - 6, cy - bh / 2 - 6, bw + 12, bh + 12); ctx.setLineDash([]);
+      ctx.fillStyle = '#4c8dff'; dot(cx, cy); ctx.fillStyle = '#ffb020'; dot(b.tx * W, b.ty * H);
+    }
+  });
+}
+function render() {
+  drawBase(); drawChoices(); drawNarration(true); drawBubbles(true);
+  $('stat').textContent = `${W}×${H} · 底图${S.base ? S.base.width + '×' + S.base.height : '未选'} · 气泡 ${S.bubs.length} · 选中：${S.selKind === 'nar' ? '旁白框' : S.selKind === 'bub' && S.sel >= 0 ? '气泡 #' + (S.sel + 1) : '无'}`;
+}
+
+/* ---------- 气泡列表面板 ---------- */
+function bubbleList() {
+  const box = $('bubs'); box.innerHTML = '';
+  S.bubs.forEach((b, i) => {
+    const d = document.createElement('div'); d.className = 'bub' + (i === S.sel && S.selKind === 'bub' ? ' sel' : '');
+    d.innerHTML = `<div class="hd"><span>气泡 #${i + 1}</span><button class="sm" data-sel="${i}">选中</button></div>
+      <textarea data-k="text" data-i="${i}">${b.text}</textarea>
+      <div class="grid2" style="margin-top:6px">
+        <div><label>形状</label><select data-k="shape" data-i="${i}">
+          <option value="ellipse">椭圆气泡</option><option value="rect">方角气泡</option><option value="whisper">无尾白框</option></select></div>
+        <div><label>主题</label><select data-k="theme" data-i="${i}">
+          <option value="light">浅底深字</option><option value="dark">深底白字</option><option value="frost">磨砂半透</option></select></div>
+      </div>
+      <label>字号</label><input type="range" data-k="f" data-i="${i}" min="22" max="46" step="1" value="${b.f}">
+      <label>宽度</label><input type="range" data-k="w" data-i="${i}" min="0.2" max="0.8" step="0.01" value="${b.w}">
+      <label>不透明度</label><input type="range" data-k="a" data-i="${i}" min="0.4" max="1" step="0.02" value="${b.a}">`;
+    d.querySelector('[data-k=shape]').value = b.shape; d.querySelector('[data-k=theme]').value = b.theme;
+    box.appendChild(d);
+  });
+  box.querySelectorAll('[data-sel]').forEach(el => el.onclick = () => { S.sel = +el.dataset.sel; S.selKind = 'bub'; render(); bubbleList(); });
+  box.querySelectorAll('[data-k]').forEach(el => el.oninput = () => {
+    const b = S.bubs[+el.dataset.i]; if (!b) return;
+    b[el.dataset.k] = el.dataset.k === 'text' ? el.value : (el.type === 'range' ? +el.value : el.value);
+    render();
+  });
+}
+
+/* ---------- 画布交互 ---------- */
+function toCanvas(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; }
+function bubbleHit(p) {
+  for (let i = S.bubs.length - 1; i >= 0; i--) {
+    const b = S.bubs[i];
+    if (Math.hypot(p.x - b.tx * W, p.y - b.ty * H) < 22) return { i, part: 'tail' };
+    const r = b._rect; if (!r) continue;
+    if (p.x >= r.x - 8 && p.x <= r.x + r.w + 8 && p.y >= r.y - 8 && p.y <= r.y + r.h + 8) return { i, part: 'body' };
+  }
+  return null;
+}
+function narHit(p) {
+  const r = S.nar._rect; if (!r) return null;
+  if (Math.hypot(p.x - (r.x + r.w), p.y - (r.y + r.h)) < 24) return { part: 'nar-size' };
+  if (p.x >= r.x - 6 && p.x <= r.x + r.w + 6 && p.y >= r.y - 6 && p.y <= r.y + r.h + 6) return { part: 'nar-body' };
+  return null;
+}
+let drag = null;
+cv.addEventListener('pointerdown', (e) => {
+  const p = toCanvas(e);
+  if (e.altKey && S.base) { drag = { part: 'image', ox: p.x / W - S.view.x, oy: p.y / H - S.view.y }; e.preventDefault(); return; }
+  const bh = bubbleHit(p);
+  if (bh) {
+    drag = { i: bh.i, part: (bh.part === 'tail' || e.shiftKey) ? 'tail' : 'body' };
+    S.sel = bh.i; S.selKind = 'bub'; bubbleList(); render(); return;
+  }
+  const nh = narHit(p);
+  if (nh) {
+    drag = nh.part === 'nar-size'
+      ? { part: 'nar-size', startW: S.nar.w, startX: p.x }
+      : { part: 'nar-body', ox: p.x / W - S.nar.x, oy: p.y / H - S.nar.y };
+    S.sel = -1; S.selKind = 'nar'; bubbleList(); render(); return;
+  }
+  S.sel = -1; S.selKind = 'none'; bubbleList(); render();
+});
+cv.addEventListener('pointermove', (e) => {
+  if (!drag) return; const p = toCanvas(e);
+  if (drag.part === 'image') {
+    S.view.x = Math.max(-0.6, Math.min(0.6, p.x / W - drag.ox));
+    S.view.y = Math.max(-0.6, Math.min(0.6, p.y / H - drag.oy));
+    $('offX').value = S.view.x; $('offY').value = S.view.y; viewLabels(); render(); return;
+  }
+  if (drag.part === 'nar-body') {
+    S.nar.x = Math.max(0.05, Math.min(0.95, p.x / W - drag.ox));
+    S.nar.y = Math.max(0.03, Math.min(0.97, p.y / H - drag.oy));
+    render(); return;
+  }
+  if (drag.part === 'nar-size') {
+    S.nar.w = Math.max(0.3, Math.min(0.98, drag.startW + (p.x - drag.startX) / W));
+    $('narW').value = S.nar.w; $('narWv').textContent = Math.round(S.nar.w * 100) + '%'; render(); return;
+  }
+  const b = S.bubs[drag.i]; if (!b) return;
+  if (drag.part === 'tail') { b.tx = p.x / W; b.ty = p.y / H; } else { b.x = p.x / W; b.y = p.y / H; }
+  render();
+});
+cv.addEventListener('wheel', (e) => {
+  if (!S.base) return; e.preventDefault();
+  S.view.zoom = Math.max(0.2, Math.min(4, S.view.zoom * (e.deltaY < 0 ? 1.06 : 0.94)));
+  $('zoom').value = S.view.zoom; viewLabels(); render();
+}, { passive: false });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => cv.addEventListener(ev, () => { drag = null; }));
+
+/* ---------- 控件绑定 ---------- */
+const bind = (id, key, prop, label) => {
+  const el = $(id);
+  el.oninput = () => {
+    S[key][prop] = el.type === 'checkbox' ? el.checked : (el.type === 'range' ? +el.value : el.value);
+    if (label) $(label).textContent = el.type === 'range' ? (prop === 'f' ? el.value : Math.round(el.value * 100) + '%') : el.value;
+    render();
+  };
+};
+function viewLabels() {
+  $('xv').textContent = Math.round(S.view.x * 100) + '%';
+  $('yv').textContent = Math.round(S.view.y * 100) + '%';
+  $('zoomv').textContent = S.view.zoom.toFixed(2) + '×';
+}
+const viewMap = { offX: 'x', offY: 'y', zoom: 'zoom' };
+Object.keys(viewMap).forEach(id => { $(id).oninput = () => { S.view[viewMap[id]] = +$(id).value; viewLabels(); render(); }; });
+$('fit').onchange = e => { S.view.fit = e.target.value; render(); };
+$('bg').oninput = e => { S.view.bg = e.target.value; render(); };
+bind('narOn', 'nar', 'on'); bind('narText', 'nar', 'text'); bind('narTheme', 'nar', 'theme');
+$('narPos').onchange = e => { S.nar.pos = e.target.value; S.nar.y = e.target.value === 'top' ? 0.09 : 0.9; render(); };
+bind('narW', 'nar', 'w', 'narWv'); bind('narF', 'nar', 'f', 'narFv'); bind('narA', 'nar', 'a', 'narAv');
+bind('chOn', 'ch', 'on'); bind('chPrompt', 'ch', 'prompt'); bind('chA', 'ch', 'a'); bind('chB', 'ch', 'b'); bind('chC', 'ch', 'c');
+$('addBub').onclick = () => { S.bubs.push(newBubble('这里写字')); S.sel = S.bubs.length - 1; S.selKind = 'bub'; bubbleList(); render(); };
+$('delBub').onclick = () => { if (S.sel >= 0) { S.bubs.splice(S.sel, 1); S.sel = -1; S.selKind = 'none'; bubbleList(); render(); } };
+window.__S = S;   // 供冒烟脚本读真实几何（_rect）断言控件是否生效
+
+/* ---------- 底图来源：素材库 + 本地上传 ---------- */
+function loadImage(src) { const img = new Image(); img.onload = () => { S.base = img; render(); }; img.onerror = () => { $('outMsg').textContent = '底图加载失败：' + src; }; img.src = src; }
+$('file').onchange = (e) => { const f = e.target.files[0]; if (f) loadImage(URL.createObjectURL(f)); };
+async function loadLibrary() {
+  const grid = $('libGrid');
+  try {
+    const j = await (await fetch('/api/library')).json();
+    const imgs = (j.kinds && j.kinds.images) || [];
+    if (!imgs.length) { grid.innerHTML = '<div class="empty">素材库 images 目录为空，可直接上传本地图片</div>'; return; }
+    grid.innerHTML = '';
+    imgs.slice(0, 24).forEach(it => {
+      const im = document.createElement('img');
+      im.src = '/lib/images/' + encodeURIComponent(it.name);
+      im.title = `${it.name}${it.meta ? ' · ' + it.meta.w + '×' + it.meta.h : ''}`;
+      im.onclick = () => loadImage(im.src);
+      grid.appendChild(im);
+    });
+  } catch (e) { grid.innerHTML = '<div class="empty">素材库读取失败：' + e.message + '</div>'; }
+}
+$('libReload').onclick = loadLibrary;
+
+/* ---------- 导出：浏览器下载 + 写入任务目录 ---------- */
+function composePng() {
+  const off = document.createElement('canvas'); off.width = W; off.height = H;
+  const live = ctx; ctx = off.getContext('2d');
+  drawBase(); drawChoices(); drawNarration(false); drawBubbles(false);
+  ctx = live;
+  return off.toDataURL('image/png');
+}
+$('png').onclick = () => {
+  const a = document.createElement('a'); a.download = `漫画格_${Date.now()}.png`; a.href = composePng(); a.click();
+};
+async function loadTasks() {
+  const sel = $('taskSel');
+  try {
+    const j = await (await fetch('/api/tasks')).json();
+    const list = j.tasks || j || [];
+    sel.innerHTML = '';
+    list.forEach(t => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; sel.appendChild(o); });
+    if (!list.length) sel.innerHTML = '<option value="">（还没有任务）</option>';
+    showOutputs();
+  } catch (e) { sel.innerHTML = '<option value="">任务列表读取失败</option>'; }
+}
+$('taskReload').onclick = loadTasks;
+$('taskSel').onchange = showOutputs;
+async function showOutputs() {
+  const task = $('taskSel').value, grid = $('outGrid');
+  if (!task) { grid.innerHTML = '<div class="empty">选择任务后加载</div>'; return; }
+  try {
+    const j = await (await fetch(`/api/comic/list?name=${encodeURIComponent(task)}`)).json();
+    const files = j.files || [];
+    if (!files.length) { grid.innerHTML = '<div class="empty">该任务还没有导出的格</div>'; return; }
+    grid.innerHTML = '';
+    files.forEach(f => {
+      const im = document.createElement('img');
+      im.src = `/file/${encodeURIComponent(task)}/${encodeURIComponent('comic/' + f)}`;
+      im.title = f; im.onclick = () => window.open(im.src, '_blank');
+      grid.appendChild(im);
+    });
+    const maxN = files.reduce((a, f) => Math.max(a, Number((String(f).match(/(\d+)/) || [0, 0])[1])), 0);
+    $('cellNo').value = maxN + 1;
+  } catch (e) { grid.innerHTML = '<div class="empty">读取失败：' + e.message + '</div>'; }
+}
+$('toTask').onclick = async () => {
+  const task = $('taskSel').value, msg = $('outMsg');
+  if (!task) { msg.textContent = '先选一个任务'; return; }
+  const no = Math.max(1, Math.min(999, +$('cellNo').value || 1));
+  const prefix = ($('cellPrefix').value || '格').replace(/[^\w一-鿿 -]/g, '').slice(0, 20) || '格';
+  msg.textContent = '写入中…';
+  try {
+    const r = await (await fetch('/api/comic/export', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task, name: `${prefix}${String(no).padStart(2, '0')}.png`, dataUrl: composePng() }),
+    })).json();
+    if (r.error) { msg.textContent = '❌ ' + r.error; return; }
+    msg.textContent = `✅ 已写入 output/${r.task}/${r.rel}（${Math.round(r.bytes / 1024)}KB）`;
+    $('cellNo').value = no + 1; showOutputs();
+  } catch (e) { msg.textContent = '❌ 请求失败：' + e.message; }
+};
+
+/* ---------- 剧本 JSON 存取 ---------- */
+$('saveJson').onclick = () => {
+  const blob = new Blob([JSON.stringify({ w: W, h: H, view: S.view, nar: S.nar, bubs: S.bubs, ch: S.ch }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.download = 'panel-spec.json'; a.href = URL.createObjectURL(blob); a.click();
+};
+$('loadJson').onclick = () => $('jsonFile').click();
+$('jsonFile').onchange = (e) => {
+  const f = e.target.files[0]; if (!f) return; const r = new FileReader();
+  r.onload = () => {
+    try {
+      const j = JSON.parse(r.result);
+      Object.assign(S.view, j.view || {}); Object.assign(S.nar, j.nar || {}); S.bubs = (j.bubs || []).map(b => ({ ...b, _rect: null })); Object.assign(S.ch, j.ch || {});
+      syncInputs(); viewLabels(); bubbleList(); render();
+    } catch (x) { alert('JSON 解析失败：' + x.message); }
+  };
+  r.readAsText(f);
+};
+function syncInputs() {
+  narOn.checked = S.nar.on; narText.value = S.nar.text; narPos.value = S.nar.pos; narTheme.value = S.nar.theme;
+  narW.value = S.nar.w; narF.value = S.nar.f; narA.value = S.nar.a;
+  chOn.checked = S.ch.on; chPrompt.value = S.ch.prompt; chA.value = S.ch.a; chB.value = S.ch.b; chC.value = S.ch.c;
+  fit.value = S.view.fit; offX.value = S.view.x; offY.value = S.view.y; zoom.value = S.view.zoom; bg.value = S.view.bg;
+}
+function initFromDom() {
+  S.nar.on = narOn.checked; S.nar.text = narText.value; S.nar.pos = narPos.value; S.nar.theme = narTheme.value;
+  S.nar.w = +narW.value; S.nar.f = +narF.value; S.nar.a = +narA.value;
+  S.ch.on = chOn.checked; S.ch.prompt = chPrompt.value; S.ch.a = chA.value; S.ch.b = chB.value; S.ch.c = chC.value;
+  $('narWv').textContent = Math.round(S.nar.w * 100) + '%';
+  $('narFv').textContent = S.nar.f;
+  $('narAv').textContent = Math.round(S.nar.a * 100) + '%';
+  viewLabels();
+}
+
+/* 初始：两个气泡示例，方便立刻看到效果 */
+S.bubs.push(newBubble('太好了……我就知道，\n你一定会有出息的！'));
+S.bubs[0].x = .62; S.bubs[0].y = .17; S.bubs[0].tx = .5; S.bubs[0].ty = .3; S.bubs[0].w = .4;
+S.bubs.push(newBubble('快去吧，\n别让仙人等急了。'));
+S.bubs[1].x = .3; S.bubs[1].y = .42; S.bubs[1].tx = .42; S.bubs[1].ty = .55; S.bubs[1].w = .36;
+initFromDom(); bubbleList(); render(); loadLibrary(); loadTasks();
+</script>
+</body>
+</html>

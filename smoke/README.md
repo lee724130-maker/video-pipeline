@@ -55,6 +55,7 @@ node smoke/guard-sentinel.cjs --trash-empty  # 疑似且确为零文件空树 �
 | `p17-library-enhance-smoke.cjs` | P17 素材库增强（24 项） | 8787 在跑；ffmpeg 现场造假件（PNG/MP3）跑完自清，零管线 |
 | `p19-cut-export-smoke.cjs` | P12-B/C 重剪页+导出链（23 项） | 8787 在跑；C 段导出=纯本地 08+08-qc 重编码零 TTS；断言主链成片 mtime 零触碰 |
 | `p20-jianying-relay-smoke.cjs` | P18 剪映接力包（16 项） | 8787 在跑；两轮 08 本地渲染零 TTS；探针自建自清 |
+| `p21-comic-smoke.cjs` | P21 漫画格排版页（38 项） | 8787 在跑；A 路由与页面骨架 9 + B 导出正例 6 + C 负例 8 + D 主链零触碰 4 + F 控件几何断言 9 + E 清场 2。**零计费**（纯本地写盘，不调生图服务）；PNG 夹具由 ffmpeg 现场造、随探针目录一起清；F 段需本机 headless chromium，缺失自动 SKIP 不影响 A–E 结论 |
 | `cpsync-diag.cjs` / `desktop-scan.cjs` | 环境雷诊断 / 桌面事故侦察 | 只读或只写 tmp，随手可跑 |
 
 各脚本计费/清理行为以文件头注释为准；跑完以退出码 0 与「FAIL 计数 0」为准。
