@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>海报排版 · Poster Studio</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --txt:#e8eaf0; --sub:#8b93a3; --accent:#3b82f6; --gold:#d4af37; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:"Microsoft YaHei","PingFang SC",sans-serif; }
+  header { padding:14px 22px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; }
+  header h1 { font-size:17px; margin:0; }
+  header .tip { color:var(--sub); font-size:12px; }
+  main { display:grid; grid-template-columns: 360px 1fr; gap:0; min-height: calc(100vh - 56px); }
+  .panel { background:var(--panel); border-right:1px solid var(--line); padding:14px; overflow-y:auto; max-height: calc(100vh - 56px); }
+  .panel h3 { font-size:13px; color:var(--accent); margin:14px 0 8px; text-transform:uppercase; letter-spacing:1px; }
+  .row { margin-bottom:10px; }
+  .row label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
+  .row input[type=text], .row select { width:100%; background:#0c0e12; border:1px solid var(--line); color:var(--txt);
+    padding:7px 9px; border-radius:6px; font-size:13px; }
+  .row input[type=color] { width:100%; height:32px; background:#0c0e12; border:1px solid var(--line); border-radius:6px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .stage { display:flex; align-items:center; justify-content:center; padding:18px; position:relative; }
+  canvas { max-width:100%; max-height: calc(100vh - 120px); border:1px solid var(--line); border-radius:8px; background:#000; }
+  .actions { position:absolute; top:18px; right:18px; display:flex; gap:8px; }
+  button { background:var(--accent); color:#fff; border:0; padding:9px 18px; border-radius:6px; font-size:13px; cursor:pointer; }
+  button.gold { background:var(--gold); color:#111; }
+  button:hover { filter:brightness(1.1); }
+  .hint { font-size:12px; color:var(--sub); line-height:1.7; }
+  .hint b { color:var(--txt); }
+</style>
+</head>
+<body>
+<header>
+  <h1>海报排版 Poster Studio</h1>
+  <span class="tip">背景板(AI生成) + 真实照片卡片 + 赛事文字 —— 全部本地绘制，可导出 PNG</span>
+</header>
+<main>
+  <div class="panel">
+    <h3>① 素材</h3>
+    <div class="row"><label>背景板（AI 出的无文字舞台图）</label><input type="file" id="bgFile" accept="image/*"></div>
+    <div class="grid2">
+      <div class="row"><label>左侧队伍照片（卡式）</label><input type="file" id="leftFile" accept="image/*"></div>
+      <div class="row"><label>右侧队伍照片（卡式）</label><input type="file" id="rightFile" accept="image/*"></div>
+    </div>
+
+    <h3>② 版式与颜色</h3>
+    <div class="row"><label>版式</label>
+      <select id="mode">
+        <option value="A">A · 决赛对垒（左右全队卡 + VS）</option>
+        <option value="C">C · 单人对决（左右单人卡 + VS）</option>
+        <option value="B-blue">B · BLG 单队大卡</option>
+        <option value="B-gold">B · GEN.G 单队大卡</option>
+      </select>
+    </div>
+    <div class="grid2">
+      <div class="row"><label>左/蓝队色</label><input type="color" id="cBlue" value="#7db6ff"></div>
+      <div class="row"><label>右/金队色</label><input type="color" id="cGold" value="#f2c75c"></div>
+    </div>
+
+    <h3>③ 文案</h3>
+    <div class="grid2">
+      <div class="row"><label>顶部小标</label><input type="text" id="tKicker" value="S16  WORLDS  FINAL"></div>
+      <div class="row"><label>主标题</label><input type="text" id="tTitle" value="全 球 总 决 赛"></div>
+      <div class="row"><label>左队名</label><input type="text" id="tLeftTeam" value="BLG"></div>
+      <div class="row"><label>左副标</label><input type="text" id="tLeftSub" value="LPL 2 号种子"></div>
+      <div class="row"><label>右队名</label><input type="text" id="tRightTeam" value="GEN.G"></div>
+      <div class="row"><label>右副标</label><input type="text" id="tRightSub" value="LCK 卫冕王朝"></div>
+    </div>
+    <div class="row"><label>叙事行 1</label><input type="text" id="tLine1" value="一 路 披 荆 斩 棘   ·   连 克 三 支 LCK 战 队"></div>
+    <div class="row"><label>叙事行 2</label><input type="text" id="tLine2" value="终 结 T1 对 LPL 不 败 传 说   ·   决 赛 见"></div>
+    <div class="row"><label>页脚</label><input type="text" id="tFoot" value="BILIBILI GAMING   VS   GEN.G ESPORTS"></div>
+
+    <h3>④ 导出</h3>
+    <div class="row"><label>输出宽度（px，高度按背景比例）</label><input type="text" id="outW" value="2624"></div>
+    <div class="row"><button onclick="exportPNG()">导出 PNG</button> <button class="gold" onclick="render()">刷新预览</button></div>
+    <p class="hint"><b>用法：</b>先上传 AI 背景板（无文字舞台图），再上传左右队伍照片，选版式、改文案，实时预览后导出。<br>
+    <b>纪律：</b>人物样貌/队服/队标只来自真实照片，模型侧永远不出人物与文字。</p>
+  </div>
+  <div class="stage">
+    <div class="actions"><button onclick="exportPNG()">导出 PNG</button></div>
+    <canvas id="cv" width="2624" height="1472"></canvas>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+let bgImg = null, leftImg = null, rightImg = null;
+
+function loadImage(file, cb) {
+  const r = new FileReader();
+  r.onload = () => { const im = new Image(); im.onload = () => cb(im); im.src = r.result; };
+  r.readAsDataURL(file);
+}
+$('bgFile').onchange = e => { if (e.target.files[0]) loadImage(e.target.files[0], im => { bgImg = im; render(); }); };
+$('leftFile').onchange = e => { if (e.target.files[0]) loadImage(e.target.files[0], im => { leftImg = im; render(); }); };
+$('rightFile').onchange = e => { if (e.target.files[0]) loadImage(e.target.files[0], im => { rightImg = im; render(); }); };
+['mode','cBlue','cGold','tKicker','tTitle','tLeftTeam','tLeftSub','tRightTeam','tRightSub','tLine1','tLine2','tFoot','outW']
+  .forEach(id => { $(id).addEventListener('change', render); $(id).addEventListener('input', render); });
+
+function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); }
+
+function drawCard(ctx, img, x, y, w, h, color) {
+  const R = Math.round(w * 0.02), B = Math.round(w * 0.005);
+  // 光晕
+  ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = Math.round(w * 0.05);
+  ctx.strokeStyle = color; ctx.lineWidth = Math.round(w * 0.014);
+  rr(ctx, x - 6, y - 6, w + 12, h + 12, R + 6); ctx.stroke(); ctx.restore();
+  // 照片（等比 cover 裁切）
+  ctx.save(); rr(ctx, x, y, w, h, R); ctx.clip();
+  const ratio = Math.max(w / img.width, h / img.height);
+  const sw = w / ratio, sh = h / ratio;
+  ctx.drawImage(img, (img.width - sw) / 2, (img.height - sh) / 2, sw, sh, x, y, w, h);
+  ctx.restore();
+  // 描边
+  ctx.strokeStyle = color; ctx.lineWidth = B; rr(ctx, x, y, w, h, R); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2;
+  rr(ctx, x + B, y + B, w - 2 * B, h - 2 * B, R - B); ctx.stroke();
+}
+
+function text(ctx, str, y, size, color, stroke, x) {
+  ctx.font = `bold ${size}px "Microsoft YaHei"`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.lineWidth = stroke; ctx.strokeStyle = 'rgba(0,0,0,.8)';
+  const tx = x === undefined ? cv.width / 2 : x;
+  ctx.strokeText(str, tx, y); ctx.fillStyle = color; ctx.fillText(str, tx, y);
+}
+function textRight(ctx, str, y, size, color, stroke, margin) {
+  ctx.font = `bold ${size}px "Microsoft YaHei"`;
+  ctx.textAlign = 'left';
+  const w = ctx.measureText(str).width;
+  ctx.lineWidth = stroke; ctx.strokeStyle = 'rgba(0,0,0,.8)';
+  const tx = cv.width - margin - w;
+  ctx.strokeText(str, tx, y); ctx.fillStyle = color; ctx.fillText(str, tx, y);
+  return tx;
+}
+
+function render() {
+  const W = cv.width, H = cv.height, s = H / 1472;
+  const px = n => Math.round(n * s);
+  const mode = $('mode').value;
+  const blue = $('cBlue').value, gold = $('cGold').value;
+  const T = { kicker:$('tKicker').value, title:$('tTitle').value,
+    lt:$('tLeftTeam').value, ls:$('tLeftSub').value, rt:$('tRightTeam').value, rs:$('tRightSub').value,
+    l1:$('tLine1').value, l2:$('tLine2').value, foot:$('tFoot').value };
+
+  ctx.clearRect(0, 0, W, H);
+  if (bgImg) { const r = Math.max(W / bgImg.width, H / bgImg.height);
+    const sw = W / r, sh = H / r;
+    ctx.drawImage(bgImg, (bgImg.width - sw) / 2, (bgImg.height - sh) / 2, sw, sh, 0, 0, W, H);
+  } else { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+
+  // 顶部条
+  ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, 0, W, px(150));
+  ctx.fillStyle = blue; ctx.fillRect(0, px(150), W, px(3));
+  text(ctx, T.kicker, px(44), px(26), '#9fc5ff', 3);
+  text(ctx, T.title, px(110), px(56), '#fff', 4);
+  // 底部条
+  ctx.fillStyle = 'rgba(0,0,0,.58)'; ctx.fillRect(0, H - px(190), W, px(190));
+  ctx.fillStyle = gold; ctx.fillRect(0, H - px(190), W, px(3));
+  text(ctx, T.l1, H - px(150), px(33), '#f5e6b8', 3);
+  text(ctx, T.l2, H - px(98), px(33), '#fff', 3);
+  text(ctx, T.foot, H - px(44), px(20), '#aab4c4', 2);
+
+  if (mode === 'A' || mode === 'C') {
+    const cw = mode === 'A' ? px(980) : px(620);
+    const ch = mode === 'A' ? px(640) : px(840);
+    const y = px(330);
+    const gap = px(130) + (mode === 'C' ? px(80) : 0);
+    const lx = gap, rx = W - gap - cw;
+    if (leftImg) drawCard(ctx, leftImg, lx, y, cw, ch, blue);
+    if (rightImg) drawCard(ctx, rightImg, rx, y, cw, ch, gold);
+    const ft = px(mode === 'A' ? 64 : 70);
+    ctx.textAlign = 'left';
+    text(ctx, T.lt, y - px(24), ft, blue, 4, lx);
+    text(ctx, T.ls, y + ch + px(44), px(24), '#fff', 2, lx);
+    ctx.textAlign = 'left';
+    const rw = (() => { ctx.font = `bold ${ft}px "Microsoft YaHei"`; return ctx.measureText(T.rt).width; })();
+    text(ctx, T.rt, y - px(24), ft, gold, 4, rx);
+    text(ctx, T.rs, y + ch + px(44), px(24), '#fff', 2, rx);
+    // VS 徽章
+    const cx = W / 2, cy = y + ch / 2, r = px(86);
+    ctx.save(); ctx.shadowColor = '#fff'; ctx.shadowBlur = px(24);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = px(10);
+    ctx.beginPath(); ctx.arc(cx, cy, r + px(10), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(cx, cy, r - px(12), 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = px(6); ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(212,175,55,.85)'; ctx.lineWidth = px(3);
+    ctx.beginPath(); ctx.arc(cx, cy, r - px(14), 0, Math.PI * 2); ctx.stroke();
+    text(ctx, 'VS', cy + px(28), px(72), '#fff', 3);
+  } else {
+    const cw = px(1560), ch = px(1018), y = px(300);
+    const isBlue = mode === 'B-blue';
+    const color = isBlue ? blue : gold;
+    const x = isBlue ? px(120) : W - px(120) - cw;
+    const img = isBlue ? leftImg : rightImg;
+    if (img) drawCard(ctx, img, x, y, cw, ch, color);
+    const name = isBlue ? T.lt : T.rt;
+    ctx.font = `bold ${px(150)}px "Microsoft YaHei"`;
+    const nw = ctx.measureText(name).width;
+    const nx = isBlue ? px(150) : W - px(150) - nw;
+    text(ctx, name, y - px(46), px(150), color, 6, nx);
+    const side = isBlue ? '连 克 三 支 LCK 战 队' : '不 败 王 朝 之 师';
+    ctx.textAlign = 'left';
+    const sx = isBlue ? W - px(95) : px(80);
+    for (let i = 0; i < side.length; i++)
+      text(ctx, side[i], y + i * px(52), px(30), 'rgba(255,255,255,.92)', 2, sx);
+  }
+}
+
+function exportPNG() {
+  const W = parseInt($('outW').value, 10) || 2624;
+  const keep = { w: cv.width, h: cv.height };
+  cv.width = W; cv.height = Math.round(W * 1472 / 2624);
+  render();
+  cv.toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = '海报-' + Date.now() + '.png';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    cv.width = keep.w; cv.height = keep.h; render();
+  }, 'image/png');
+}
+
+// 默认占位：无底图时也能预览排版
+render();
+</script>
+</body>
+</html>
