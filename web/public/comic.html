@@ -119,10 +119,11 @@
     <div class="row"><button id="saveJson" class="sm">存剧本 JSON</button><button id="loadJson" class="sm">读剧本 JSON</button>
       <input type="file" id="jsonFile" accept="application/json" style="display:none"></div>
     <div class="row" style="margin-top:6px">
-      <button id="svg" class="sm">导出 SVG（文字可编辑）</button>
+      <button id="svg" class="sm">导出 SVG（纯矢量·可编辑）</button>
+      <button id="basePng" class="sm">底图 PNG</button>
       <button id="manifest" class="sm">存 text-manifest.json</button>
     </div>
-    <div class="hint">SVG 里底图是位图层，旁白框/气泡/文字都是**矢量对象**：价格、卖点、台词可以在 Illustrator / Inkscape / PPT 里直接改字，不必回来重排。manifest 单独存文字内容与坐标，便于批量替换文案。</div>
+    <div class="hint">SVG 现为<b>纯矢量层</b>（不含底图位图，实测 WPS/Office 拒绝内嵌大 base64 栅格）：旁白框/气泡/文字都是矢量对象，价格、卖点、台词可在 Illustrator / Inkscape / <b>WPS 演示「插入→图片」</b>里直接改。底图另点「底图 PNG」导出为一张位图，正式素材走「<b>底图 PNG 垫底 + 矢量 SVG 叠加</b>」分层；概念整图仍用上面的 PNG 出口一次直出。manifest 单独存文字内容与坐标，便于批量替换文案。</div>
     <div id="outMsg" class="hint"></div>
     <label>该任务已导出的格</label><div id="outGrid"><div class="empty">选择任务后加载</div></div>
   </fieldset>
@@ -521,6 +522,17 @@ $('toTask').onclick = async () => {
 
 /* ---------- P22：矢量导出（文字保持可编辑） ---------- */
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+// SVG 1.1 呈现属性不接受 rgba()/rgb()（WPS/Office 受限子集解析会判「文件损坏」，浏览器却宽容）。
+// 统一拆成 hex 色值 + *-opacity，保证跨导入器可用。
+function svgPaint(s) {
+  const m = String(s).trim().match(/^rgba?\(([^)]+)\)$/i);
+  if (!m) return { c: String(s).trim(), o: 1 };
+  const p = m[1].split(',').map(parseFloat);
+  const hx = v => ('0' + Math.max(0, Math.min(255, Math.round(v || 0))).toString(16)).slice(-2);
+  return { c: '#' + hx(p[0]) + hx(p[1]) + hx(p[2]), o: p.length > 3 ? Math.round((p[3] == null ? 1 : p[3]) * 1000) / 1000 : 1 };
+}
+function svgFillAttr(s) { const q = svgPaint(s); return `fill="${esc(q.c)}"` + (q.o < 1 ? ` fill-opacity="${q.o}"` : ''); }
+function svgStrokeAttr(s) { const q = svgPaint(s); return `stroke="${esc(q.c)}"` + (q.o < 1 ? ` stroke-opacity="${q.o}"` : ''); }
 function baseLayerDataUrl() {
   const off = document.createElement('canvas'); off.width = W; off.height = H;
   const live = ctx; ctx = off.getContext('2d');
@@ -539,16 +551,16 @@ function svgTextEl(p, idBase) {
   const dy = p.lh;
   const bo = baselineOffset(p.f);
   const tspans = p.lines.map((l, i) =>
-    `<tspan x="${p.tx.toFixed(1)}" y="${(p.ty + bo + i * dy).toFixed(1)}">${esc(l)}</tspan>`).join('');
+    `<tspan x="${p.tx.toFixed(1)}" y="${(p.ty + bo + i * dy).toFixed(1)}" text-anchor="${anchor}">${esc(l)}</tspan>`).join('');
   return `<text id="${idBase}" font-family="${esc(FONT)}" font-size="${p.f}" fill="${esc(p.fg)}" text-anchor="${anchor}">${tspans}</text>`;
 }
 function buildSvg() {
   render();   // 确保 _paint 是最新几何
-  const parts = [`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`];
-  parts.push(`<image x="0" y="0" width="${W}" height="${H}" href="${baseLayerDataUrl()}"/>`);
+  // 纯矢量：不烤底图位图（实测 WPS/Office 拒绝内嵌大 base64 栅格；底图另走「底图 PNG」出口分层）
+  const parts = [`<?xml version="1.0" encoding="UTF-8"?>`, `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`];
   const c = S.ch._paint;
   if (c) {
-    parts.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="${esc(c.overlay)}"/>`);
+    parts.push(`<rect x="0" y="0" width="${W}" height="${H}" ${svgFillAttr(c.overlay)}/>`);
     if (c.prompt) {
       const r = c.prompt.rect;
       parts.push(`<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" rx="12" fill="${esc(c.prompt.fill)}"/>`);
@@ -566,19 +578,19 @@ function buildSvg() {
   if (n.on && n._paint && n._paint.lines.length) {
     const r = n._rect;
     parts.push(`<g id="narration" opacity="${n.a}">`);
-    parts.push(`<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" rx="10" fill="${esc(THEME[n.theme].bg)}" stroke="${esc(THEME[n.theme].stroke)}" stroke-width="2"/>`);
+    parts.push(`<rect x="${r.x.toFixed(1)}" y="${r.y.toFixed(1)}" width="${r.w.toFixed(1)}" height="${r.h.toFixed(1)}" rx="10" ${svgFillAttr(THEME[n.theme].bg)} ${svgStrokeAttr(THEME[n.theme].stroke)} stroke-width="2"/>`);
     parts.push(svgTextEl(n._paint, 'narration-text'));
     parts.push('</g>');
   }
   S.bubs.forEach((b, i) => {
     if (!b._paint) return;
-    const p = b._paint, bg = esc(THEME[b.theme].bg), st = esc(THEME[b.theme].stroke);
+    const p = b._paint, fillA = svgFillAttr(THEME[b.theme].bg), strokeA = svgStrokeAttr(THEME[b.theme].stroke);
     parts.push(`<g id="bubble-${i + 1}" opacity="${p.alpha}">`);
-    if (p.tail) parts.push(`<polygon points="${p.tail.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" fill="${bg}"/>`);
-    if (p.shape === 'ellipse') parts.push(`<ellipse cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" rx="${(p.sw / 2).toFixed(1)}" ry="${(p.sh / 2).toFixed(1)}" fill="${bg}" stroke="${st}" stroke-width="2"/>`);
+    if (p.tail) parts.push(`<polygon points="${p.tail.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" ${fillA}/>`);
+    if (p.shape === 'ellipse') parts.push(`<ellipse cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" rx="${(p.sw / 2).toFixed(1)}" ry="${(p.sh / 2).toFixed(1)}" ${fillA} ${strokeA} stroke-width="2"/>`);
     else {
       const rx = p.shape === 'rect' ? 22 : p.sh / 2;
-      parts.push(`<rect x="${(p.cx - p.sw / 2).toFixed(1)}" y="${(p.cy - p.sh / 2).toFixed(1)}" width="${p.sw.toFixed(1)}" height="${p.sh.toFixed(1)}" rx="${rx.toFixed(1)}" fill="${bg}" stroke="${st}" stroke-width="2"/>`);
+      parts.push(`<rect x="${(p.cx - p.sw / 2).toFixed(1)}" y="${(p.cy - p.sh / 2).toFixed(1)}" width="${p.sw.toFixed(1)}" height="${p.sh.toFixed(1)}" rx="${rx.toFixed(1)}" ${fillA} ${strokeA} stroke-width="2"/>`);
     }
     parts.push(svgTextEl(p, `bubble-${i + 1}-text`));
     parts.push('</g>');
@@ -617,9 +629,18 @@ $('svg').onclick = () => {
   try {
     const s = buildSvg();
     dl(`漫画格_${Date.now()}.svg`, s, 'image/svg+xml');
-    $('outMsg').textContent = `✅ 已导出 SVG（矢量文字层 ${(s.length / 1024).toFixed(0)}KB，含底图位图层）`;
+    $('outMsg').textContent = `✅ 已导出纯矢量 SVG（${(s.length / 1024).toFixed(1)}KB，不含底图位图，WPS/AI 可直接插入改字）`;
   } catch (e) { $('outMsg').textContent = '❌ SVG 导出失败：' + e.message; }
 };
+$('basePng').onclick = () => {
+  try {
+    if (!S.base) { $('outMsg').textContent = '⚠️ 还没选底图，先在上方「底图 · 从素材库选」或上传一张，再导底图 PNG'; return; }
+    const u = baseLayerDataUrl();
+    dl(`漫画格_底图_${Date.now()}.png`, u, 'image/png');
+    $('outMsg').textContent = `✅ 已导出底图 PNG（${(u.length / 1024).toFixed(0)}KB dataURL），与纯矢量 SVG 分层叠加`;
+  } catch (e) { $('outMsg').textContent = '❌ 底图 PNG 导出失败：' + e.message; }
+};
+window.__baseLayerDataUrl = baseLayerDataUrl;   // 冒烟用
 $('manifest').onclick = () => {
   const m = buildManifest();
   dl('text-manifest.json', JSON.stringify(m, null, 2), 'application/json');

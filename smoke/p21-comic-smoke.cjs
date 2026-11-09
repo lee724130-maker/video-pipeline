@@ -246,7 +246,11 @@ const dataUrl = (b64) => 'data:image/png;base64,' + b64;
         const err = doc.querySelector('parsererror');
         return {
           len: s.length, parseErr: !!err,
-          startsSvg: s.startsWith('<svg'), endsSvg: s.trim().endsWith('</svg>'),
+          startsXml: s.startsWith('<?xml'), hasSvgRoot: /<svg[\s>]/.test(s), endsSvg: s.trim().endsWith('</svg>'),
+          rgbaAttr: /(?:fill|stroke)="rgba\(/i.test(s),
+          hasImage: /<image/i.test(s),
+          basePngOk: /^data:image\/png;base64,/.test(window.__baseLayerDataUrl ? window.__baseLayerDataUrl() : ''),
+          tspanAnchor: Array.from(doc.querySelectorAll('#bubble-1-text tspan')).length > 0 && Array.from(doc.querySelectorAll('#bubble-1-text tspan')).every(t => t.getAttribute('text-anchor')),
           viewBox: (s.match(/viewBox="([^"]+)"/) || [])[1],
           texts: doc.querySelectorAll('text').length,
           tspans: doc.querySelectorAll('tspan').length,
@@ -265,9 +269,9 @@ const dataUrl = (b64) => 'data:image/png;base64,' + b64;
           bub1Anchor: doc.querySelector('#bubble-1-text') ? doc.querySelector('#bubble-1-text').getAttribute('text-anchor') : '',
         };
       });
-      ok('H1 SVG 可被 XML 解析（无 parsererror）', !svgInfo.parseErr && svgInfo.startsSvg && svgInfo.endsSvg, `长度 ${svgInfo.len}`);
+      ok('H1 SVG 可被 XML 解析（无 parsererror）且以 XML 声明开头', !svgInfo.parseErr && svgInfo.startsXml && svgInfo.hasSvgRoot && svgInfo.endsSvg, `长度 ${svgInfo.len}`);
       ok('H2 viewBox 为 0 0 1024 1536', svgInfo.viewBox === '0 0 1024 1536', svgInfo.viewBox);
-      ok('H3 底图作为独立位图层存在（1 个 image）', svgInfo.images === 1, `image=${svgInfo.images}`);
+      ok('H3 SVG 为纯矢量、不含内嵌底图 image（WPS 可插入的关键）', svgInfo.images === 0, `image=${svgInfo.images}`);
       ok('H4 三个文字层各有自己的 text 元素', svgInfo.hasNarText && svgInfo.hasBub1 && svgInfo.hasBub2,
         `text=${svgInfo.texts} tspan=${svgInfo.tspans}`);
       ok('H5 文字是真实内容而非像素（tspan 逐行且能读回）', svgInfo.bub1Text === '这件毛衣版型宽松落肩|配同色阔腿裤', `bub1="${svgInfo.bub1Text}"`);
@@ -282,6 +286,10 @@ const dataUrl = (b64) => 'data:image/png;base64,' + b64;
         Math.abs(svgInfo.bub1Rx - geoSync.rectW / 2) < 1 && Math.abs(svgInfo.bub1Ry - geoSync.rectH / 2) < 1,
         `rx=${svgInfo.bub1Rx} vs 框宽/2=${(geoSync.rectW / 2).toFixed(1)}；ry=${svgInfo.bub1Ry} vs ${(geoSync.rectH / 2).toFixed(1)}`);
       ok('H9 气泡尾巴导出为 polygon', svgInfo.polys === 2, `polygon=${svgInfo.polys}`);
+      ok('H9a 呈现属性无裸 rgba（WPS/Office 受限子集兼容）', svgInfo.rgbaAttr === false);
+      ok('H9b buildSvg 不内嵌任何 image（WPS 大栅格卡点已消除）', svgInfo.hasImage === false);
+      ok('H9c 每行 tspan 显式带 text-anchor（不依赖继承）', svgInfo.tspanAnchor === true);
+      ok('H9d 底图另存出口返回合法 PNG dataURL', svgInfo.basePngOk === true);
 
       const man = await pg.evaluate(() => window.__buildManifest());
       ok('H10 manifest 含 3 个文字层且字段齐',
