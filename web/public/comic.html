@@ -120,6 +120,7 @@
       <input type="file" id="jsonFile" accept="application/json" style="display:none"></div>
     <div class="row" style="margin-top:6px">
       <button id="svg" class="sm">导出 SVG（纯矢量·可编辑）</button>
+      <button id="pptx" class="sm">导出 PPTX（WPS 可编辑）</button>
       <button id="basePng" class="sm">底图 PNG</button>
       <button id="manifest" class="sm">存 text-manifest.json</button>
     </div>
@@ -646,7 +647,51 @@ $('manifest').onclick = () => {
   dl('text-manifest.json', JSON.stringify(m, null, 2), 'application/json');
   $('outMsg').textContent = `✅ 已存 text-manifest.json（${m.layers.length} 个文字层）`;
 };
-window.__buildSvg = buildSvg; window.__buildManifest = buildManifest;   // 冒烟用
+/* ---------- P24：原生可编辑 pptx 版式规格（WPS 拒 SVG 内嵌栅格、不认 text-anchor，可编辑交付走 pptx） ---------- */
+function buildPptxSpec() {
+  render();   // 确保 _paint/_rect 是最新几何
+  const layers = [];
+  const n = S.nar;
+  if (n.on && n._rect && n._paint && n._paint.lines && n._paint.lines.length) {
+    const st = svgPaint(THEME[n.theme].stroke);
+    layers.push({
+      kind: 'narration', shape: 'roundrect',
+      box: { x: n._rect.x, y: n._rect.y, w: n._rect.w, h: n._rect.h },
+      fill: svgPaint(THEME[n.theme].bg).c, stroke: st.c, strokeOpacity: st.o,
+      opacity: n.a, lines: n._paint.lines, align: n._paint.align || 'left',
+      fontSizePx: n.f, fontColor: n._paint.fg || '#15181c',
+    });
+  }
+  S.bubs.forEach((b) => {
+    const p = b._paint; if (!p || !p.lines || !p.lines.length) return;
+    const st = svgPaint(THEME[b.theme].stroke);
+    const shape = p.shape === 'ellipse' ? 'ellipse' : (p.shape === 'rect' ? 'rect' : 'roundrect');
+    layers.push({
+      kind: 'bubble', shape,
+      box: { x: p.cx - p.sw / 2, y: p.cy - p.sh / 2, w: p.sw, h: p.sh },
+      fill: svgPaint(THEME[b.theme].bg).c, stroke: st.c, strokeOpacity: st.o,
+      opacity: p.alpha, lines: p.lines, align: p.align || 'center',
+      fontSizePx: b.f, fontColor: p.fg || '#15181c',
+    });
+  });
+  return { canvas: { w: W, h: H }, fontFamily: 'Microsoft YaHei', base: null, layers };
+}
+$('pptx').onclick = async () => {
+  try {
+    const spec = buildPptxSpec();
+    if (!spec.layers.length) { $('outMsg').textContent = '⚠️ 没有旁白框/气泡可导出，先加内容'; return; }
+    $('outMsg').textContent = '生成原生可编辑 pptx 中…';
+    const r = await fetch('/api/comic/pptx', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec, base: baseLayerDataUrl() }),
+    });
+    if (!r.ok) { let m = '生成失败'; try { m = (await r.json()).error || m; } catch (e) {} $('outMsg').textContent = '❌ ' + m; return; }
+    const blob = await r.blob();
+    const a = document.createElement('a'); a.download = `漫画格_${Date.now()}.pptx`; a.href = URL.createObjectURL(blob); a.click();
+    $('outMsg').textContent = `✅ 已导出原生可编辑 pptx（${Math.round(blob.size / 1024)}KB · 底图+${spec.layers.length}层 · WPS 可直接改字改价）`;
+  } catch (e) { $('outMsg').textContent = '❌ 请求失败：' + e.message; }
+};
+window.__buildSvg = buildSvg; window.__buildManifest = buildManifest; window.__buildPptxSpec = buildPptxSpec;   // 冒烟用
 function buildPanelSpec() {
   const strip = (o) => { const c = { ...o }; Object.keys(c).forEach(k => { if (k.startsWith('_')) delete c[k]; }); return c; };
   return { w: W, h: H, view: S.view, nar: strip(S.nar), bubs: S.bubs.map(strip), ch: strip(S.ch) };

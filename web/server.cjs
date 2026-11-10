@@ -5,6 +5,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const { spawn } = require('child_process');
 const { ROOT, FFMPEG, FFPROBE, loadConfig, deepMerge, readJson, writeJson, ensureDir, log, warn, BGM_EXTS, readCloneVoices, writeCloneVoices, deriveCloneTarget } = require('../pipeline/lib/common.cjs');
 const { parseNeed, SHOTS_PATCH, SHOT_EDIT, TYPE_WL, EDIT_TASK_FIELDS } = require('./chat-rules.cjs');
@@ -1194,6 +1195,55 @@ const server = http.createServer(async (req, res) => {
         ? fs.readdirSync(dir).filter((f) => /\.png$/.test(f) && !f.startsWith('.')).sort()
         : [];
       return json(res, 200, { task, files });
+    }
+
+    // —— P24 漫画格 → 原生可编辑 pptx（WPS/Office 拒 SVG 内嵌栅格、不认 text-anchor，故可编辑交付走 pptx）——
+    if (p === '/api/comic/pptx' && req.method === 'POST') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const spec = body.spec;
+      const base = String(body.base || '');
+      if (!spec || !spec.canvas || !Array.isArray(spec.layers)) return json(res, 400, { error: 'bad spec（需 canvas + layers）' });
+      const cw = Number(spec.canvas.w), ch = Number(spec.canvas.h);
+      if (!(cw > 0 && ch > 0 && cw <= 8000 && ch <= 8000)) return json(res, 400, { error: 'bad canvas' });
+      if (spec.layers.length > 60) return json(res, 400, { error: '层数过多（>60）' });
+      const PY = path.join(ROOT, '.py312', 'python.exe');
+      const TOOL = path.join(ROOT, 'pipeline', 'tools', 'make_pptx.py');
+      if (!fs.existsSync(PY)) return json(res, 500, { error: '项目 .py312 未找到（pptx 需 python-pptx，见 CHECKPOINT 2026-11-09 安装说明）' });
+      if (!fs.existsSync(TOOL)) return json(res, 500, { error: 'make_pptx.py 未找到' });
+      const tmp = path.join(os.tmpdir(), 'comic-pptx-' + Date.now() + '-' + Math.floor(Math.random() * 1e6)); // 全 ASCII，防 GBK 误读
+      fs.mkdirSync(tmp, { recursive: true });
+      try {
+        let basePath = null;
+        const m = /^data:image\/png;base64,([\w+/=]+)$/.exec(base);
+        if (m) {
+          const buf = Buffer.from(m[1], 'base64');
+          if (buf.slice(1, 4).toString('latin1') === 'PNG' && buf.length >= 100 && buf.length <= 20 * 1024 * 1024) {
+            basePath = path.join(tmp, 'base.png');
+            fs.writeFileSync(basePath, buf);
+          }
+        }
+        const finalSpec = Object.assign({}, spec, { base: basePath });
+        const specPath = path.join(tmp, 'spec.json');
+        fs.writeFileSync(specPath, JSON.stringify(finalSpec), 'utf8');
+        const outPath = path.join(tmp, 'out.pptx');
+        const r = require('child_process').spawnSync(PY, [TOOL, specPath, outPath], { cwd: ROOT, encoding: 'utf8', timeout: 30000 });
+        if (r.status !== 0 || !fs.existsSync(outPath)) {
+          const detail = String((r.stderr || '') + (r.stdout || '') || ('退出码 ' + r.status)).slice(-400);
+          return json(res, 500, { error: 'pptx 生成失败：' + detail });
+        }
+        const data = fs.readFileSync(outPath);
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'Content-Disposition': 'attachment; filename="comic.pptx"',
+          'Content-Length': data.length,
+        });
+        res.end(data);
+        return;
+      } catch (e) {
+        return json(res, 500, { error: 'pptx 异常：' + e.message });
+      } finally {
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch (e) { /* 临时目录清理失败不影响响应 */ }
+      }
     }
 
     // —— 页面 ——
