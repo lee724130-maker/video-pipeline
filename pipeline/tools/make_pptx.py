@@ -63,6 +63,18 @@ def set_cjk(run, name):
         el.set('typeface', name)
 
 def add_layer(slide, L, font_family):
+    # 气泡尾巴三角：先画 freeform 闭合多边形（同填充、无描边），主形状随后盖住接缝
+    tp = L.get('tail')
+    if tp and len(tp) >= 3:
+        emu_pts = [(Emu(int(round(float(x) * PXEMU))), Emu(int(round(float(y) * PXEMU)))) for x, y in tp]
+        fb = slide.shapes.build_freeform(emu_pts[0][0], emu_pts[0][1], scale=1)
+        fb.add_line_segments(emu_pts[1:], close=True)
+        tsh = fb.convert_to_shape()
+        tsh.fill.solid(); tsh.fill.fore_color.rgb = rgb(L.get('fill', '#ffffff'))
+        _set_alpha(tsh.fill._xPr, L.get('opacity', 1))
+        tsh.line.fill.background()
+        try: tsh.shadow.inherit = False
+        except Exception: pass
     box = L['box']
     sp = slide.shapes.add_shape(
         SHAPE_MAP.get(L.get('shape', 'roundrect'), MSO_SHAPE.ROUNDED_RECTANGLE),
@@ -108,6 +120,48 @@ def add_layer(slide, L, font_family):
             _set_alpha(r._r.get_or_add_rPr(), L.get('opacity', 1))
     return sp
 
+def add_choice(slide, L, font_family, cw, ch):
+    ov = L.get('overlay')
+    if ov:
+        rect = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, px(0), px(0), px(cw), px(ch))
+        rect.fill.solid(); rect.fill.fore_color.rgb = rgb(ov.get('fill', '#080a0d'))
+        _set_alpha(rect.fill._xPr, ov.get('opacity', 0.72))
+        rect.line.fill.background()
+        try: rect.shadow.inherit = False
+        except Exception: pass
+    pr = L.get('prompt')
+    if pr and pr.get('lines'):
+        add_layer(slide, dict(pr, shape='roundrect', kind='narration', opacity=1), font_family)
+    for op in L.get('options', []):
+        box = op['box']
+        sp = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, px(box['x']), px(box['y']), px(box['w']), px(box['h']))
+        sp.fill.solid(); sp.fill.fore_color.rgb = rgb(op.get('fill', '#14181d'))
+        _set_alpha(sp.fill._xPr, op.get('opacity', 1))
+        if op.get('stroke'):
+            sp.line.color.rgb = rgb(op['stroke']); sp.line.width = Pt(3)
+        else:
+            sp.line.fill.background()
+        try: sp.shadow.inherit = False
+        except Exception: pass
+        tf = sp.text_frame; tf.word_wrap = True; tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        try: tf.auto_size = MSO_AUTO_SIZE.NONE
+        except Exception: pass
+        for m in ('margin_left', 'margin_right', 'margin_top', 'margin_bottom'):
+            setattr(tf, m, Emu(int(round(float(op.get('padPx', 10)) * PXEMU))))
+        tf.clear()
+        size = pt_from_px(op.get('fontSizePx', 34))
+        lines = op.get('lines') or [op.get('text', '')]
+        p = tf.paragraphs[0]; p.alignment = PP_ALIGN.LEFT
+        lab = p.add_run(); lab.text = str(op.get('label', '')) + ' '
+        lab.font.size = size; lab.font.bold = True; lab.font.color.rgb = rgb(op.get('labelColor', '#e8c15a')); set_cjk(lab, font_family)
+        if lines:
+            r = p.add_run(); r.text = str(lines[0])
+            r.font.size = size; r.font.color.rgb = rgb(op.get('fontColor', '#f0f2f5')); set_cjk(r, font_family)
+        for ln in lines[1:]:
+            pp = tf.add_paragraph(); pp.alignment = PP_ALIGN.LEFT
+            rr = pp.add_run(); rr.text = str(ln)
+            rr.font.size = size; rr.font.color.rgb = rgb(op.get('fontColor', '#f0f2f5')); set_cjk(rr, font_family)
+
 def main():
     if len(sys.argv) < 3:
         print('用法: make_pptx.py <spec.json> <out.pptx>', file=sys.stderr); sys.exit(2)
@@ -126,7 +180,10 @@ def main():
         slide.shapes.add_picture(base, px(0), px(0), width=px(cw), height=px(ch))
 
     for L in spec.get('layers', []):
-        add_layer(slide, L, font_family)
+        if L.get('kind') == 'choice':
+            add_choice(slide, L, font_family, cw, ch)
+        else:
+            add_layer(slide, L, font_family)
 
     prs.save(out)
     print(f'[make_pptx] 写出 {out} · 幻灯片 {cw}x{ch}px · 底图{"有" if (base and os.path.exists(base)) else "无"} · 层数 {len(spec.get("layers", []))}')

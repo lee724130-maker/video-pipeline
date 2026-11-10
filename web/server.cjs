@@ -1206,6 +1206,14 @@ const server = http.createServer(async (req, res) => {
       const cw = Number(spec.canvas.w), ch = Number(spec.canvas.h);
       if (!(cw > 0 && ch > 0 && cw <= 8000 && ch <= 8000)) return json(res, 400, { error: 'bad canvas' });
       if (spec.layers.length > 60) return json(res, 400, { error: '层数过多（>60）' });
+      const task = String(body.task || '').trim();
+      const name = String(body.name || '').trim();
+      const toTask = !!(task || name);
+      if (toTask) {
+        if (!NAME_RE.test(task)) return json(res, 400, { error: 'bad task' });
+        if (!fs.existsSync(path.join(OUTPUT, task))) return json(res, 404, { error: '任务不存在' });
+        if (!/^[\w一-鿿 -]{1,60}\.pptx$/.test(name) || name.includes('..')) return json(res, 400, { error: 'bad name（须以 .pptx 结尾，只允许中文/字母/数字/空格/-_）' });
+      }
       const PY = path.join(ROOT, '.py312', 'python.exe');
       const TOOL = path.join(ROOT, 'pipeline', 'tools', 'make_pptx.py');
       if (!fs.existsSync(PY)) return json(res, 500, { error: '项目 .py312 未找到（pptx 需 python-pptx，见 CHECKPOINT 2026-11-09 安装说明）' });
@@ -1232,6 +1240,14 @@ const server = http.createServer(async (req, res) => {
           return json(res, 500, { error: 'pptx 生成失败：' + detail });
         }
         const data = fs.readFileSync(outPath);
+        if (toTask) {
+          const dir = path.join(OUTPUT, task, 'comic');
+          const fp = path.join(dir, name);
+          if (!fp.startsWith(dir + path.sep)) return json(res, 400, { error: 'bad path' });
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(fp, data);
+          return json(res, 200, { ok: true, task, rel: 'comic/' + name, bytes: data.length });
+        }
         res.writeHead(200, {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
           'Content-Disposition': 'attachment; filename="comic.pptx"',

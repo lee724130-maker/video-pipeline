@@ -121,6 +121,7 @@
     <div class="row" style="margin-top:6px">
       <button id="svg" class="sm">导出 SVG（纯矢量·可编辑）</button>
       <button id="pptx" class="sm">导出 PPTX（WPS 可编辑）</button>
+      <button id="pptxTask" class="sm">PPTX 入任务目录</button>
       <button id="basePng" class="sm">底图 PNG</button>
       <button id="manifest" class="sm">存 text-manifest.json</button>
     </div>
@@ -651,6 +652,23 @@ $('manifest').onclick = () => {
 function buildPptxSpec() {
   render();   // 确保 _paint/_rect 是最新几何
   const layers = [];
+  // 分支卡最先入层：遮罩压暗底图、引导语/选项在其上；旁白/气泡后入叠在最上层（同画布绘制序）
+  const ch = S.ch;
+  if (ch.on && ch._paint) {
+    const cp = ch._paint, ov = svgPaint(cp.overlay);
+    const choice = { kind: 'choice', overlay: { fill: ov.c, opacity: ov.o }, prompt: null, options: [] };
+    if (cp.prompt && cp.prompt.lines && cp.prompt.lines.length) {
+      const r = cp.prompt.rect;
+      choice.prompt = { box: { x: r.x, y: r.y, w: r.w, h: r.h }, fill: cp.prompt.fill, lines: cp.prompt.lines, align: 'left', fontSizePx: cp.f, fontColor: cp.prompt.fg || '#15181c' };
+    }
+    cp.blocks.forEach(bl => choice.options.push({
+      box: { x: bl.rect.x, y: bl.rect.y, w: bl.rect.w, h: bl.rect.h },
+      fill: '#14181d', opacity: 0.92, stroke: '#c9a227',
+      label: bl.key + ':', labelColor: bl.label.color || '#e8c15a',
+      lines: bl.lines, fontColor: bl.text.color || '#f0f2f5', fontSizePx: cp.f,
+    }));
+    layers.push(choice);
+  }
   const n = S.nar;
   if (n.on && n._rect && n._paint && n._paint.lines && n._paint.lines.length) {
     const st = svgPaint(THEME[n.theme].stroke);
@@ -671,7 +689,7 @@ function buildPptxSpec() {
       box: { x: p.cx - p.sw / 2, y: p.cy - p.sh / 2, w: p.sw, h: p.sh },
       fill: svgPaint(THEME[b.theme].bg).c, stroke: st.c, strokeOpacity: st.o,
       opacity: p.alpha, lines: p.lines, align: p.align || 'center',
-      fontSizePx: b.f, fontColor: p.fg || '#15181c',
+      fontSizePx: b.f, fontColor: p.fg || '#15181c', tail: p.tail || null,
     });
   });
   return { canvas: { w: W, h: H }, fontFamily: 'Microsoft YaHei', base: null, layers };
@@ -690,6 +708,24 @@ $('pptx').onclick = async () => {
     const a = document.createElement('a'); a.download = `漫画格_${Date.now()}.pptx`; a.href = URL.createObjectURL(blob); a.click();
     $('outMsg').textContent = `✅ 已导出原生可编辑 pptx（${Math.round(blob.size / 1024)}KB · 底图+${spec.layers.length}层 · WPS 可直接改字改价）`;
   } catch (e) { $('outMsg').textContent = '❌ 请求失败：' + e.message; }
+};
+$('pptxTask').onclick = async () => {
+  const task = $('taskSel').value, msg = $('outMsg');
+  if (!task) { msg.textContent = '先选一个任务'; return; }
+  const spec = buildPptxSpec();
+  if (!spec.layers.length) { msg.textContent = '⚠️ 没有内容可导出，先加旁白框/气泡/分支卡'; return; }
+  const no = Math.max(1, Math.min(999, +$('cellNo').value || 1));
+  const prefix = ($('cellPrefix').value || '格').replace(/[^\w一-鿿 -]/g, '').slice(0, 20) || '格';
+  msg.textContent = '生成并写入 pptx 中…';
+  try {
+    const r = await (await fetch('/api/comic/pptx', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spec, base: baseLayerDataUrl(), task, name: `${prefix}${String(no).padStart(2, '0')}.pptx` }),
+    })).json();
+    if (r.error) { msg.textContent = '❌ ' + r.error; return; }
+    msg.textContent = `✅ 已写入 output/${r.task}/${r.rel}（${Math.round(r.bytes / 1024)}KB）`;
+    $('cellNo').value = no + 1;
+  } catch (e) { msg.textContent = '❌ 请求失败：' + e.message; }
 };
 window.__buildSvg = buildSvg; window.__buildManifest = buildManifest; window.__buildPptxSpec = buildPptxSpec;   // 冒烟用
 function buildPanelSpec() {
