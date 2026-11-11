@@ -105,6 +105,20 @@
   </fieldset>
 
   <fieldset>
+    <legend>带货组件（C1）</legend>
+    <div class="row">
+      <button id="addViewer" class="sm">＋ 观看数胶囊</button>
+      <button id="addNamebar" class="sm">＋ 主播名条+关注</button>
+      <button id="addProduct" class="sm">＋ 商品卡</button>
+      <button id="addDanmaku" class="sm">＋ 弹幕条</button>
+      <button id="addBar" class="sm">＋ 底部操作栏</button>
+      <button id="delWidget" class="sm danger">删除选中</button>
+    </div>
+    <div class="hint">一键放到默认位（观看数右上 / 名条左上 / 商品卡右下 / 弹幕左中 / 底部操作栏下中），画布上可拖动；字段（昵称/关注数/标题/卖点/价格/按钮文字/弹幕多行/CTA）可改，头像与 SKU 图可上传。</div>
+    <div id="widgets"></div>
+  </fieldset>
+
+  <fieldset>
     <legend>导出</legend>
     <label>目标任务（产物写入 <code>output/任务/comic/</code>，不碰主链文件）</label>
     <div class="row"><select id="taskSel" style="flex:1"></select><button id="taskReload" class="sm">↻</button></div>
@@ -146,6 +160,7 @@ const S = {
   view: { fit: 'cover', x: 0, y: 0, zoom: 1, bg: '#101215' },
   nar: { on: true, text: '', pos: 'top', x: 0.5, y: 0.09, theme: 'light', w: 0.86, f: 34, a: 0.92, align: 'left', fg: '#15181c', _rect: null },
   bubs: [], sel: -1, selKind: 'none',
+  widgets: [], selWidget: -1,
   ch: { on: false, prompt: '', a: '', b: '', c: '' },
 };
 const THEME = {
@@ -313,9 +328,118 @@ function drawBubbles(showHandles) {
     }
   });
 }
+/* ---------- C1 带货预设组件（图元单一出处：canvas / SVG / pptx 三出口共用） ---------- */
+function measure(t, size) { ctx.font = `${size}px ${FONT}`; return ctx.measureText(t).width; }
+function newWidget(type) {
+  const base = { id: ++uid, type, x: 0.5, y: 0.5, _prims: null, _box: null, avatar: null, sku: null };
+  if (type === 'viewer') return Object.assign(base, { x: 0.72, y: 0.05, text: '1.2万人观看', size: 26, dot: true });
+  if (type === 'namebar') return Object.assign(base, { x: 0.05, y: 0.05, name: '主播昵称', btnText: '关注', size: 28, btnSize: 24 });
+  if (type === 'product') return Object.assign(base, { x: 0.6, y: 0.78, title: '宽松落肩针织毛衣', sell: '显瘦百搭 · 秋冬新款', price: '¥129', btnText: '购物车', titleSize: 24, sellSize: 19, priceSize: 32 });
+  if (type === 'danmaku') return Object.assign(base, { x: 0.05, y: 0.5, lines: '这个颜色好好看！\n已拍，期待上身\n主播试试那件米白的', size: 22 });
+  if (type === 'actionbar') return Object.assign(base, { x: 0.06, y: 0.92, cta: '立即购买', size: 22 });
+  return base;
+}
+function widgetLayout(w) {
+  const ax = w.x * W, ay = w.y * H, prims = [];
+  if (w.type === 'viewer') {
+    const size = w.size, t = w.text || '', tw = measure(t, size), padX = 18, h = size + 20, dot = w.dot ? 14 : 0;
+    const pillW = padX + (dot ? dot + 8 : 0) + tw + padX;
+    prims.push({ op: 'rect', x: ax, y: ay, w: pillW, h, r: h / 2, fill: '#000000', opacity: 0.5 });
+    if (dot) prims.push({ op: 'ellipse', cx: ax + padX + dot / 2, cy: ay + h / 2, rx: dot / 2, ry: dot / 2, fill: '#ff3b3b' });
+    prims.push({ op: 'text', x: ax + padX + (dot ? dot + 8 : 0), y: ay + (h - size * 1.42) / 2, lines: [t], size, color: '#ffffff', align: 'left' });
+    return { prims, box: { x: ax, y: ay, w: pillW, h } };
+  }
+  if (w.type === 'namebar') {
+    const d = 64, h = 76, nameSize = w.size, gap = 12;
+    const nw = measure(w.name || '', nameSize);
+    const btnW = measure(w.btnText || '关注', w.btnSize) + 30, btnH = 42;
+    const totalW = d + gap + nw + gap + btnW;
+    prims.push({ op: 'rect', x: ax, y: ay, w: totalW, h, r: h / 2, fill: '#000000', opacity: 0.45 });
+    prims.push({ op: 'ellipse', cx: ax + h / 2, cy: ay + h / 2, rx: d / 2 - 4, ry: d / 2 - 4, fill: '#2a2f37' });
+    if (w.avatar && w.avatar.img) prims.push({ op: 'image', x: ax + (h - d) / 2 + 4, y: ay + (h - d) / 2 + 4, w: d - 8, h: d - 8, src: w.avatar.src, img: w.avatar.img, clipEllipse: true });
+    prims.push({ op: 'text', x: ax + h + gap - 8, y: ay + (h - nameSize * 1.42) / 2, lines: [w.name || ''], size: nameSize, color: '#ffffff', align: 'left' });
+    const bx = ax + totalW - btnW - 6, by = ay + (h - btnH) / 2;
+    prims.push({ op: 'rect', x: bx, y: by, w: btnW, h: btnH, r: btnH / 2, fill: '#ff2d55' });
+    prims.push({ op: 'text', x: bx + btnW / 2, y: by + (btnH - w.btnSize * 1.42) / 2, lines: [w.btnText || '关注'], size: w.btnSize, color: '#ffffff', align: 'center', anchorX: bx + btnW / 2 });
+    return { prims, box: { x: ax, y: ay, w: totalW, h } };
+  }
+  if (w.type === 'product') {
+    const cardW = 380, cardH = 176, tx = ax + 140, tw = cardW - 140 - 16;
+    prims.push({ op: 'rect', x: ax, y: ay, w: cardW, h: cardH, r: 16, fill: '#ffffff', stroke: '#e6e8eb', strokeOpacity: 1 });
+    prims.push({ op: 'rect', x: ax + 16, y: ay + 20, w: 110, h: 110, r: 10, fill: '#f0f2f5' });
+    if (w.sku && w.sku.img) prims.push({ op: 'image', x: ax + 16, y: ay + 20, w: 110, h: 110, src: w.sku.src, img: w.sku.img });
+    const titleLines = wrap(w.title || '', tw, w.titleSize);
+    prims.push({ op: 'text', x: tx, y: ay + 22, lines: titleLines, size: w.titleSize, color: '#15181c', align: 'left' });
+    const sellY = ay + 22 + titleLines.length * w.titleSize * 1.42 + 6;
+    prims.push({ op: 'text', x: tx, y: sellY, lines: [w.sell || ''], size: w.sellSize, color: '#8a9099', align: 'left' });
+    const priceY = ay + cardH - 44;
+    prims.push({ op: 'text', x: tx, y: priceY, lines: [w.price || ''], size: w.priceSize, color: '#ff2d55', align: 'left', bold: true });
+    const btnW = 88, btnH = 36, bx = ax + cardW - btnW - 16, by = priceY - 2;
+    prims.push({ op: 'rect', x: bx, y: by, w: btnW, h: btnH, r: btnH / 2, fill: '#ff2d55' });
+    prims.push({ op: 'text', x: bx + btnW / 2, y: by + (btnH - 18 * 1.42) / 2, lines: [w.btnText || '购物车'], size: 18, color: '#ffffff', align: 'center', anchorX: bx + btnW / 2 });
+    return { prims, box: { x: ax, y: ay, w: cardW, h: cardH } };
+  }
+  if (w.type === 'danmaku') {
+    const size = w.size, gap = 10, padX = 14, padY = 8;
+    const lines = String(w.lines || '').split('\n').map(s => s.trim()).filter(Boolean);
+    let y = ay, maxW = 0;
+    lines.forEach(t => {
+      const tw = measure(t, size), pillW = tw + padX * 2, pillH = size + padY * 2;
+      prims.push({ op: 'rect', x: ax, y, w: pillW, h: pillH, r: pillH / 2, fill: '#000000', opacity: 0.5 });
+      prims.push({ op: 'text', x: ax + padX, y: y + padY, lines: [t], size, color: '#ffffff', align: 'left' });
+      if (pillW > maxW) maxW = pillW; y += pillH + gap;
+    });
+    return { prims, box: { x: ax, y: ay, w: maxW, h: lines.length ? y - gap - ay : 0 } };
+  }
+  if (w.type === 'actionbar') {
+    const h = 64, size = w.size, icons = ['点赞', '评论', '分享'], padX = 16, gap = 12;
+    const iconW = icons.map(t => measure(t, 18) + padX * 2);
+    const ctaW = measure(w.cta || '立即购买', size) + 40;
+    const totalW = iconW.reduce((a, b) => a + b, 0) + gap * icons.length + ctaW;
+    prims.push({ op: 'rect', x: ax, y: ay, w: totalW, h, r: h / 2, fill: '#000000', opacity: 0.3 });
+    let cx = ax + gap;
+    icons.forEach((t, i) => {
+      const pw = iconW[i];
+      prims.push({ op: 'rect', x: cx, y: ay + (h - 40) / 2, w: pw, h: 40, r: 20, fill: '#ffffff', opacity: 0.18 });
+      prims.push({ op: 'text', x: cx + pw / 2, y: ay + (h - 18 * 1.42) / 2, lines: [t], size: 18, color: '#ffffff', align: 'center', anchorX: cx + pw / 2 });
+      cx += pw + gap;
+    });
+    const bx = ax + totalW - ctaW - gap, by = ay + (h - 44) / 2;
+    prims.push({ op: 'rect', x: bx, y: by, w: ctaW, h: 44, r: 22, fill: '#ff2d55' });
+    prims.push({ op: 'text', x: bx + ctaW / 2, y: by + (44 - size * 1.42) / 2, lines: [w.cta || '立即购买'], size, color: '#ffffff', align: 'center', anchorX: bx + ctaW / 2, bold: true });
+    return { prims, box: { x: ax, y: ay, w: totalW, h } };
+  }
+  return { prims, box: { x: ax, y: ay, w: 10, h: 10 } };
+}
+function drawPrims(prims) {
+  for (const p of prims) {
+    if (p.op === 'rect') {
+      ctx.globalAlpha = p.opacity == null ? 1 : p.opacity; ctx.fillStyle = p.fill; rrect(p.x, p.y, p.w, p.h, p.r || 0); ctx.fill();
+      if (p.stroke) { ctx.globalAlpha = (p.strokeOpacity == null ? 1 : p.strokeOpacity) * (p.opacity == null ? 1 : p.opacity); ctx.strokeStyle = p.stroke; ctx.lineWidth = 2; ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    } else if (p.op === 'ellipse') {
+      ctx.globalAlpha = p.opacity == null ? 1 : p.opacity; ctx.fillStyle = p.fill; ctx.beginPath(); ctx.ellipse(p.cx, p.cy, p.rx, p.ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+    } else if (p.op === 'image') {
+      if (p.img) { ctx.save(); ctx.beginPath(); if (p.clipEllipse) ctx.ellipse(p.x + p.w / 2, p.y + p.h / 2, p.w / 2, p.h / 2, 0, 0, Math.PI * 2); else rrect(p.x, p.y, p.w, p.h, 10); ctx.clip(); ctx.drawImage(p.img, p.x, p.y, p.w, p.h); ctx.restore(); }
+    } else if (p.op === 'text') {
+      ctx.globalAlpha = p.opacity == null ? 1 : p.opacity; ctx.fillStyle = p.color; ctx.font = `${p.bold ? 'bold ' : ''}${p.size}px ${FONT}`; ctx.textBaseline = 'top'; ctx.textAlign = p.align === 'center' ? 'center' : 'left';
+      const cx = p.align === 'center' ? (p.anchorX != null ? p.anchorX : p.x) : p.x;
+      p.lines.forEach((l, i) => ctx.fillText(l, cx, p.y + i * p.size * 1.42)); ctx.globalAlpha = 1;
+    }
+  }
+  ctx.textAlign = 'left';
+}
+function drawWidgets(showHandles) {
+  S.widgets.forEach((w, i) => {
+    const lay = widgetLayout(w); w._prims = lay.prims; w._box = lay.box;
+    drawPrims(lay.prims);
+    if (showHandles && i === S.selWidget) { ctx.strokeStyle = '#4c8dff'; ctx.lineWidth = 2; ctx.setLineDash([7, 5]); ctx.strokeRect(lay.box.x - 6, lay.box.y - 6, lay.box.w + 12, lay.box.h + 12); ctx.setLineDash([]); }
+  });
+}
 function render() {
-  drawBase(); drawChoices(); drawNarration(true); drawBubbles(true);
-  $('stat').textContent = `${W}×${H} · 底图${S.base ? S.base.width + '×' + S.base.height : '未选'} · 气泡 ${S.bubs.length} · 选中：${S.selKind === 'nar' ? '旁白框' : S.selKind === 'bub' && S.sel >= 0 ? '气泡 #' + (S.sel + 1) : '无'}`;
+  drawBase(); drawChoices(); drawNarration(true); drawBubbles(true); drawWidgets(true);
+  const selTxt = S.selKind === 'nar' ? '旁白框' : S.selKind === 'bub' && S.sel >= 0 ? '气泡 #' + (S.sel + 1) : S.selKind === 'widget' && S.selWidget >= 0 ? '组件 #' + (S.selWidget + 1) : '无';
+  $('stat').textContent = `${W}×${H} · 底图${S.base ? S.base.width + '×' + S.base.height : '未选'} · 气泡 ${S.bubs.length} · 组件 ${S.widgets.length} · 选中：${selTxt}`;
 }
 
 /* ---------- 气泡列表面板 ---------- */
@@ -352,6 +476,36 @@ function bubbleList() {
   });
 }
 
+/* ---------- 带货组件列表面板 ---------- */
+function widgetList() {
+  const box = $('widgets'); box.innerHTML = '';
+  const NAME = { viewer: '观看数胶囊', namebar: '主播名条+关注', product: '商品卡', danmaku: '弹幕条', actionbar: '底部操作栏' };
+  S.widgets.forEach((w, i) => {
+    const d = document.createElement('div'); d.className = 'bub' + (i === S.selWidget && S.selKind === 'widget' ? ' sel' : '');
+    let fields = '';
+    if (w.type === 'viewer') fields = `<label>文案</label><textarea data-k="text" data-i="${i}">${w.text}</textarea><label>字号</label><input type="range" data-k="size" data-i="${i}" min="18" max="40" step="1" value="${w.size}">`;
+    else if (w.type === 'namebar') fields = `<label>昵称</label><input type="text" data-k="name" data-i="${i}" value="${w.name}"><label>按钮文字</label><input type="text" data-k="btnText" data-i="${i}" value="${w.btnText}"><label>字号</label><input type="range" data-k="size" data-i="${i}" min="20" max="40" step="1" value="${w.size}"><label>头像图</label><input type="file" accept="image/*" data-img="avatar" data-i="${i}">`;
+    else if (w.type === 'product') fields = `<label>标题</label><input type="text" data-k="title" data-i="${i}" value="${w.title}"><label>卖点</label><input type="text" data-k="sell" data-i="${i}" value="${w.sell}"><label>价格</label><input type="text" data-k="price" data-i="${i}" value="${w.price}"><label>按钮文字</label><input type="text" data-k="btnText" data-i="${i}" value="${w.btnText}"><label>SKU 图</label><input type="file" accept="image/*" data-img="sku" data-i="${i}">`;
+    else if (w.type === 'danmaku') fields = `<label>弹幕（每行一条）</label><textarea data-k="lines" data-i="${i}">${w.lines}</textarea><label>字号</label><input type="range" data-k="size" data-i="${i}" min="16" max="30" step="1" value="${w.size}">`;
+    else if (w.type === 'actionbar') fields = `<label>CTA 按钮文字</label><input type="text" data-k="cta" data-i="${i}" value="${w.cta}"><label>字号</label><input type="range" data-k="size" data-i="${i}" min="16" max="30" step="1" value="${w.size}">`;
+    d.innerHTML = `<div class="hd"><span>${NAME[w.type] || w.type} #${i + 1}</span><button class="sm" data-sel="${i}">选中</button></div>${fields}`;
+    box.appendChild(d);
+  });
+  box.querySelectorAll('[data-sel]').forEach(el => el.onclick = () => { S.selWidget = +el.dataset.sel; S.selKind = 'widget'; widgetList(); render(); });
+  box.querySelectorAll('[data-k]').forEach(el => el.oninput = () => { const w = S.widgets[+el.dataset.i]; if (!w) return; w[el.dataset.k] = (el.type === 'range' ? +el.value : el.value); render(); });
+  box.querySelectorAll('[data-img]').forEach(el => el.onchange = (e) => {
+    const f = e.target.files[0]; if (!f) return; const idx = +el.dataset.i, key = el.dataset.img; const r = new FileReader();
+    r.onload = () => { const src = r.result; const im = new Image(); im.onload = () => { const w = S.widgets[idx]; if (w) { w[key] = { img: im, src }; render(); } }; im.src = src; };
+    r.readAsDataURL(f);
+  });
+}
+$('addViewer').onclick = () => { S.widgets.push(newWidget('viewer')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
+$('addNamebar').onclick = () => { S.widgets.push(newWidget('namebar')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
+$('addProduct').onclick = () => { S.widgets.push(newWidget('product')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
+$('addDanmaku').onclick = () => { S.widgets.push(newWidget('danmaku')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
+$('addBar').onclick = () => { S.widgets.push(newWidget('actionbar')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
+$('delWidget').onclick = () => { if (S.selKind === 'widget' && S.selWidget >= 0) { S.widgets.splice(S.selWidget, 1); S.selWidget = -1; S.selKind = 'none'; widgetList(); render(); } };
+
 /* ---------- 画布交互 ---------- */
 function toCanvas(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; }
 function bubbleHit(p) {
@@ -369,10 +523,23 @@ function narHit(p) {
   if (p.x >= r.x - 6 && p.x <= r.x + r.w + 6 && p.y >= r.y - 6 && p.y <= r.y + r.h + 6) return { part: 'nar-body' };
   return null;
 }
+function widgetHit(p) {
+  for (let i = S.widgets.length - 1; i >= 0; i--) {
+    const b = S.widgets[i]._box; if (!b) continue;
+    if (p.x >= b.x - 8 && p.x <= b.x + b.w + 8 && p.y >= b.y - 8 && p.y <= b.y + b.h + 8) return { i };
+  }
+  return null;
+}
 let drag = null;
 cv.addEventListener('pointerdown', (e) => {
   const p = toCanvas(e);
   if (e.altKey && S.base) { drag = { part: 'image', ox: p.x / W - S.view.x, oy: p.y / H - S.view.y }; e.preventDefault(); return; }
+  const wh = widgetHit(p);
+  if (wh) {
+    const w = S.widgets[wh.i];
+    drag = { part: 'widget', i: wh.i, ox: p.x / W - w.x, oy: p.y / H - w.y };
+    S.selWidget = wh.i; S.selKind = 'widget'; widgetList(); render(); return;
+  }
   const bh = bubbleHit(p);
   if (bh) {
     drag = { i: bh.i, part: (bh.part === 'tail' || e.shiftKey) ? 'tail' : 'body' };
@@ -402,6 +569,10 @@ cv.addEventListener('pointermove', (e) => {
   if (drag.part === 'nar-size') {
     S.nar.w = Math.max(0.3, Math.min(0.98, drag.startW + (p.x - drag.startX) / W));
     $('narW').value = S.nar.w; $('narWv').textContent = Math.round(S.nar.w * 100) + '%'; render(); return;
+  }
+  if (drag.part === 'widget') {
+    const w = S.widgets[drag.i]; if (w) { w.x = Math.max(0.02, Math.min(0.98, p.x / W - drag.ox)); w.y = Math.max(0.02, Math.min(0.98, p.y / H - drag.oy)); render(); }
+    return;
   }
   const b = S.bubs[drag.i]; if (!b) return;
   if (drag.part === 'tail') { b.tx = p.x / W; b.ty = p.y / H; } else { b.x = p.x / W; b.y = p.y / H; }
@@ -556,6 +727,30 @@ function svgTextEl(p, idBase) {
     `<tspan x="${p.tx.toFixed(1)}" y="${(p.ty + bo + i * dy).toFixed(1)}" text-anchor="${anchor}">${esc(l)}</tspan>`).join('');
   return `<text id="${idBase}" font-family="${esc(FONT)}" font-size="${p.f}" fill="${esc(p.fg)}" text-anchor="${anchor}">${tspans}</text>`;
 }
+function svgPrim(p) {
+  if (p.op === 'rect') {
+    let s = `<rect x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" width="${p.w.toFixed(1)}" height="${p.h.toFixed(1)}" rx="${(p.r || 0).toFixed(1)}" fill="${esc(p.fill)}"`;
+    if (p.opacity != null && p.opacity < 1) s += ` fill-opacity="${p.opacity}"`;
+    if (p.stroke) { s += ` stroke="${esc(p.stroke)}" stroke-width="2"`; if (p.strokeOpacity != null && p.strokeOpacity < 1) s += ` stroke-opacity="${p.strokeOpacity}"`; }
+    return s + '/>';
+  }
+  if (p.op === 'ellipse') {
+    let s = `<ellipse cx="${p.cx.toFixed(1)}" cy="${p.cy.toFixed(1)}" rx="${p.rx.toFixed(1)}" ry="${p.ry.toFixed(1)}" fill="${esc(p.fill)}"`;
+    if (p.opacity != null && p.opacity < 1) s += ` fill-opacity="${p.opacity}"`;
+    return s + '/>';
+  }
+  if (p.op === 'image') {
+    return `<image x="${p.x.toFixed(1)}" y="${p.y.toFixed(1)}" width="${p.w.toFixed(1)}" height="${p.h.toFixed(1)}" xlink:href="${p.src}" href="${p.src}"/>`;
+  }
+  if (p.op === 'text') {
+    const anchor = p.align === 'center' ? 'middle' : 'start';
+    const ax = p.align === 'center' ? (p.anchorX != null ? p.anchorX : p.x) : p.x;
+    const bo = baselineOffset(p.size);
+    const tspans = p.lines.map((l, i) => `<tspan x="${ax.toFixed(1)}" y="${(p.y + bo + i * p.size * 1.42).toFixed(1)}" text-anchor="${anchor}">${esc(l)}</tspan>`).join('');
+    return `<text font-family="${esc(FONT)}" font-size="${p.size}"${p.bold ? ' font-weight="bold"' : ''} fill="${esc(p.color)}"${p.opacity != null && p.opacity < 1 ? ` fill-opacity="${p.opacity}"` : ''}>${tspans}</text>`;
+  }
+  return '';
+}
 function buildSvg() {
   render();   // 确保 _paint 是最新几何
   // 纯矢量：不烤底图位图（实测 WPS/Office 拒绝内嵌大 base64 栅格；底图另走「底图 PNG」出口分层）
@@ -597,6 +792,12 @@ function buildSvg() {
     parts.push(svgTextEl(p, `bubble-${i + 1}-text`));
     parts.push('</g>');
   });
+  S.widgets.forEach((w, i) => {
+    if (!w._prims) return;
+    parts.push(`<g id="widget-${i + 1}">`);
+    w._prims.forEach(p => parts.push(svgPrim(p)));
+    parts.push('</g>');
+  });
   parts.push('</svg>');
   return parts.join('\n');
 }
@@ -621,6 +822,13 @@ function buildManifest() {
     layers.push({ kind: 'choice-prompt', text: S.ch.prompt, lines: S.ch._paint.prompt ? S.ch._paint.prompt.lines : [], rect: S.ch._paint.prompt ? S.ch._paint.prompt.rect : null });
     S.ch._paint.blocks.forEach(bl => layers.push({ kind: 'choice-option', key: bl.key, text: S.ch[bl.key.toLowerCase()], lines: bl.lines, rect: bl.rect }));
   }
+  S.widgets.forEach((w, i) => {
+    if (!w._prims) return;
+    layers.push({
+      kind: 'widget', id: i + 1, type: w.type, box: w._box,
+      texts: w._prims.filter(p => p.op === 'text').map(p => ({ lines: p.lines, size: p.size, color: p.color, align: p.align, x: +p.x.toFixed(1), y: +p.y.toFixed(1) })),
+    });
+  });
   return { version: 1, canvas: { width: W, height: H }, background: S.view.bg, base: { hasImage: !!S.base, fit: S.view.fit, x: +S.view.x.toFixed(4), y: +S.view.y.toFixed(4), zoom: +S.view.zoom.toFixed(3) }, layers };
 }
 function dl(name, content, mime) {
@@ -692,6 +900,10 @@ function buildPptxSpec() {
       fontSizePx: b.f, fontColor: p.fg || '#15181c', tail: p.tail || null,
     });
   });
+  S.widgets.forEach(w => {
+    if (!w._prims) return;
+    layers.push({ kind: 'widget', prims: w._prims.map(p => { const c = { ...p }; delete c.img; return c; }) });
+  });
   return { canvas: { w: W, h: H }, fontFamily: 'Microsoft YaHei', base: null, layers };
 }
 $('pptx').onclick = async () => {
@@ -730,7 +942,8 @@ $('pptxTask').onclick = async () => {
 window.__buildSvg = buildSvg; window.__buildManifest = buildManifest; window.__buildPptxSpec = buildPptxSpec;   // 冒烟用
 function buildPanelSpec() {
   const strip = (o) => { const c = { ...o }; Object.keys(c).forEach(k => { if (k.startsWith('_')) delete c[k]; }); return c; };
-  return { w: W, h: H, view: S.view, nar: strip(S.nar), bubs: S.bubs.map(strip), ch: strip(S.ch) };
+  const wstrip = (w) => { const c = strip(w); if (c.avatar) c.avatar = c.avatar.src ? { src: c.avatar.src } : null; if (c.sku) c.sku = c.sku.src ? { src: c.sku.src } : null; return c; };
+  return { w: W, h: H, view: S.view, nar: strip(S.nar), bubs: S.bubs.map(strip), ch: strip(S.ch), widgets: S.widgets.map(wstrip) };
 }
 window.__buildPanelSpec = buildPanelSpec;   // 冒烟用
 $('saveJson').onclick = () => {
@@ -744,7 +957,9 @@ $('jsonFile').onchange = (e) => {
     try {
       const j = JSON.parse(r.result);
       Object.assign(S.view, j.view || {}); Object.assign(S.nar, j.nar || {}); S.bubs = (j.bubs || []).map(b => ({ ...b, _rect: null })); Object.assign(S.ch, j.ch || {});
-      syncInputs(); viewLabels(); bubbleList(); render();
+      S.widgets = (j.widgets || []).map(w => ({ ...w, _prims: null, _box: null }));
+      S.widgets.forEach(w => { ['avatar', 'sku'].forEach(k => { if (w[k] && w[k].src) { const im = new Image(); im.onload = () => render(); im.src = w[k].src; w[k].img = im; } }); });
+      syncInputs(); viewLabels(); bubbleList(); widgetList(); render();
     } catch (x) { alert('JSON 解析失败：' + x.message); }
   };
   r.readAsText(f);
@@ -772,7 +987,7 @@ S.bubs.push(newBubble('太好了……我就知道，\n你一定会有出息的�
 S.bubs[0].x = .62; S.bubs[0].y = .17; S.bubs[0].tx = .5; S.bubs[0].ty = .3; S.bubs[0].w = .4;
 S.bubs.push(newBubble('快去吧，\n别让仙人等急了。'));
 S.bubs[1].x = .3; S.bubs[1].y = .42; S.bubs[1].tx = .42; S.bubs[1].ty = .55; S.bubs[1].w = .36;
-initFromDom(); bubbleList(); render(); loadLibrary(); loadTasks();
+initFromDom(); bubbleList(); widgetList(); render(); loadLibrary(); loadTasks();
 </script>
 </body>
 </html>

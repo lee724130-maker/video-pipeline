@@ -20,7 +20,7 @@ spec.json 结构：
                   "opacity":0.94, "lines":["..",".."], "align":"center"|"left"|"right",
                   "fontSizePx":32, "fontColor":"#15181c", "bold":false } ] }
 """
-import sys, json, os
+import sys, json, os, re, io, base64
 from pptx import Presentation
 from pptx.util import Emu, Pt
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
@@ -162,6 +162,60 @@ def add_choice(slide, L, font_family, cw, ch):
             rr = pp.add_run(); rr.text = str(ln)
             rr.font.size = size; rr.font.color.rgb = rgb(op.get('fontColor', '#f0f2f5')); set_cjk(rr, font_family)
 
+def add_widget(slide, L, font_family):
+    for p in L.get('prims', []):
+        op = p.get('op')
+        if op == 'rect':
+            shp = MSO_SHAPE.ROUNDED_RECTANGLE if p.get('r') else MSO_SHAPE.RECTANGLE
+            sp = slide.shapes.add_shape(shp, px(p['x']), px(p['y']), px(p['w']), px(p['h']))
+            sp.fill.solid(); sp.fill.fore_color.rgb = rgb(p.get('fill', '#ffffff'))
+            _set_alpha(sp.fill._xPr, p.get('opacity', 1))
+            if p.get('stroke'):
+                sp.line.color.rgb = rgb(p['stroke']); sp.line.width = Pt(2)
+                _set_alpha(sp.line._get_or_add_ln(), p.get('strokeOpacity', 1))
+            else:
+                sp.line.fill.background()
+            try: sp.shadow.inherit = False
+            except Exception: pass
+        elif op == 'ellipse':
+            sp = slide.shapes.add_shape(MSO_SHAPE.OVAL, px(p['cx'] - p['rx']), px(p['cy'] - p['ry']), px(2 * p['rx']), px(2 * p['ry']))
+            sp.fill.solid(); sp.fill.fore_color.rgb = rgb(p.get('fill', '#ffffff'))
+            _set_alpha(sp.fill._xPr, p.get('opacity', 1))
+            sp.line.fill.background()
+            try: sp.shadow.inherit = False
+            except Exception: pass
+        elif op == 'image':
+            m = re.match(r'^data:image/(?:png|jpeg|jpg|webp|gif);base64,(.+)$', str(p.get('src', '')), re.I)
+            if m:
+                try:
+                    slide.shapes.add_picture(io.BytesIO(base64.b64decode(m.group(1))), px(p['x']), px(p['y']), px(p['w']), px(p['h']))
+                except Exception:
+                    pass
+        elif op == 'text':
+            lines = p.get('lines') or ['']
+            size = pt_from_px(p.get('size', 24))
+            center = p.get('align') == 'center'
+            if center:
+                cx = p.get('anchorX', p['x']); left = cx - 160; wbox = 320
+            else:
+                left = p['x']; wbox = 520
+            tb = slide.shapes.add_textbox(px(left), px(p['y']), px(wbox), px(p.get('size', 24) * 1.42 * len(lines) + 4))
+            tf = tb.text_frame; tf.word_wrap = True
+            try: tf.auto_size = MSO_AUTO_SIZE.NONE
+            except Exception: pass
+            tf.vertical_anchor = MSO_ANCHOR.TOP
+            for mm in ('margin_left', 'margin_right', 'margin_top', 'margin_bottom'):
+                setattr(tf, mm, 0)
+            tf.clear()
+            for i, ln in enumerate(lines):
+                para = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                para.alignment = PP_ALIGN.CENTER if center else PP_ALIGN.LEFT
+                r = para.add_run(); r.text = str(ln)
+                r.font.size = size; r.font.bold = bool(p.get('bold')); r.font.color.rgb = rgb(p.get('color', '#15181c'))
+                set_cjk(r, font_family)
+                if p.get('opacity', 1) < 0.999:
+                    _set_alpha(r._r.get_or_add_rPr(), p.get('opacity', 1))
+
 def main():
     if len(sys.argv) < 3:
         print('用法: make_pptx.py <spec.json> <out.pptx>', file=sys.stderr); sys.exit(2)
@@ -182,6 +236,8 @@ def main():
     for L in spec.get('layers', []):
         if L.get('kind') == 'choice':
             add_choice(slide, L, font_family, cw, ch)
+        elif L.get('kind') == 'widget':
+            add_widget(slide, L, font_family)
         else:
             add_layer(slide, L, font_family)
 
