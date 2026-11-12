@@ -108,9 +108,18 @@ const dataUrl = (b64) => 'data:image/png;base64,' + b64;
       const pg = await (await b.newContext({ viewport: { width: 1500, height: 1000 } })).newPage();
       const perr = []; pg.on('pageerror', (ex) => perr.push(String(ex.message)));
       await pg.goto(BASE + '/comic', { waitUntil: 'networkidle', timeout: 30000 });
+      await pg.evaluate(() => { document.querySelectorAll('aside details').forEach(d => { d.open = true; }); });
+      await pg.waitForTimeout(120);
       const rect = () => pg.evaluate(() => ({ ...window.__S.nar._rect }));
       const setv = (id, v) => pg.evaluate(([id, v]) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, [id, String(v)]);
       const setv2 = (id, v) => pg.evaluate(([id, v]) => { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }, [id, String(v)]);
+
+      // 白板起步：本段测旁白控件，先自建夹具——启用旁白并填文案（走真实 input 事件）
+      await pg.evaluate(() => {
+        const c = document.getElementById('narOn'); c.checked = true; c.dispatchEvent(new Event('input', { bubbles: true }));
+        const t = document.getElementById('narText'); t.value = '当你被仙人选中，\n选择一心向道时'; t.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await pg.waitForTimeout(150);
 
       const r0 = await rect();
       ok('F0 旁白框首屏已渲染（几何可读且非零）', !!r0 && r0.w > 0 && r0.h > 0, JSON.stringify(r0));

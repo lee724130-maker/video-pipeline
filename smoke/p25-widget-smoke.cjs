@@ -24,6 +24,8 @@ const skip = (n, why) => { skipN++; console.log('  ‑ SKIP ' + n + ' — ' + wh
   ok('A1 /comic 200', (await fetch(BASE + '/comic')).status === 200);
   ok('A2 五个添加按钮齐全', ['addViewer', 'addNamebar', 'addProduct', 'addDanmaku', 'addBar'].every(id => html.includes(`id="${id}"`)));
   ok('A3 删除按钮 + widgets 容器', html.includes('id="delWidget"') && html.includes('id="widgets"'));
+  ok('A4 带货预设模板按钮 + applyPreset 已挂载', html.includes('id="presetLiveRoom"') && /function\s+applyPreset/.test(html) && html.includes("'live-room'"));
+  ok('A5 一键清空按钮 + clearAllContent 已挂载', html.includes('id="clearAll"') && /function\s+clearAllContent/.test(html));
 
   if (!fs.existsSync(PW) || !fs.existsSync(EXE)) {
     skip('B/C/D 浏览器与端到端', '未找到 playwright-core 或 headless chromium');
@@ -33,6 +35,12 @@ const skip = (n, why) => { skipN++; console.log('  ‑ SKIP ' + n + ' — ' + wh
     const pg = await (await b.newContext({ viewport: { width: 1500, height: 1000 } })).newPage();
     const perr = []; pg.on('pageerror', (ex) => perr.push(String(ex.message)));
     await pg.goto(BASE + '/comic', { waitUntil: 'networkidle', timeout: 30000 });
+
+    console.log('\n[A0] 白板起步默认（加载即无组件/无气泡/无旁白）');
+    const blank = await pg.evaluate(() => ({ w: window.__S.widgets.length, b: window.__S.bubs.length, narOn: window.__S.nar.on, narText: window.__S.nar.text }));
+    ok('A0a 加载时无带货组件', blank.w === 0, JSON.stringify(blank));
+    ok('A0b 加载时无对话气泡', blank.b === 0, JSON.stringify(blank));
+    ok('A0c 加载时旁白关闭且文案为空', blank.narOn === false && blank.narText === '', JSON.stringify(blank));
 
     console.log('\n[B] 添加 / 字段 / 拖动真的改几何');
     await pg.evaluate(() => { ['addViewer', 'addNamebar', 'addProduct', 'addDanmaku', 'addBar'].forEach(id => document.getElementById(id).click()); });
@@ -111,6 +119,90 @@ print(json.dumps({'shapes':len(sl.shapes),'texts':texts}))
     ok('D4 pptx 含图标标签 点赞/评论/分享', ['点赞', '评论', '分享'].every(k => info.texts.some(t => t.includes(k))));
     ok('D5 pptx 含弹幕文字', info.texts.some(t => t.includes('只有一条') || t.includes('颜色')));
     ok('D6 形状数充足（5 组件图元多）', info.shapes >= 20, 'shapes=' + info.shapes);
+
+    console.log('\n[F] 带货预设模板（一键铺标准直播间版式）');
+    // 先制造杂散组件（在 D 遗留状态上再加两个观看数），验证预设会清空并只留标准 5 件
+    await pg.evaluate(() => { document.getElementById('addViewer').click(); document.getElementById('addViewer').click(); });
+    const strayN = await pg.evaluate(() => window.__S.widgets.length);
+    ok('F0 铺预设前确有杂散（>5）', strayN > 5, 'widgets=' + strayN);
+    await pg.evaluate(() => { document.getElementById('presetLiveRoom').click(); });
+    await pg.waitForTimeout(200);
+    const preset = await pg.evaluate(() => ({ n: window.__S.widgets.length, types: window.__S.widgets.map(w => w.type) }));
+    ok('F1 点预设幂等替换为正好 5 件（清掉杂散）', preset.n === 5, JSON.stringify(preset));
+    ok('F2 标准直播间五样各 1', ['namebar', 'viewer', 'danmaku', 'product', 'actionbar'].every(t => preset.types.filter(x => x === t).length === 1), JSON.stringify(preset.types));
+    const bounds = await pg.evaluate(() => { const W = 1024, H = 1536; return window.__S.widgets.map(w => ({ t: w.type, ok: !!w._box && w._box.x >= -1 && w._box.y >= -1 && (w._box.x + w._box.w) <= W + 1 && (w._box.y + w._box.h) <= H + 1 })); });
+    ok('F3 五件默认位均在画布内不溢出', bounds.every(b => b.ok), JSON.stringify(bounds));
+    const anchors = await pg.evaluate(() => window.__S.widgets.map(w => w.type + '@' + w.x.toFixed(2) + ',' + w.y.toFixed(2)).join(' | '));
+    await pg.evaluate(() => { document.getElementById('presetLiveRoom').click(); });
+    await pg.waitForTimeout(150);
+    const again = await pg.evaluate(() => window.__S.widgets.map(w => w.type + '@' + w.x.toFixed(2) + ',' + w.y.toFixed(2)).join(' | '));
+    ok('F4 重复点预设幂等（同序同位）', again === anchors, '首次=' + anchors + ' 再点=' + again);
+    ok('F5 预设不产生 JS 报错', perr.length === 0, perr.slice(0, 2).join(' | '));
+
+    console.log('\n[G] 一键清空（组件+气泡+旁白框，保留底图/分支卡）');
+    await pg.evaluate(() => {
+      document.getElementById('presetLiveRoom').click();
+      document.getElementById('addBub').click(); document.getElementById('addBub').click();
+      const S = window.__S; S.nar.on = true; S.nar.text = '旁白应被清空'; S.ch.on = true; S.ch.prompt = '分支应保留'; window.render();
+    });
+    const before = await pg.evaluate(() => ({ w: window.__S.widgets.length, b: window.__S.bubs.length, narOn: window.__S.nar.on, nar: window.__S.nar.text }));
+    ok('G0 清空前确有组件+气泡+旁白', before.w >= 5 && before.b >= 2 && before.narOn && before.nar.trim() !== '', JSON.stringify(before));
+    await pg.evaluate(() => window.clearAllContent());
+    await pg.waitForTimeout(150);
+    const after = await pg.evaluate(() => ({
+      w: window.__S.widgets.length, b: window.__S.bubs.length, selKind: window.__S.selKind, selW: window.__S.selWidget, selB: window.__S.sel,
+      narOn: window.__S.nar.on, nar: window.__S.nar.text, domNarOn: document.getElementById('narOn').checked, domNarText: document.getElementById('narText').value,
+      ch: window.__S.ch.prompt,
+    }));
+    ok('G1 清空后组件=0 且气泡=0', after.w === 0 && after.b === 0, JSON.stringify(after));
+    ok('G2 清空后选中态归零', after.selKind === 'none' && after.selW === -1 && after.selB === -1, JSON.stringify(after));
+    ok('G3 旁白框被清空（状态+DOM 控件同步）', after.narOn === false && after.nar === '' && after.domNarOn === false && after.domNarText === '', JSON.stringify(after));
+    ok('G4 分支卡保留（清空不波及）', after.ch === '分支应保留', after.ch);
+    // 走按钮 + 确认框全链路
+    await pg.evaluate(() => {
+      document.getElementById('addProduct').click(); document.getElementById('addBub').click();
+      const S = window.__S; S.nar.on = true; S.nar.text = '再写点旁白'; window.render();
+    });
+    pg.on('dialog', d => d.accept());
+    await pg.evaluate(() => { document.getElementById('clearAll').click(); });
+    await pg.waitForTimeout(150);
+    const viaBtn = await pg.evaluate(() => ({ w: window.__S.widgets.length, b: window.__S.bubs.length, narOn: window.__S.nar.on, nar: window.__S.nar.text }));
+    ok('G5 点按钮+确认=组件/气泡/旁白全清', viaBtn.w === 0 && viaBtn.b === 0 && viaBtn.narOn === false && viaBtn.nar === '', JSON.stringify(viaBtn));
+    ok('G6 清空全程无 JS 报错', perr.length === 0, perr.slice(0, 2).join(' | '));
+
+    console.log('\n[H] 左侧栏 4 大类折叠 + 顶栏按钮化 + contain 默认');
+    const struct = await pg.evaluate(() => ({
+      grps: [...document.querySelectorAll('aside details.grp > summary')].map(s => s.textContent.trim()),
+      subs: [...document.querySelectorAll('aside details.sub > summary')].map(s => s.textContent.trim()),
+    }));
+    ok('H1 4 大类分组齐全', ['底图与画面', '文字与气泡', '带货组件', '导出'].every(t => struct.grps.some(g => g.includes(t))), JSON.stringify(struct.grps));
+    ok('H2 文字与气泡下 3 子块齐全', ['旁白框', '对话气泡', 'A/B/C 分支选项卡'].every(t => struct.subs.some(s => s.includes(t))), JSON.stringify(struct.subs));
+    const idsAlive = await pg.evaluate(() => ['fit', 'offX', 'zoom', 'bg', 'narOn', 'narText', 'addBub', 'bubs', 'chOn', 'chPrompt', 'presetLiveRoom', 'clearAll', 'widgets', 'taskSel', 'png', 'pptx', 'outGrid'].every(id => !!document.getElementById(id)));
+    ok('H3 重排后关键控件 id 全部保留', idsAlive);
+    const dflt = await pg.evaluate(() => { const a = [...document.querySelectorAll('aside details')]; return { total: a.length, allClosed: a.every(d => !d.open) }; });
+    ok('H3b 进入页面默认全部收起', dflt.total >= 7 && dflt.allClosed, JSON.stringify(dflt));
+    await pg.evaluate(() => { document.getElementById('toggleAll').click(); });
+    await pg.waitForTimeout(120);
+    const opened = await pg.evaluate(() => { const a = [...document.querySelectorAll('aside details')]; return { allOpen: a.every(d => d.open), label: document.getElementById('toggleAll').textContent.trim() }; });
+    ok('H4 点展开全部→所有 details 打开', opened.allOpen && opened.label.includes('收起'), JSON.stringify(opened));
+    await pg.evaluate(() => { document.getElementById('toggleAll').click(); });
+    await pg.waitForTimeout(120);
+    const closed2 = await pg.evaluate(() => { const a = [...document.querySelectorAll('aside details')]; return { allClosed: a.every(d => !d.open), label: document.getElementById('toggleAll').textContent.trim() }; });
+    ok('H5 再点收起全部→所有 details 关闭', closed2.allClosed && closed2.label.includes('展开'), JSON.stringify(closed2));
+    await pg.evaluate(() => { document.getElementById('collapseAside').click(); });
+    await pg.waitForTimeout(120);
+    const asideHidden = await pg.evaluate(() => ({ cls: document.querySelector('main').classList.contains('aside-collapsed'), disp: getComputedStyle(document.querySelector('aside')).display, label: document.getElementById('collapseAside').textContent.trim() }));
+    ok('H5b 点收起侧栏→aside 隐藏、主区单列', asideHidden.cls && asideHidden.disp === 'none' && asideHidden.label.includes('展开'), JSON.stringify(asideHidden));
+    await pg.evaluate(() => { document.getElementById('collapseAside').click(); });
+    await pg.waitForTimeout(120);
+    const asideShown = await pg.evaluate(() => ({ cls: document.querySelector('main').classList.contains('aside-collapsed'), disp: getComputedStyle(document.querySelector('aside')).display }));
+    ok('H5c 再点展开侧栏→aside 恢复显示', !asideShown.cls && asideShown.disp !== 'none', JSON.stringify(asideShown));
+    const fitDefault = await pg.evaluate(() => ({ state: window.__S.view.fit, sel: document.getElementById('fit').value }));
+    ok('H6 底图默认铺法=contain（状态+下拉一致）', fitDefault.state === 'contain' && fitDefault.sel === 'contain', JSON.stringify(fitDefault));
+    const navbtn = await pg.evaluate(() => { const a = [...document.querySelectorAll('header nav a.navbtn')]; return a.length === 4 && a.every(x => { const cs = getComputedStyle(x); return parseFloat(cs.borderTopWidth) > 0 && cs.cursor === 'pointer'; }); });
+    ok('H7 顶栏 4 导航链接按钮化（有边框+可点光标）', navbtn);
+    ok('H8 布局改造无 JS 报错', perr.length === 0, perr.slice(0, 2).join(' | '));
+
     await b.close();
   }
 

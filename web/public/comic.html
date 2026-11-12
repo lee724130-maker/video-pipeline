@@ -41,108 +41,155 @@
   #libGrid img, #outGrid img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:4px; border:1px solid var(--line); cursor:pointer; display:block; }
   #libGrid img:hover, #outGrid img:hover { border-color:var(--accent); }
   .empty { color:var(--dim); font-size:12px; padding:6px 0; }
+  /* 折叠分组（4 大类 + 嵌套子块），原生 details/summary */
+  details.grp { border:1px solid var(--line); border-radius:8px; margin:0 0 10px; background:var(--panel); overflow:hidden; }
+  details.grp > summary { list-style:none; cursor:pointer; padding:10px 12px; font-weight:600; font-size:13px; color:var(--txt); display:flex; align-items:center; gap:8px; user-select:none; }
+  details.grp > summary::-webkit-details-marker, details.sub > summary::-webkit-details-marker { display:none; }
+  details.grp > summary::before, details.sub > summary::before { content:"▸"; color:var(--dim); width:11px; display:inline-block; flex:0 0 auto; }
+  details.grp[open] > summary::before, details.sub[open] > summary::before { content:"▾"; }
+  details.grp > summary:hover { background:#2f333a; }
+  details.grp[open] > summary { border-bottom:1px solid var(--line); }
+  .grp-body { padding:10px 12px; }
+  details.sub { border:1px solid var(--line); border-radius:7px; margin:0 0 9px; background:#1f2226; overflow:hidden; }
+  details.sub:last-child { margin-bottom:0; }
+  details.sub > summary { list-style:none; cursor:pointer; padding:8px 10px; font-size:12px; font-weight:600; color:var(--dim); display:flex; align-items:center; gap:6px; user-select:none; }
+  details.sub > summary:hover { background:#262a30; }
+  details.sub[open] > summary { border-bottom:1px solid var(--line); color:var(--txt); }
+  .sub-body { padding:8px 10px; }
+  /* 顶栏：导航链接按钮化 + 全局工具条 + 提示文本明确非交互 */
+  .nav { display:flex; gap:6px; }
+  .navbtn { background:#333842; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:5px 10px; font-size:13px; text-decoration:none; cursor:pointer; }
+  .navbtn:hover { border-color:var(--accent); color:var(--accent); }
+  .toolbar { display:flex; gap:6px; align-items:center; }
+  #topNote { margin-left:auto; color:var(--dim); font-size:12px; font-style:normal; }
+  /* 侧栏整体向左收起：隐藏 aside、主区变单列，画布占满 */
+  main.aside-collapsed { grid-template-columns: 1fr; }
+  main.aside-collapsed aside { display: none; }
 </style>
 </head>
 <body>
 <header>
   <h1>漫画格排版</h1>
   <span class="tag">P21 · 排版层，不接生图模型</span>
-  <a href="/">← 入口</a><a href="/console">控制台</a><a href="/cut">重剪</a><a href="/wizard">向导</a>
-  <span class="note">拖动旁白框/气泡定位，拖右下角圆点改宽度；画布滚轮缩放底图，Alt+拖动移动底图</span>
+  <div class="toolbar"><button id="collapseAside" class="sm" type="button">◀ 收起侧栏</button><button id="toggleAll" class="sm" type="button">▸ 展开全部</button></div>
+  <nav class="nav">
+    <a class="navbtn" href="/">← 入口</a>
+    <a class="navbtn" href="/console">控制台</a>
+    <a class="navbtn" href="/cut">重剪</a>
+    <a class="navbtn" href="/wizard">向导</a>
+  </nav>
+  <span class="note" id="topNote">ⓘ 拖动旁白框/气泡定位，拖右下角圆点改宽度；画布滚轮缩放底图，Alt+拖动移动底图</span>
 </header>
 <main>
 <aside>
-  <fieldset>
-    <legend>底图 · 从素材库选</legend>
-    <div class="row"><button id="libReload" class="sm">刷新素材库</button><input type="file" id="file" accept="image/*" style="flex:1"></div>
-    <div id="libGrid"><div class="empty">加载中…</div></div>
-    <label>铺法</label>
-    <select id="fit"><option value="cover">cover 铺满裁切</option><option value="contain">contain 完整可见</option></select>
-    <div class="grid2">
-      <div><label>水平偏移 <span id="xv"></span></label><input type="range" id="offX" min="-0.6" max="0.6" step="0.01" value="0"></div>
-      <div><label>垂直偏移 <span id="yv"></span></label><input type="range" id="offY" min="-0.6" max="0.6" step="0.01" value="0"></div>
+  <details class="grp">
+    <summary>🖼 底图与画面</summary>
+    <div class="grp-body">
+      <div class="row"><button id="libReload" class="sm">刷新素材库</button><input type="file" id="file" accept="image/*" style="flex:1"></div>
+      <div id="libGrid"><div class="empty">加载中…</div></div>
+      <label>铺法</label>
+      <select id="fit"><option value="contain" selected>contain 完整可见</option><option value="cover">cover 铺满裁切</option></select>
+      <div class="grid2">
+        <div><label>水平偏移 <span id="xv"></span></label><input type="range" id="offX" min="-0.6" max="0.6" step="0.01" value="0"></div>
+        <div><label>垂直偏移 <span id="yv"></span></label><input type="range" id="offY" min="-0.6" max="0.6" step="0.01" value="0"></div>
+      </div>
+      <label>缩放 <span id="zoomv"></span></label><input type="range" id="zoom" min="0.2" max="4" step="0.01" value="1">
+      <label>背景色（图缩小后露出的区域）</label><input type="color" id="bg" value="#101215" style="width:100%;height:30px;padding:2px">
     </div>
-    <label>缩放 <span id="zoomv"></span></label><input type="range" id="zoom" min="0.2" max="4" step="0.01" value="1">
-    <label>背景色（图缩小后露出的区域）</label><input type="color" id="bg" value="#101215" style="width:100%;height:30px;padding:2px">
-  </fieldset>
+  </details>
 
-  <fieldset>
-    <legend>旁白框</legend>
-    <div class="chk"><input type="checkbox" id="narOn" checked><label for="narOn" style="margin:0">启用</label></div>
-    <textarea id="narText">当你被仙人选中，
-选择一心向道时</textarea>
-    <div class="grid2">
-      <div><label>位置预设</label><select id="narPos"><option value="top">顶部</option><option value="bottom">底部</option></select></div>
-      <div><label>主题</label><select id="narTheme"><option value="light">浅底深字</option><option value="dark">深底白字</option><option value="frost">磨砂半透</option></select></div>
-    </div>
-    <div class="grid2">
-      <div><label>对齐</label><select id="narAlign"><option value="left">左对齐</option><option value="center">居中</option></select></div>
-      <div><label>字色</label><input type="color" id="narFg" value="#15181c" style="width:100%;height:28px;padding:2px"></div>
-    </div>
-    <label>宽度 <span id="narWv"></span></label><input type="range" id="narW" min="0.3" max="0.98" step="0.01" value="0.86">
-    <label>字号 <span id="narFv"></span></label><input type="range" id="narF" min="24" max="52" step="1" value="34">
-    <label>不透明度 <span id="narAv"></span></label><input type="range" id="narA" min="0.3" max="1" step="0.02" value="0.92">
-  </fieldset>
-
-  <fieldset>
-    <legend>对话气泡</legend>
-    <div class="row"><button id="addBub" class="sm">+ 添加气泡</button><button id="delBub" class="sm">删除选中</button></div>
-    <div id="bubs" style="margin-top:8px"></div>
-  </fieldset>
-
-  <fieldset>
-    <legend>A/B/C 分支选项卡</legend>
-    <div class="chk"><input type="checkbox" id="chOn"><label for="chOn" style="margin:0">整格改为选项卡（底图变暗）</label></div>
-    <label>引导语</label><textarea id="chPrompt">小禾，你要照顾好自己。
+  <details class="grp">
+    <summary>💬 文字与气泡</summary>
+    <div class="grp-body">
+      <details class="sub">
+        <summary>旁白框</summary>
+        <div class="sub-body">
+          <div class="chk"><input type="checkbox" id="narOn"><label for="narOn" style="margin:0">启用</label></div>
+          <textarea id="narText"></textarea>
+          <div class="grid2">
+            <div><label>位置预设</label><select id="narPos"><option value="top">顶部</option><option value="bottom">底部</option></select></div>
+            <div><label>主题</label><select id="narTheme"><option value="light">浅底深字</option><option value="dark">深底白字</option><option value="frost">磨砂半透</option></select></div>
+          </div>
+          <div class="grid2">
+            <div><label>对齐</label><select id="narAlign"><option value="left">左对齐</option><option value="center">居中</option></select></div>
+            <div><label>字色</label><input type="color" id="narFg" value="#15181c" style="width:100%;height:28px;padding:2px"></div>
+          </div>
+          <label>宽度 <span id="narWv"></span></label><input type="range" id="narW" min="0.3" max="0.98" step="0.01" value="0.86">
+          <label>字号 <span id="narFv"></span></label><input type="range" id="narF" min="24" max="52" step="1" value="34">
+          <label>不透明度 <span id="narAv"></span></label><input type="range" id="narA" min="0.3" max="1" step="0.02" value="0.92">
+        </div>
+      </details>
+      <details class="sub">
+        <summary>对话气泡</summary>
+        <div class="sub-body">
+          <div class="row"><button id="addBub" class="sm">+ 添加气泡</button><button id="delBub" class="sm">删除选中</button></div>
+          <div id="bubs" style="margin-top:8px"></div>
+        </div>
+      </details>
+      <details class="sub">
+        <summary>A/B/C 分支选项卡</summary>
+        <div class="sub-body">
+          <div class="chk"><input type="checkbox" id="chOn"><label for="chOn" style="margin:0">整格改为选项卡（底图变暗）</label></div>
+          <label>引导语</label><textarea id="chPrompt">小禾，你要照顾好自己。
 等我修炼有成了，就回来看你。</textarea>
-    <label>选项 A</label><textarea id="chA">我不去了。
+          <label>选项 A</label><textarea id="chA">我不去了。
 我要留在这里，和你在一起。</textarea>
-    <label>选项 B</label><textarea id="chB">仙凡有别。
+          <label>选项 B</label><textarea id="chB">仙凡有别。
 你这样的凡人，
 就别再和我攀交情了。</textarea>
-    <label>选项 C</label><textarea id="chC">我愿意！仙长，
+          <label>选项 C</label><textarea id="chC">我愿意！仙长，
 我愿意去！</textarea>
-  </fieldset>
+        </div>
+      </details>
+    </div>
+  </details>
 
-  <fieldset>
-    <legend>带货组件（C1）</legend>
-    <div class="row">
-      <button id="addViewer" class="sm">＋ 观看数胶囊</button>
-      <button id="addNamebar" class="sm">＋ 主播名条+关注</button>
-      <button id="addProduct" class="sm">＋ 商品卡</button>
-      <button id="addDanmaku" class="sm">＋ 弹幕条</button>
-      <button id="addBar" class="sm">＋ 底部操作栏</button>
-      <button id="delWidget" class="sm danger">删除选中</button>
+  <details class="grp">
+    <summary>🛒 带货组件（C1+C2）</summary>
+    <div class="grp-body">
+      <div class="row">
+        <button id="presetLiveRoom" class="pri">🎬 一键铺带货版式</button>
+        <button id="addViewer" class="sm">＋ 观看数胶囊</button>
+        <button id="addNamebar" class="sm">＋ 主播名条+关注</button>
+        <button id="addProduct" class="sm">＋ 商品卡</button>
+        <button id="addDanmaku" class="sm">＋ 弹幕条</button>
+        <button id="addBar" class="sm">＋ 底部操作栏</button>
+        <button id="delWidget" class="sm danger">删除选中</button>
+        <button id="clearAll" class="sm danger">🗑 一键清空</button>
+      </div>
+      <div class="hint">「🗑 一键清空」= 一次清空画布上所有<b>带货组件 + 对话气泡 + 旁白框</b>（底图、分支卡保留）。</div>
+      <div class="hint">「一键铺带货版式」= 清空现有带货组件后，按标准直播间版式一次铺齐五件（观看数右上 / 名条左上 / 商品卡右下 / 弹幕左中 / 底部操作栏下中），可反复点、幂等不堆叠，旁白/气泡/底图不受影响。也可用上面各「＋」按钮单独添加。字段（昵称/关注数/标题/卖点/价格/按钮文字/弹幕多行/CTA）可改，头像与 SKU 图可上传，画布上均可拖动。</div>
+      <div id="widgets"></div>
     </div>
-    <div class="hint">一键放到默认位（观看数右上 / 名条左上 / 商品卡右下 / 弹幕左中 / 底部操作栏下中），画布上可拖动；字段（昵称/关注数/标题/卖点/价格/按钮文字/弹幕多行/CTA）可改，头像与 SKU 图可上传。</div>
-    <div id="widgets"></div>
-  </fieldset>
+  </details>
 
-  <fieldset>
-    <legend>导出</legend>
-    <label>目标任务（产物写入 <code>output/任务/comic/</code>，不碰主链文件）</label>
-    <div class="row"><select id="taskSel" style="flex:1"></select><button id="taskReload" class="sm">↻</button></div>
-    <div class="grid2">
-      <div><label>格号</label><input type="number" id="cellNo" min="1" max="999" value="1"></div>
-      <div><label>文件名前缀</label><input type="text" id="cellPrefix" value="格" maxlength="20"></div>
+  <details class="grp">
+    <summary>📤 导出</summary>
+    <div class="grp-body">
+      <label>目标任务（产物写入 <code>output/任务/comic/</code>，不碰主链文件）</label>
+      <div class="row"><select id="taskSel" style="flex:1"></select><button id="taskReload" class="sm">↻</button></div>
+      <div class="grid2">
+        <div><label>格号</label><input type="number" id="cellNo" min="1" max="999" value="1"></div>
+        <div><label>文件名前缀</label><input type="text" id="cellPrefix" value="格" maxlength="20"></div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="png" class="pri">浏览器下载 PNG</button>
+        <button id="toTask" class="ok">写入任务目录</button>
+      </div>
+      <div class="row"><button id="saveJson" class="sm">存剧本 JSON</button><button id="loadJson" class="sm">读剧本 JSON</button>
+        <input type="file" id="jsonFile" accept="application/json" style="display:none"></div>
+      <div class="row" style="margin-top:6px">
+        <button id="svg" class="sm">导出 SVG（纯矢量·可编辑）</button>
+        <button id="pptx" class="sm">导出 PPTX（WPS 可编辑）</button>
+        <button id="pptxTask" class="sm">PPTX 入任务目录</button>
+        <button id="basePng" class="sm">底图 PNG</button>
+        <button id="manifest" class="sm">存 text-manifest.json</button>
+      </div>
+      <div class="hint">SVG 现为<b>纯矢量层</b>（不含底图位图，实测 WPS/Office 拒绝内嵌大 base64 栅格）：旁白框/气泡/文字都是矢量对象，价格、卖点、台词可在 Illustrator / Inkscape / <b>WPS 演示「插入→图片」</b>里直接改。底图另点「底图 PNG」导出为一张位图，正式素材走「<b>底图 PNG 垫底 + 矢量 SVG 叠加</b>」分层；概念整图仍用上面的 PNG 出口一次直出。manifest 单独存文字内容与坐标，便于批量替换文案。</div>
+      <div id="outMsg" class="hint"></div>
+      <label>该任务已导出的格</label><div id="outGrid"><div class="empty">选择任务后加载</div></div>
     </div>
-    <div class="row" style="margin-top:8px">
-      <button id="png" class="pri">浏览器下载 PNG</button>
-      <button id="toTask" class="ok">写入任务目录</button>
-    </div>
-    <div class="row"><button id="saveJson" class="sm">存剧本 JSON</button><button id="loadJson" class="sm">读剧本 JSON</button>
-      <input type="file" id="jsonFile" accept="application/json" style="display:none"></div>
-    <div class="row" style="margin-top:6px">
-      <button id="svg" class="sm">导出 SVG（纯矢量·可编辑）</button>
-      <button id="pptx" class="sm">导出 PPTX（WPS 可编辑）</button>
-      <button id="pptxTask" class="sm">PPTX 入任务目录</button>
-      <button id="basePng" class="sm">底图 PNG</button>
-      <button id="manifest" class="sm">存 text-manifest.json</button>
-    </div>
-    <div class="hint">SVG 现为<b>纯矢量层</b>（不含底图位图，实测 WPS/Office 拒绝内嵌大 base64 栅格）：旁白框/气泡/文字都是矢量对象，价格、卖点、台词可在 Illustrator / Inkscape / <b>WPS 演示「插入→图片」</b>里直接改。底图另点「底图 PNG」导出为一张位图，正式素材走「<b>底图 PNG 垫底 + 矢量 SVG 叠加</b>」分层；概念整图仍用上面的 PNG 出口一次直出。manifest 单独存文字内容与坐标，便于批量替换文案。</div>
-    <div id="outMsg" class="hint"></div>
-    <label>该任务已导出的格</label><div id="outGrid"><div class="empty">选择任务后加载</div></div>
-  </fieldset>
+  </details>
 </aside>
 
 <section class="stage">
@@ -157,8 +204,8 @@ const cv = document.getElementById('view');
 let ctx = cv.getContext('2d');
 const S = {
   base: null,
-  view: { fit: 'cover', x: 0, y: 0, zoom: 1, bg: '#101215' },
-  nar: { on: true, text: '', pos: 'top', x: 0.5, y: 0.09, theme: 'light', w: 0.86, f: 34, a: 0.92, align: 'left', fg: '#15181c', _rect: null },
+  view: { fit: 'contain', x: 0, y: 0, zoom: 1, bg: '#101215' },
+  nar: { on: false, text: '', pos: 'top', x: 0.5, y: 0.09, theme: 'light', w: 0.86, f: 34, a: 0.92, align: 'left', fg: '#15181c', _rect: null },
   bubs: [], sel: -1, selKind: 'none',
   widgets: [], selWidget: -1,
   ch: { on: false, prompt: '', a: '', b: '', c: '' },
@@ -505,6 +552,46 @@ $('addProduct').onclick = () => { S.widgets.push(newWidget('product')); S.selWid
 $('addDanmaku').onclick = () => { S.widgets.push(newWidget('danmaku')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
 $('addBar').onclick = () => { S.widgets.push(newWidget('actionbar')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
 $('delWidget').onclick = () => { if (S.selKind === 'widget' && S.selWidget >= 0) { S.widgets.splice(S.selWidget, 1); S.selWidget = -1; S.selKind = 'none'; widgetList(); render(); } };
+
+/* ---------- 带货预设模板：一键铺标准直播间版式（幂等替换带货组件，不动旁白/气泡/底图） ---------- */
+const PRESETS = {
+  'live-room': ['namebar', 'viewer', 'danmaku', 'product', 'actionbar'],
+};
+function applyPreset(name) {
+  const types = PRESETS[name]; if (!types) return;
+  S.widgets = types.map(t => newWidget(t));   // 各类型自带标准位，重复点结果一致=幂等
+  S.selWidget = -1; S.selKind = 'none';
+  widgetList(); render();
+}
+$('presetLiveRoom').onclick = () => applyPreset('live-room');
+
+/* ---------- 一键清空：清掉所有带货组件 + 对话气泡 + 旁白框（底图/分支卡保留） ---------- */
+function clearAllContent() {
+  S.widgets = []; S.bubs = [];
+  S.nar.on = false; S.nar.text = '';
+  S.selWidget = -1; S.sel = -1; S.selKind = 'none';
+  syncInputs(); bubbleList(); widgetList(); render();
+}
+$('clearAll').onclick = () => {
+  const hasNar = S.nar.on && S.nar.text.trim();
+  const n = S.widgets.length + S.bubs.length + (hasNar ? 1 : 0);
+  if (!n) { $('outMsg').textContent = '画布已空，无需清空'; return; }
+  if (confirm(`确定清空全部 ${S.widgets.length} 个组件 + ${S.bubs.length} 个气泡 + 旁白框？（底图/分支卡保留，此操作不可撤销）`)) clearAllContent();
+};
+
+/* ---------- 顶栏：全部展开 / 收起（作用于 aside 内所有 details） ---------- */
+$('toggleAll').onclick = () => {
+  const all = [...document.querySelectorAll('aside details')];
+  const anyOpen = all.some(d => d.open);
+  all.forEach(d => { d.open = !anyOpen; });
+  $('toggleAll').textContent = anyOpen ? '▸ 展开全部' : '▾ 收起全部';
+};
+
+/* ---------- 顶栏：侧栏整体向左收起 / 展开 ---------- */
+$('collapseAside').onclick = () => {
+  const collapsed = document.querySelector('main').classList.toggle('aside-collapsed');
+  $('collapseAside').textContent = collapsed ? '▶ 展开侧栏' : '◀ 收起侧栏';
+};
 
 /* ---------- 画布交互 ---------- */
 function toCanvas(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; }
@@ -982,11 +1069,7 @@ function initFromDom() {
   viewLabels();
 }
 
-/* 初始：两个气泡示例，方便立刻看到效果 */
-S.bubs.push(newBubble('太好了……我就知道，\n你一定会有出息的！'));
-S.bubs[0].x = .62; S.bubs[0].y = .17; S.bubs[0].tx = .5; S.bubs[0].ty = .3; S.bubs[0].w = .4;
-S.bubs.push(newBubble('快去吧，\n别让仙人等急了。'));
-S.bubs[1].x = .3; S.bubs[1].y = .42; S.bubs[1].tx = .42; S.bubs[1].ty = .55; S.bubs[1].w = .36;
+/* 初始：白板起步——无带货组件、无对话气泡、无旁白（见下方 S 默认 + 表单默认） */
 initFromDom(); bubbleList(); widgetList(); render(); loadLibrary(); loadTasks();
 </script>
 </body>
