@@ -47,3 +47,10 @@
 2. **SKU/头像从素材库选**：现只本地上传；接 `/lib/images` 选择器更顺（真实 SKU 诉求）。
 3. **pptx 头像裁圆**：namebar 头像在 pptx 里是方形图叠在椭圆上（canvas 有 clipEllipse，pptx 未裁），要精确裁圆需 pptx 图片 fill 或裁剪 XML。
 4. **D 项批量出格**、第3节 B 项（SVG/manifest 落盘）仍在队列。
+
+## 七、断点交接（2026-11-11 清上下文前落盘）
+
+- **工作树干净**：HEAD `6f678f2`（P25 带货组件 C1+C2）已提交推送，`main...origin/main` 无 ahead；工作树只剩旧欠账 `AI漫剧分镜与提示词模板.md` 未跟踪（非本会话产物，等用户）。
+- **桌面交接文档**：`C:\Users\Administrator\Desktop\断点交接-2026-11-11.md`（现场/近三天做完/待办队列 A~E/关键技术事实/文件位置，全在里面）。
+- **下一会话一句话续办**：「按 `C:\Users\Administrator\Desktop\断点交接-2026-11-11.md` 继续，先做第 3 节的 A 项」（A=带货预设模板）。
+- **环境提醒**：git 代理 `127.0.0.1:7890`（Clash）当前停用，push 需 `git -c http.proxy= -c https.proxy= push origin main` 绕过直连；8787 服务已停，跑冒烟/回归前先重启且**串行独占**。
