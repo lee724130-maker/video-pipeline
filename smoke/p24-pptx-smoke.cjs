@@ -139,6 +139,35 @@ print(json.dumps(info))
   ok('D6 name 非 .pptx → 400 bad name', d6.status === 400 && /bad name/.test(d6.j.error || ''), `${d6.status} ${d6.j.error}`);
   ok('D7 负例未污染磁盘', !fs.existsSync(path.join(OUTPUT, NAME, 'comic', '格01.png')) && !fs.existsSync(path.join(OUTPUT, 'no_such_task_zzz')));
 
+  console.log('\n[F] 头像 clipEllipse → pptx 裁圆（引擎级）');
+  {
+    const spec = { canvas: { w: 1024, h: 1536 }, fontFamily: 'Microsoft YaHei', base: null, layers: [
+      { kind: 'widget', prims: [
+        { op: 'image', x: 100, y: 100, w: 56, h: 56, src: BASE64PNG, clipEllipse: true },
+        { op: 'image', x: 300, y: 100, w: 110, h: 110, src: BASE64PNG },
+      ] },
+    ] };
+    const specPath = path.join(P, 'avatar-spec.json');
+    const outPath = path.join(P, 'avatar.pptx');
+    fs.writeFileSync(specPath, JSON.stringify(spec));
+    execFileSync(PY, [path.join(ROOT, 'pipeline', 'tools', 'make_pptx.py'), specPath, outPath], { encoding: 'utf8' });
+    const pyScript = `
+import sys, zipfile, re
+xml=zipfile.ZipFile(sys.argv[1]).read('ppt/slides/slide1.xml').decode('utf8')
+pics=re.findall(r'<p:pic>.*?</p:pic>', xml, re.S)
+out=[]
+for p in pics:
+    g=re.search(r'<a:prstGeom prst="([^"]+)"', p)
+    out.append(g.group(1) if g else 'NONE')
+print(','.join(out))
+`;
+    const prst = execFileSync(PY, ['-c', pyScript, outPath], { encoding: 'utf8' }).trim().split('\n').pop();
+    const list = prst.split(',');
+    ok('F1 生成含两张图片的 pptx', list.length === 2, 'pics=' + prst);
+    ok('F2 头像图(clipEllipse) 裁成 ellipse', list[0] === 'ellipse', 'prst[0]=' + list[0]);
+    ok('F3 SKU 图(无 clipEllipse) 保持 rect', list[1] === 'rect', 'prst[1]=' + list[1]);
+  }
+
   console.log('\n[E] 清场');
   const leftover = fs.readdirSync(os.tmpdir()).filter(f => f.startsWith('comic-pptx-'));
   ok('E1 服务端临时目录已清理（无 comic-pptx-* 残留）', leftover.length === 0, leftover.join(','));

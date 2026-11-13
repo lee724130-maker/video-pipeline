@@ -62,6 +62,25 @@ def set_cjk(run, name):
             el = rPr.makeelement(qn(tag), {}); rPr.append(el)
         el.set('typeface', name)
 
+def _clip_pic_to_ellipse(pic):
+    """把图片形状几何设为 prstGeom ellipse → PowerPoint/WPS 将图片裁成圆（等价 canvas clipEllipse）。"""
+    spPr = pic._element.spPr
+    if spPr is None:
+        return
+    geom = spPr.find(qn('a:prstGeom'))
+    if geom is not None:
+        geom.set('prst', 'ellipse')
+        return
+    for g in spPr.findall(qn('a:custGeom')):
+        spPr.remove(g)
+    geom = spPr.makeelement(qn('a:prstGeom'), {'prst': 'ellipse'})
+    geom.append(spPr.makeelement(qn('a:avLst'), {}))
+    xfrm = spPr.find(qn('a:xfrm'))
+    if xfrm is not None:
+        xfrm.addnext(geom)
+    else:
+        spPr.insert(0, geom)
+
 def add_layer(slide, L, font_family):
     # 气泡尾巴三角：先画 freeform 闭合多边形（同填充、无描边），主形状随后盖住接缝
     tp = L.get('tail')
@@ -188,7 +207,9 @@ def add_widget(slide, L, font_family):
             m = re.match(r'^data:image/(?:png|jpeg|jpg|webp|gif);base64,(.+)$', str(p.get('src', '')), re.I)
             if m:
                 try:
-                    slide.shapes.add_picture(io.BytesIO(base64.b64decode(m.group(1))), px(p['x']), px(p['y']), px(p['w']), px(p['h']))
+                    pic = slide.shapes.add_picture(io.BytesIO(base64.b64decode(m.group(1))), px(p['x']), px(p['y']), px(p['w']), px(p['h']))
+                    if p.get('clipEllipse'):
+                        _clip_pic_to_ellipse(pic)
                 except Exception:
                     pass
         elif op == 'text':

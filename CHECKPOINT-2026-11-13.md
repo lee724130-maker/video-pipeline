@@ -45,14 +45,20 @@
 
 ## 六、遗留与下一步（队列）
 
-1. **pptx 头像裁圆**（P25/P26 遗留 C 项，小改）：namebar 头像在 pptx 里是方形图叠在椭圆上（canvas 有 clipEllipse，pptx 未裁），精确裁圆需 pptx 图片 fill 或裁剪 XML。
+1. ~~**pptx 头像裁圆**（P25/P26 遗留 C 项，小改）~~ ✅ 本日已完成（见第七节 P28）。
 2. **SVG/manifest 落盘 + 批量出格**（D 项，远期）：SVG/text-manifest 目前只浏览器下载，未落 `output/任务/comic/`；批量出格=一份 `panel-spec.json` 一次出整套格 PNG+SVG+pptx，纯排版零配额。
 3. **全量回归**：本里程碑未跑 16 套全量，建议择空闲时段**串行独占 8787** 补跑一次（含 p25/p21 + 哨兵）。
 4. 可选：其他 HTML 路由（/、/console、/cut、/wizard）同样没设 no-store，若也遇到"改完看不到"可一并加。
 
-## 七、断点交接（2026-11-13）
+## 七、同日续做 · pptx 头像裁圆（P28）
 
-- 本会话素材库灯箱选择器 + 缓存头修复已提交推送（见提交记录），`main` 与 `origin/main` 同步后工作树只剩旧欠账 md。
+- **目标**：namebar 头像在 canvas 里被 `clipEllipse` 裁圆，但 pptx 出口是 `add_picture` 矩形放置、不认该标记 → 头像在 WPS 里是方图叠在椭圆上。
+- **实现**（`pipeline/tools/make_pptx.py`）：新增 `_clip_pic_to_ellipse(pic)`，image 图元带 `clipEllipse` 时把图片 `<a:prstGeom>` 设成 `prst="ellipse"`（OOXML 图片形状设椭圆即裁成圆，PPT/WPS 支持）；SKU 图不带标记仍矩形。**浏览器端零改**——`buildPptxSpec` 的 `{...p}` 只删 `img`，`clipEllipse` 早已透传给 python。
+- **验证**：p24 冒烟 35→**38**（新增 [F] 引擎级 3 条：两张图、头像 `prstGeom=ellipse`、SKU `rect`）；全链路探针（浏览器设头像→buildPptxSpec clipEllipse=true+dataURL→POST 200→解包 pptx 头像图 ellipse）；p25 66/66、p21 67/67 无回归。**用户 WPS 实测**：头像裁圆效果 OK、SKU 保持方。本机无 LibreOffice/PowerPoint，视觉确认依赖用户 WPS。
+
+## 八、断点交接（2026-11-13）
+
+- 本会话两个里程碑（P27 素材库灯箱 + 缓存头、P28 pptx 头像裁圆）均已提交推送，`main` 与 `origin/main` 同步后工作树只剩旧欠账 `AI漫剧分镜与提示词模板.md`（untracked，非本会话产物）。
 - 8787 当前 PID 19164 在跑；下会话跑冒烟前先探活/重启且**串行独占**。
 - git 代理 `127.0.0.1:7890` 时好时坏，push 失败就 `git -c http.proxy= -c https.proxy= push origin main` 绕过直连。
-- 下一功能默认做第六节第 1 项（pptx 头像裁圆），或用户另指定。
+- 下一功能默认做第六节第 2 项（SVG/manifest 落盘 + 批量出格，远期偏大），或第 3 项（补跑 16 套全量回归），或用户另指定。
