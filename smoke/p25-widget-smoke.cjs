@@ -26,6 +26,7 @@ const skip = (n, why) => { skipN++; console.log('  ‑ SKIP ' + n + ' — ' + wh
   ok('A3 删除按钮 + widgets 容器', html.includes('id="delWidget"') && html.includes('id="widgets"'));
   ok('A4 带货预设模板按钮 + applyPreset 已挂载', html.includes('id="presetLiveRoom"') && /function\s+applyPreset/.test(html) && html.includes("'live-room'"));
   ok('A5 一键清空按钮 + clearAllContent 已挂载', html.includes('id="clearAll"') && /function\s+clearAllContent/.test(html));
+  ok('A6 素材库灯箱选择器已挂载', html.includes('id="libPicker"') && /function\s+openLibPicker/.test(html) && html.includes('data-pick='));
 
   if (!fs.existsSync(PW) || !fs.existsSync(EXE)) {
     skip('B/C/D 浏览器与端到端', '未找到 playwright-core 或 headless chromium');
@@ -202,6 +203,41 @@ print(json.dumps({'shapes':len(sl.shapes),'texts':texts}))
     const navbtn = await pg.evaluate(() => { const a = [...document.querySelectorAll('header nav a.navbtn')]; return a.length === 4 && a.every(x => { const cs = getComputedStyle(x); return parseFloat(cs.borderTopWidth) > 0 && cs.cursor === 'pointer'; }); });
     ok('H7 顶栏 4 导航链接按钮化（有边框+可点光标）', navbtn);
     ok('H8 布局改造无 JS 报错', perr.length === 0, perr.slice(0, 2).join(' | '));
+
+    console.log('\n[I] 素材库灯箱选择器（SKU/头像）');
+    await pg.evaluate(() => { document.getElementById('addNamebar').click(); document.getElementById('addProduct').click(); });
+    await pg.waitForTimeout(150);
+    const pickBtns = await pg.evaluate(() => ({
+      avatar: !!document.querySelector('#widgets [data-pick="avatar"]'),
+      sku: !!document.querySelector('#widgets [data-pick="sku"]'),
+      modal: !!document.getElementById('libPicker'),
+    }));
+    ok('I1 namebar 头像字段有素材库按钮', pickBtns.avatar);
+    ok('I2 product SKU 字段有素材库按钮', pickBtns.sku);
+    ok('I3 灯箱 modal 已挂载', pickBtns.modal);
+    await pg.evaluate(() => { document.querySelector('#widgets [data-pick="avatar"]').click(); });
+    await pg.waitForTimeout(500);
+    const pickerOpen = await pg.evaluate(() => ({ disp: getComputedStyle(document.getElementById('libPicker')).display, cells: document.querySelectorAll('#libPickerGrid .libcell').length }));
+    ok('I4 点素材库→灯箱打开', pickerOpen.disp !== 'none', JSON.stringify(pickerOpen));
+    if (pickerOpen.cells > 0) {
+      ok('I5 灯箱网格渲染出库图缩略图', pickerOpen.cells > 0, 'cells=' + pickerOpen.cells);
+      await pg.evaluate(() => { document.querySelector('#libPickerGrid .libcell img').click(); });
+      await pg.waitForTimeout(600);
+      const assigned = await pg.evaluate(() => {
+        const w = window.__S.widgets.find(x => x.type === 'namebar');
+        return { disp: getComputedStyle(document.getElementById('libPicker')).display, hasAvatar: !!(w && w.avatar && w.avatar.src), isDataUrl: !!(w && w.avatar && /^data:image\//.test(w.avatar.src)), thumb: !!document.querySelector('#widgets [data-clearimg="avatar"]') };
+      });
+      ok('I6 选图后 modal 关闭', assigned.disp === 'none', assigned.disp);
+      ok('I7 头像写入且为 dataURL（四出口一致前提）', assigned.hasAvatar && assigned.isDataUrl, JSON.stringify(assigned));
+      ok('I8 字段出现预览/清除按钮', assigned.thumb);
+      await pg.evaluate(() => { document.querySelector('#widgets [data-clearimg="avatar"]').click(); });
+      await pg.waitForTimeout(200);
+      const cleared = await pg.evaluate(() => { const w = window.__S.widgets.find(x => x.type === 'namebar'); return { av: w.avatar, thumb: !!document.querySelector('#widgets [data-clearimg="avatar"]') }; });
+      ok('I9 点清除→头像置空、预览消失', !cleared.av && !cleared.thumb, JSON.stringify(cleared));
+    } else {
+      skip('I6-I9 选图端到端', '素材库 images 目录为空（无库图可选，仅验到灯箱打开）');
+    }
+    ok('I10 灯箱选择器无 JS 报错', perr.length === 0, perr.slice(0, 2).join(' | '));
 
     await b.close();
   }

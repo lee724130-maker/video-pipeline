@@ -1295,7 +1295,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/comic') {
       const html = fs.readFileSync(path.join(ROOT, 'web', 'public', 'comic.html'), 'utf8');
-      res.writeHead(200, { 'Content-Type': MIME['.html'] });
+      res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' });
       return res.end(html);
     }
     json(res, 404, { error: 'unknown route' });

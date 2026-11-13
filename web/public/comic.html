@@ -65,6 +65,16 @@
   /* 侧栏整体向左收起：隐藏 aside、主区变单列，画布占满 */
   main.aside-collapsed { grid-template-columns: 1fr; }
   main.aside-collapsed aside { display: none; }
+  /* 素材库灯箱选择器 */
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.62); display:flex; align-items:center; justify-content:center; z-index:50; }
+  .modal-box { background:var(--panel); border:1px solid var(--line); border-radius:10px; width:min(720px,92vw); max-height:82vh; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  .modal-hd { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); font-weight:600; font-size:13px; }
+  .libgrid { overflow:auto; padding:12px; display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:10px; }
+  .libcell { cursor:pointer; }
+  .libcell img { width:100%; aspect-ratio:2/3; object-fit:cover; border-radius:6px; border:1px solid var(--line); display:block; }
+  .libcell:hover img { border-color:var(--accent); }
+  .libcap { font-size:11px; color:var(--dim); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .imgthumb { width:46px; height:46px; object-fit:cover; border-radius:6px; border:1px solid var(--line); display:block; }
 </style>
 </head>
 <body>
@@ -197,6 +207,13 @@
   <div class="hint" id="stat"></div>
 </section>
 </main>
+
+<div id="libPicker" class="modal" style="display:none">
+  <div class="modal-box">
+    <div class="modal-hd"><span>🖼 从素材库选择图片</span><button id="libPickerClose" class="sm" type="button">✕ 关闭</button></div>
+    <div id="libPickerGrid" class="libgrid"><div class="empty">加载中…</div></div>
+  </div>
+</div>
 
 <script>
 const W = 1024, H = 1536;
@@ -524,6 +541,12 @@ function bubbleList() {
 }
 
 /* ---------- 带货组件列表面板 ---------- */
+function imgField(i, key, label, cur) {
+  const thumb = (cur && cur.src)
+    ? `<div class="row" style="margin-top:4px;align-items:center"><img src="${cur.src}" class="imgthumb" alt=""><button class="sm danger" data-clearimg="${key}" data-i="${i}">清除</button></div>`
+    : '';
+  return `<label>${label}</label><div class="row"><button class="sm" data-pick="${key}" data-i="${i}">🖼 素材库</button><input type="file" accept="image/*" data-img="${key}" data-i="${i}" style="flex:1;min-width:0"></div>${thumb}`;
+}
 function widgetList() {
   const box = $('widgets'); box.innerHTML = '';
   const NAME = { viewer: '观看数胶囊', namebar: '主播名条+关注', product: '商品卡', danmaku: '弹幕条', actionbar: '底部操作栏' };
@@ -531,8 +554,8 @@ function widgetList() {
     const d = document.createElement('div'); d.className = 'bub' + (i === S.selWidget && S.selKind === 'widget' ? ' sel' : '');
     let fields = '';
     if (w.type === 'viewer') fields = `<label>文案</label><textarea data-k="text" data-i="${i}">${w.text}</textarea><label>字号</label><input type="range" data-k="size" data-i="${i}" min="18" max="40" step="1" value="${w.size}">`;
-    else if (w.type === 'namebar') fields = `<label>昵称</label><input type="text" data-k="name" data-i="${i}" value="${w.name}"><label>按钮文字</label><input type="text" data-k="btnText" data-i="${i}" value="${w.btnText}"><label>字号</label><input type="range" data-k="size" data-i="${i}" min="20" max="40" step="1" value="${w.size}"><label>头像图</label><input type="file" accept="image/*" data-img="avatar" data-i="${i}">`;
-    else if (w.type === 'product') fields = `<label>标题</label><input type="text" data-k="title" data-i="${i}" value="${w.title}"><label>卖点</label><input type="text" data-k="sell" data-i="${i}" value="${w.sell}"><label>价格</label><input type="text" data-k="price" data-i="${i}" value="${w.price}"><label>按钮文字</label><input type="text" data-k="btnText" data-i="${i}" value="${w.btnText}"><label>SKU 图</label><input type="file" accept="image/*" data-img="sku" data-i="${i}">`;
+    else if (w.type === 'namebar') fields = `<label>昵称</label><input type="text" data-k="name" data-i="${i}" value="${w.name}"><label>按钮文字</label><input type="text" data-k="btnText" data-i="${i}" value="${w.btnText}"><label>字号</label><input type="range" data-k="size" data-i="${i}" min="20" max="40" step="1" value="${w.size}">` + imgField(i, 'avatar', '头像图', w.avatar);
+    else if (w.type === 'product') fields = `<label>标题</label><input type="text" data-k="title" data-i="${i}" value="${w.title}"><label>卖点</label><input type="text" data-k="sell" data-i="${i}" value="${w.sell}"><label>价格</label><input type="text" data-k="price" data-i="${i}" value="${w.price}"><label>按钮文字</label><input type="text" data-k="btnText" data-i="${i}" value="${w.btnText}">` + imgField(i, 'sku', 'SKU 图', w.sku);
     else if (w.type === 'danmaku') fields = `<label>弹幕（每行一条）</label><textarea data-k="lines" data-i="${i}">${w.lines}</textarea><label>字号</label><input type="range" data-k="size" data-i="${i}" min="16" max="30" step="1" value="${w.size}">`;
     else if (w.type === 'actionbar') fields = `<label>CTA 按钮文字</label><input type="text" data-k="cta" data-i="${i}" value="${w.cta}"><label>字号</label><input type="range" data-k="size" data-i="${i}" min="16" max="30" step="1" value="${w.size}">`;
     d.innerHTML = `<div class="hd"><span>${NAME[w.type] || w.type} #${i + 1}</span><button class="sm" data-sel="${i}">选中</button></div>${fields}`;
@@ -545,6 +568,8 @@ function widgetList() {
     r.onload = () => { const src = r.result; const im = new Image(); im.onload = () => { const w = S.widgets[idx]; if (w) { w[key] = { img: im, src }; render(); } }; im.src = src; };
     r.readAsDataURL(f);
   });
+  box.querySelectorAll('[data-pick]').forEach(el => el.onclick = () => { const idx = +el.dataset.i, key = el.dataset.pick; openLibPicker((dataUrl) => assignLibImg(idx, key, dataUrl)); });
+  box.querySelectorAll('[data-clearimg]').forEach(el => el.onclick = () => { const w = S.widgets[+el.dataset.i]; if (w) { w[el.dataset.clearimg] = null; widgetList(); render(); } });
 }
 $('addViewer').onclick = () => { S.widgets.push(newWidget('viewer')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
 $('addNamebar').onclick = () => { S.widgets.push(newWidget('namebar')); S.selWidget = S.widgets.length - 1; S.selKind = 'widget'; widgetList(); render(); };
@@ -703,6 +728,35 @@ window.__render = () => { bubbleList(); render(); };   // 直接改状态后强�
 /* ---------- 底图来源：素材库 + 本地上传 ---------- */
 function loadImage(src) { const img = new Image(); img.onload = () => { S.base = img; render(); }; img.onerror = () => { $('outMsg').textContent = '底图加载失败：' + src; }; img.src = src; }
 $('file').onchange = (e) => { const f = e.target.files[0]; if (f) loadImage(URL.createObjectURL(f)); };
+/* ---------- 素材库灯箱选择器：给商品卡 SKU / 名条头像选库图，统一转 dataURL（与本地上传同链路，四出口一致） ---------- */
+function assignLibImg(i, key, dataUrl) {
+  const w = S.widgets[i]; if (!w) return;
+  const im = new Image(); im.onload = () => { w[key] = { img: im, src: dataUrl }; widgetList(); render(); }; im.onerror = () => { $('outMsg').textContent = '素材图加载失败'; }; im.src = dataUrl;
+}
+function openLibPicker(onPick) {
+  const modal = $('libPicker'), grid = $('libPickerGrid');
+  modal.style.display = 'flex'; grid.innerHTML = '<div class="empty">加载中…</div>';
+  fetch('/api/library').then(r => r.json()).then(j => {
+    const imgs = (j.kinds && j.kinds.images) || [];
+    if (!imgs.length) { grid.innerHTML = '<div class="empty">素材库 images 目录为空，可改用本地上传</div>'; return; }
+    grid.innerHTML = '';
+    imgs.slice(0, 80).forEach(it => {
+      const url = '/lib/images/' + encodeURIComponent(it.name);
+      const cell = document.createElement('div'); cell.className = 'libcell';
+      const im = document.createElement('img'); im.src = url; im.title = `${it.name}${it.meta ? ' · ' + it.meta.w + '×' + it.meta.h : ''}`;
+      im.onclick = () => {
+        fetch(url).then(r => r.blob())
+          .then(blob => new Promise((res, rej) => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.onerror = rej; rd.readAsDataURL(blob); }))
+          .then(dataUrl => { modal.style.display = 'none'; onPick(dataUrl); })
+          .catch(e => alert('读取素材失败：' + e.message));
+      };
+      const cap = document.createElement('div'); cap.className = 'libcap'; cap.textContent = it.name;
+      cell.appendChild(im); cell.appendChild(cap); grid.appendChild(cell);
+    });
+  }).catch(e => { grid.innerHTML = '<div class="empty">素材库读取失败：' + e.message + '</div>'; });
+}
+$('libPickerClose').onclick = () => { $('libPicker').style.display = 'none'; };
+$('libPicker').onclick = (e) => { if (e.target === $('libPicker')) $('libPicker').style.display = 'none'; };
 async function loadLibrary() {
   const grid = $('libGrid');
   try {
