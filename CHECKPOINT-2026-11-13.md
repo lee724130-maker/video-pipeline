@@ -56,9 +56,16 @@
 - **实现**（`pipeline/tools/make_pptx.py`）：新增 `_clip_pic_to_ellipse(pic)`，image 图元带 `clipEllipse` 时把图片 `<a:prstGeom>` 设成 `prst="ellipse"`（OOXML 图片形状设椭圆即裁成圆，PPT/WPS 支持）；SKU 图不带标记仍矩形。**浏览器端零改**——`buildPptxSpec` 的 `{...p}` 只删 `img`，`clipEllipse` 早已透传给 python。
 - **验证**：p24 冒烟 35→**38**（新增 [F] 引擎级 3 条：两张图、头像 `prstGeom=ellipse`、SKU `rect`）；全链路探针（浏览器设头像→buildPptxSpec clipEllipse=true+dataURL→POST 200→解包 pptx 头像图 ellipse）；p25 66/66、p21 67/67 无回归。**用户 WPS 实测**：头像裁圆效果 OK、SKU 保持方。本机无 LibreOffice/PowerPoint，视觉确认依赖用户 WPS。
 
-## 八、断点交接（2026-11-13）
+## 八、全量回归 + 重建串跑器（收工前质量门）
 
-- 本会话两个里程碑（P27 素材库灯箱 + 缓存头、P28 pptx 头像裁圆）均已提交推送，`main` 与 `origin/main` 同步后工作树只剩旧欠账 `AI漫剧分镜与提示词模板.md`（untracked，非本会话产物）。
-- 8787 当前 PID 19164 在跑；下会话跑冒烟前先探活/重启且**串行独占**。
+- **重建入库版 `smoke/run-regression.cjs`**：之前那个跑在 `Desktop\会话存档…\脚本\` 的 runner 已随死工作区永久丢失（正是"脚本别只留临时目录"的老坑）。新 runner 规矩：路径全从 `lib.cjs` 的 ROOT 派生、**禁硬编码绝对路径**；`spawnSync` **串行独占 8787**（同一时刻只跑一条管线，并发会假性失败）；**计费套件默认闸住**——`p7-2-imagegen`（真实生图）、`p8-clone`（真实复刻）只在 `--with-billing` 时跑，且跑前须先向用户报价；末尾自动跑 `guard-sentinel` 哨兵；每套件以**退出码 0 为权威判绿**（README 口径），解析到的"通过/失败/跳过"计数作辅助。
+- **判定 bug 修正**：初版把"结果行格式不匹配正则、计数解析为 null 但 exit=0"的套件误标 FAIL。修为：`passed = !crashed && code===0 && (failParsed===null || failParsed===0)`，以退出码为准。
+- **本次全量回归结果（零计费 16 套 + 哨兵）**：**全绿**——16 套全部 `exit=0`，`guard-sentinel` 干净。comic 三套明确计数 p21 67/0/0、p24 38/0/0、p25 66/0/0（覆盖本日 P26/P27/P28 改动面）；其余 p9-static/p6-check/p7-library/p10-icc/p16/p17/p9-editor/p12/p19/p20/p11/p13/p14 均 exit=0。慢套件耗时：p11 474s、p9-editor 245s、p13 223s、p20 99s（真实管线重跑）。
+- **计费 2 套未跑**：`p7-2-imagegen`、`p8-clone` 本轮按报价铁律未执行，需要时先报价再 `--with-billing`。
+
+## 九、断点交接（2026-11-13 收工）
+
+- 本会话三个里程碑（P27 素材库灯箱 + 缓存头、P28 pptx 头像裁圆、以及收工的全量回归 + `smoke/run-regression.cjs`）均已提交推送，`main` 与 `origin/main` 同步后工作树只剩旧欠账 `AI漫剧分镜与提示词模板.md`（untracked，非本会话产物）。
+- 8787 收工时停；下会话跑冒烟/回归前先 `node web/server.cjs --port 8787` 重启且**串行独占**（或直接 `node smoke/run-regression.cjs` 跑全量）。
 - git 代理 `127.0.0.1:7890` 时好时坏，push 失败就 `git -c http.proxy= -c https.proxy= push origin main` 绕过直连。
-- 下一功能默认做第六节第 2 项（SVG/manifest 落盘 + 批量出格，远期偏大），或第 3 项（补跑 16 套全量回归），或用户另指定。
+- **下一会话一句话开工**：「按 `D:\剪辑应用\CHECKPOINT-2026-11-13.md` 第六节继续，先做第 2 项（SVG/manifest 落盘 + 批量出格）」；或指定其他。计费那两套要跑先报价。
